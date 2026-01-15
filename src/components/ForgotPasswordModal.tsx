@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import styles from "./ForgotPasswordModal.module.css";
 
 type Props = {
   open: boolean;
@@ -39,7 +40,7 @@ export default function ForgotPasswordModal({
 
   return (
     <div
-      className="guts-modal-overlay"
+      className={styles.modalOverlay}
       role="dialog"
       aria-modal="true"
       aria-label="Forgot password"
@@ -48,24 +49,24 @@ export default function ForgotPasswordModal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="guts-modal">
-        <div className="guts-modal-head">
-          <h3 className="guts-modal-title">ลืมรหัสผ่าน</h3>
-          <button className="guts-icon-btn" type="button" onClick={onClose} aria-label="Close">
+      <div className={styles.modal}>
+        <div className={styles.modalHead}>
+          <h3 className={styles.modalTitle}>ลืมรหัสผ่าน</h3>
+          <button className={styles.iconBtn} type="button" onClick={onClose} aria-label="Close">
             ×
           </button>
         </div>
 
-        <p className="guts-modal-desc">
+        <p className={styles.modalDesc}>
           กรอกรหัสพนักงาน 6 หลัก แล้วกดส่งรหัส ระบบจะส่งรหัสไปยังอีเมลที่ลงทะเบียนไว้
         </p>
 
-        <div className="guts-form" style={{ marginTop: 10 }}>
+        <div className={styles.form} style={{ marginTop: 10 }}>
           <div>
-            <div className="guts-label">รหัสพนักงาน (6 หลัก)</div>
+            <div className={styles.label}>รหัสพนักงาน (6 หลัก)</div>
             <input
               ref={inputRef}
-              className="guts-input"
+              className={styles.input}
               value={empCode}
               onChange={(e) => onChangeEmp(e.target.value)}
               inputMode="numeric"
@@ -73,16 +74,16 @@ export default function ForgotPasswordModal({
             />
           </div>
 
-          <div className="guts-modal-actions">
-            <button type="button" className="guts-btn" disabled={!empValid} onClick={onSend}>
+          <div className={styles.modalActions}>
+            <button type="button" className={styles.btn} disabled={!empValid} onClick={onSend}>
               กดส่งรหัสผ่าน
             </button>
-            <button type="button" className="guts-btn-back" onClick={onClose}>
+            <button type="button" className={styles.btnBack} onClick={onClose}>
             ย้อนกลับ
             </button>
           </div>
 
-          <div className="guts-warn" style={{ marginTop: 10 }}>
+          <div className={styles.warn} style={{ marginTop: 10 }}>
             **ระบบจะส่งรหัสไปอีเมลที่ลงทะเบียนไว้ (ตัวอย่าง: @xxxxx)
           </div>
         </div>

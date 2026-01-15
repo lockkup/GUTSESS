@@ -1,0 +1,208 @@
+/* src/pages/CheckInOut.module.css */
+
+.bg {
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto auto;
+  justify-items: center;
+  align-content: start;
+  row-gap: clamp(10px, 2vh, 16px);
+  padding: clamp(14px, 3.5vw, 40px);
+}
+
+.card {
+  width: min(640px, 92vw);
+  border-radius: 18px;
+  padding: clamp(18px, 3.2vw, 28px);
+  background: linear-gradient(180deg, #f6f6f8, #f3f4f7);
+  box-shadow:
+    0 22px 60px rgba(0, 0, 0, 0.25),
+    0 10px 18px rgba(0, 0, 0, 0.14);
+}
+
+/* ===== Title ===== */
+.title {
+  margin: 14px 0 10px;
+  font-weight: 900;
+  color: rgba(27, 43, 74, 0.92);
+  font-size: 26px;
+  letter-spacing: 0.2px;
+}
+
+/* ===== Summary Card (IN/OUT) ===== */
+.summaryCard {
+  border-radius: 22px;
+  border: 2px solid rgba(2, 75, 118, 0.18);
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 14px 26px rgba(0, 0, 0, 0.10);
+  padding: 16px 14px;
+  display: grid;
+  grid-template-columns: 1fr 10px 1fr;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.col {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 6px;
+  padding: 6px 4px;
+}
+
+.colHead {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 900;
+  font-size: 22px;
+  color: rgba(27, 43, 74, 0.90);
+}
+
+.walk {
+  font-size: 22px;
+}
+
+.divider {
+  width: 2px;
+  justify-self: center;
+  background: rgba(2, 75, 118, 0.16);
+  border-radius: 999px;
+}
+
+.time {
+  font-weight: 900;
+  font-size: 64px;
+  line-height: 1;
+}
+
+.time.in {
+  color: var(--color-primary);
+}
+
+.time.out {
+  color: var(--color-danger);
+}
+
+.date {
+  font-weight: 800;
+  font-size: 18px;
+  color: rgba(27, 43, 74, 0.75);
+}
+
+/* ===== Action Card ===== */
+.actionCard {
+  margin-top: 14px;
+  border-radius: 22px;
+  border: 2px solid rgba(2, 75, 118, 0.18);
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 14px 26px rgba(0, 0, 0, 0.10);
+  padding: 18px 14px 14px;
+}
+
+.nowBig {
+  text-align: center;
+  margin-bottom: 14px;
+}
+
+.nowDate {
+  font-weight: 900;
+  font-size: 56px;
+  color: rgba(27, 43, 74, 0.92);
+  line-height: 1.05;
+}
+
+.nowTime {
+  font-weight: 900;
+  font-size: 46px;
+  color: rgba(27, 43, 74, 0.92);
+  margin-top: 6px;
+  line-height: 1.05;
+}
+
+/* ===== Action Buttons ===== */
+.btn {
+  width: 100%;
+  height: 62px;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  font-weight: 900;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  box-shadow: 0 16px 26px rgba(0, 0, 0, 0.12);
+  margin-top: 12px;
+  transition: transform 0.08s ease, opacity 0.15s ease;
+}
+
+.btnIcon {
+  font-size: 22px;
+  opacity: 0.95;
+}
+
+.btnText {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 22px;
+  letter-spacing: 0.2px;
+}
+
+.btnSmall {
+  opacity: 0.95;
+  font-size: 18px;
+}
+
+.btn.in {
+  background: linear-gradient(90deg, var(--color-primary), var(--color-primary-dark));
+}
+
+.btn.out {
+  background: linear-gradient(90deg, #b80000, var(--color-danger));
+}
+
+.btn:hover {
+  opacity: 0.92;
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+/* ===== History Link ===== */
+.history {
+  margin-top: 14px;
+  width: 100%;
+  text-align: center;
+  color: var(--color-primary);
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 14px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.history:hover {
+  opacity: 0.8;
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 380px) {
+  .summaryCard {
+    grid-template-columns: 1fr 6px 1fr;
+  }
+
+  .time {
+    font-size: 48px;
+  }
+
+  .btn {
+    height: 54px;
+    font-size: 18px;
+  }
+}

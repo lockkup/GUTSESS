@@ -1,3 +1,5 @@
+import styles from "./BackButton.module.css";
+
 type Props = {
   onClick: () => void;
   label?: string;
@@ -16,7 +18,7 @@ export default function BackButton({
   return (
     <button
       type="button"
-      className={`guts-back-btn ${className}`.trim()}
+      className={`${styles.btn} ${className}`.trim()}
       onClick={onClick}
       disabled={disabled}
       aria-label={ariaLabel ?? label}

@@ -11,6 +11,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 
 import AppHeader from "../components/AppHeader";
+import styles from "./Home.module.css";
 
 type Props = {
   empCode: string;
@@ -38,74 +39,74 @@ export default function Home({
   onGoOther,
 }: Props) {
   return (
-    <main className="guts-bg">
-      <div className="guts-home">
-        <section className="guts-home-card" aria-label="Home">
+    <main className={styles.bg}>
+      <div className={styles.home}>
+        <section className={styles.homeCard} aria-label="Home">
           {/* ✅ Header ใช้ร่วมทุกหน้า */}
           <AppHeader empCode={empCode} displayName={displayName} />
 
-          <h2 className="guts-home-title">หน้าหลัก</h2>
+          <h2 className={styles.homeTitle}>หน้าหลัก</h2>
 
-          <div className="guts-menu-stack">
-            <button type="button" className="guts-menu-btn" onClick={onGoCheckInOut}>
-              <div className="guts-menu-box">
-                <div className="guts-menu-iconWrap" aria-hidden="true">
-                  <FontAwesomeIcon className="guts-menu-fa" icon={faClock} />
+          <div className={styles.menuStack}>
+            <button type="button" className={styles.menuBtn} onClick={onGoCheckInOut}>
+              <div className={styles.menuBox}>
+                <div className={styles.menuIconWrap} aria-hidden="true">
+                  <FontAwesomeIcon className={styles.menuFa} icon={faClock} />
                 </div>
-                <div className="guts-menu-text">ลงเวลา เข้า-ออกงาน</div>
+                <div className={styles.menuText}>ลงเวลา เข้า-ออกงาน</div>
               </div>
             </button>
 
-            <button type="button" className="guts-menu-btn" onClick={onGoLeaveOnline}>
-              <div className="guts-menu-box">
-                <div className="guts-menu-iconWrap" aria-hidden="true">
-                  <FontAwesomeIcon className="guts-menu-fa" icon={faBed} />
+            <button type="button" className={styles.menuBtn} onClick={onGoLeaveOnline}>
+              <div className={styles.menuBox}>
+                <div className={styles.menuIconWrap} aria-hidden="true">
+                  <FontAwesomeIcon className={styles.menuFa} icon={faBed} />
                 </div>
-                <div className="guts-menu-text">ลาออนไลน์</div>
+                <div className={styles.menuText}>ลาออนไลน์</div>
               </div>
             </button>
 
-            <button type="button" className="guts-menu-btn" onClick={onGoManpower}>
-              <div className="guts-menu-box">
-                <div className="guts-menu-iconWrap" aria-hidden="true">
-                  <FontAwesomeIcon className="guts-menu-fa" icon={faUsers} />
+            <button type="button" className={styles.menuBtn} onClick={onGoManpower}>
+              <div className={styles.menuBox}>
+                <div className={styles.menuIconWrap} aria-hidden="true">
+                  <FontAwesomeIcon className={styles.menuFa} icon={faUsers} />
                 </div>
-                <div className="guts-menu-text">จัดกำลังพล</div>
+                <div className={styles.menuText}>จัดกำลังพล</div>
               </div>
             </button>
 
-            <button type="button" className="guts-menu-btn" onClick={onGoDiscipline}>
-              <div className="guts-menu-box">
-                <div className="guts-menu-iconWrap" aria-hidden="true">
-                  <FontAwesomeIcon className="guts-menu-fa" icon={faGavel} />
+            <button type="button" className={styles.menuBtn} onClick={onGoDiscipline}>
+              <div className={styles.menuBox}>
+                <div className={styles.menuIconWrap} aria-hidden="true">
+                  <FontAwesomeIcon className={styles.menuFa} icon={faGavel} />
                 </div>
-                <div className="guts-menu-text">บทลงโทษ</div>
+                <div className={styles.menuText}>บทลงโทษ</div>
               </div>
             </button>
 
-            <button type="button" className="guts-menu-btn" onClick={onGoUniform}>
-              <div className="guts-menu-box">
-                <div className="guts-menu-iconWrap" aria-hidden="true">
-                  <FontAwesomeIcon className="guts-menu-fa" icon={faShirt} />
+            <button type="button" className={styles.menuBtn} onClick={onGoUniform}>
+              <div className={styles.menuBox}>
+                <div className={styles.menuIconWrap} aria-hidden="true">
+                  <FontAwesomeIcon className={styles.menuFa} icon={faShirt} />
                 </div>
-                <div className="guts-menu-text">ชุดแต่งกาย</div>
+                <div className={styles.menuText}>ชุดแต่งกาย</div>
               </div>
             </button>
 
-            <button type="button" className="guts-menu-btn" onClick={onGoOther}>
-              <div className="guts-menu-box">
-                <div className="guts-menu-iconWrap" aria-hidden="true">
-                  <FontAwesomeIcon className="guts-menu-fa" icon={faEllipsis} />
+            <button type="button" className={styles.menuBtn} onClick={onGoOther}>
+              <div className={styles.menuBox}>
+                <div className={styles.menuIconWrap} aria-hidden="true">
+                  <FontAwesomeIcon className={styles.menuFa} icon={faEllipsis} />
                 </div>
-                <div className="guts-menu-text">อื่นๆ</div>
+                <div className={styles.menuText}>อื่นๆ</div>
               </div>
             </button>
           </div>
 
-          <div className="guts-home-actions">
-            <button className="guts-home-logout" type="button" onClick={onLogout}>
+          <div className={styles.homeActions}>
+            <button className={styles.homeLogout} type="button" onClick={onLogout}>
               ออกจากระบบ
-              <FontAwesomeIcon className="guts-logout-fa" icon={faRightFromBracket} />
+              <FontAwesomeIcon className={styles.logoutFa} icon={faRightFromBracket} />
             </button>
           </div>
         </section>

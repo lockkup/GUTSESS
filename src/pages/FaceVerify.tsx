@@ -8,6 +8,7 @@ import {
   faCircleCheck,
   faRotateLeft,
 } from "@fortawesome/free-solid-svg-icons";
+import styles from "./FaceVerify.module.css";
 
 type PunchType = "in" | "out";
 type Step = "capture" | "confirm";
@@ -154,41 +155,41 @@ export default function FaceVerify({
     punchType === "in" ? "ยืนยันตัวตนเพื่อเข้างาน" : "ยืนยันตัวตนเพื่อออกงาน";
 
   return (
-    <main className="guts-bg">
-      <div className="guts-home">
-        <section className="guts-home-card" aria-label="Face Verify">
+    <main className={styles.bg}>
+      <div className={styles.home}>
+        <section className={styles.homeCard} aria-label="Face Verify">
           <AppHeader empCode={empCode} displayName={displayName} />
 
-          <h2 className="guts-att-title">ลงเวลาเข้า-ออกงาน</h2>
+          <h2 className={styles.title}>ลงเวลาเข้า-ออกงาน</h2>
 
-          <div className="guts-fv-card">
-            <div className="guts-fv-title">{title}</div>
+          <div className={styles.card}>
+            <div className={styles.titleText}>{title}</div>
 
             {/* ====== กล้อง/รูป ====== */}
-            <div className="guts-fv-frame" aria-label="กรอบถ่ายรูปใบหน้า">
-              <div className="guts-fv-topIcons" aria-hidden="true"></div>
+            <div className={styles.frame} aria-label="กรอบถ่ายรูปใบหน้า">
+              <div className={styles.topIcons} aria-hidden="true"></div>
 
               {/* overlay guide */}
-              <div className="guts-fv-circle" aria-hidden="true" />
-              <span className="guts-fv-corner tl" aria-hidden="true" />
-              <span className="guts-fv-corner tr" aria-hidden="true" />
-              <span className="guts-fv-corner bl" aria-hidden="true" />
-              <span className="guts-fv-corner br" aria-hidden="true" />
+              <div className={styles.circle} aria-hidden="true" />
+              <span className={`${styles.corner} ${styles.tl}`} aria-hidden="true" />
+              <span className={`${styles.corner} ${styles.tr}`} aria-hidden="true" />
+              <span className={`${styles.corner} ${styles.bl}`} aria-hidden="true" />
+              <span className={`${styles.corner} ${styles.br}`} aria-hidden="true" />
 
               {step === "capture" ? (
                 <video
                   ref={videoRef}
-                  className="guts-fv-video"
+                  className={styles.video}
                   playsInline
                   muted
                 />
               ) : (
-                <img className="guts-fv-img" src={photo} alt="รูปยืนยันตัวตน" />
+                <img className={styles.img} src={photo} alt="รูปยืนยันตัวตน" />
               )}
 
               {/* fallback: file input (ถ้าเปิดกล้องไม่ได้) */}
               <input
-                className="guts-fv-file"
+                className={styles.file}
                 type="file"
                 accept="image/*"
                 capture="user"
@@ -196,39 +197,39 @@ export default function FaceVerify({
               />
 
               {/* canvas ซ่อนไว้ใช้ capture */}
-              <canvas ref={canvasRef} className="guts-fv-canvas" />
+              <canvas ref={canvasRef} className={styles.canvas} />
             </div>
 
-            <div className="guts-fv-text">กรุณาถ่ายภาพใบหน้าเพื่อยืนยันตัวตน</div>
-            {err ? <div className="guts-fv-error">{err}</div> : null}
+            <div className={styles.text}>กรุณาถ่ายภาพใบหน้าเพื่อยืนยันตัวตน</div>
+            {err ? <div className={styles.error}>{err}</div> : null}
 
             {/* ====== ปุ่มหลัก ====== */}
             {step === "capture" ? (
               <button
                 type="button"
-                className="guts-fv-primary"
+                className={styles.primary}
                 onClick={captureFromVideo}
                 disabled={busy}
               >
-                <FontAwesomeIcon icon={faCamera} className="guts-fv-primaryIcon" />
+                <FontAwesomeIcon icon={faCamera} className={styles.primaryIcon} />
                 ถ่ายภาพและยืนยัน
               </button>
             ) : (
               <>
                 <button
                 type="button"
-                className="guts-fv-primary guts-fv-primary--green"
+                className={`${styles.primary} ${styles.green}`}
                 onClick={confirm}
                 disabled={busy}
                 >
-                <FontAwesomeIcon icon={faCircleCheck} className="guts-fv-primaryIcon" />
+                <FontAwesomeIcon icon={faCircleCheck} className={styles.primaryIcon} />
                 กดยืนยันตัวตน
                 </button>
 
 
                 <button
                   type="button"
-                  className="guts-fv-secondary"
+                  className={styles.secondary}
                   onClick={retake}
                   disabled={busy}
                 >
@@ -238,11 +239,11 @@ export default function FaceVerify({
               </>
             )}
 
-            <div className="guts-fv-bottom">
+            <div className={styles.bottom}>
               <BackButton
                 onClick={onBack}
                 disabled={busy}
-                className="guts-fv-backBtn"
+                className={styles.backBtn}
               />
             </div>
           </div>

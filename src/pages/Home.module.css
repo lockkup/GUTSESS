@@ -1,0 +1,150 @@
+/* src/pages/Home.module.css */
+
+.bg {
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto auto;
+  justify-items: center;
+  align-content: start;
+  row-gap: clamp(10px, 2vh, 16px);
+  padding: clamp(14px, 3.5vw, 40px);
+}
+
+.home {
+  width: min(520px, 92vw);
+  margin: 0 auto;
+}
+
+.homeCard {
+  border-radius: 18px;
+  padding: clamp(18px, 3.2vw, 28px);
+  background: linear-gradient(180deg, #f6f6f8, #f3f4f7);
+  box-shadow:
+    0 22px 60px rgba(0, 0, 0, 0.25),
+    0 10px 18px rgba(0, 0, 0, 0.14);
+}
+
+.homeTitle {
+  margin: 10px 0 12px;
+  display: flex;
+  font-weight: 900;
+  color: #163a6a;
+  font-size: 18px;
+}
+
+/* ===== Menu Grid ===== */
+.menuStack {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 10px;
+}
+
+.menuBtn {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+}
+
+.menuBtn:focus-visible {
+  outline: 3px solid rgba(2, 75, 118, 0.25);
+  outline-offset: 4px;
+  border-radius: 18px;
+}
+
+.menuBox {
+  border-radius: 18px;
+  border: 2px solid rgba(2, 75, 118, 0.18);
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 12px 22px rgba(0, 0, 0, 0.10);
+  padding: 18px 14px 16px;
+  min-height: 132px;
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  transition: transform 0.1s ease, box-shadow 0.15s ease;
+}
+
+.menuBtn:hover .menuBox {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.13);
+}
+
+.menuIconWrap {
+  width: 58px;
+  height: 58px;
+  border-radius: 999px;
+  border: 1px solid rgba(2, 75, 118, 0.18);
+  background: radial-gradient(circle at 30% 30%, #ffffff, #dbe6ff);
+  display: grid;
+  place-items: center;
+}
+
+.menuFa {
+  font-size: 26px;
+  color: var(--color-primary);
+}
+
+.menuText {
+  text-align: center;
+  font-weight: 900;
+  color: rgba(27, 43, 74, 0.90);
+  font-size: 16px;
+  line-height: 1.15;
+}
+
+.menuBtn.isDisabled {
+  cursor: not-allowed;
+}
+
+.menuBtn.isDisabled .menuBox {
+  opacity: 0.55;
+  transform: none;
+}
+
+/* Backward compatibility */
+.menuBtn.isDisabled {
+  cursor: not-allowed;
+}
+
+.menuBtn.isDisabled .menuBox {
+  opacity: 0.55;
+  transform: none;
+}
+
+/* ===== Logout ===== */
+.homeActions {
+  margin-top: 16px;
+  display: grid;
+  gap: 10px;
+}
+
+.homeLogout {
+  width: 100%;
+  border-radius: 30px;
+  border: 0;
+  background: var(--color-danger);
+  color: #fff;
+  height: 54px;
+  font-weight: 900;
+  cursor: pointer;
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-shadow: 0 16px 26px rgba(192, 0, 0, 0.22);
+}
+
+.logoutFa {
+  font-size: 18px;
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 360px) {
+  .menuStack {
+    grid-template-columns: 1fr;
+  }
+}

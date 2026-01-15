@@ -1,0 +1,75 @@
+/* src/styles/theme.css */
+
+:root {
+  /* ===== Font ===== */
+  --font-family: "Sarabun", sans-serif;
+  --font-weight-regular: 400;
+  --font-weight-semi-bold: 600;
+  --font-weight-bold: 700;
+  --font-weight-extra-bold: 800;
+  --font-weight-black: 900;
+
+  /* ===== Colors - Brand ===== */
+  --color-brand: #024B76;
+  --color-brand-dark: #1b4c7e;
+  --color-brand-light: #1d4a82;
+  --color-primary: #024B76;
+  --color-primary-dark: #1b4c7e;
+
+  /* ===== Colors - Text ===== */
+  --color-text-dark: #1b2b4a;
+  --color-text-light: #163a6a;
+  --color-text-blue: #163a6a;
+  --color-text-blue-deep: #163f6a;
+  --color-text-secondary: rgba(27, 43, 74, 0.85);
+  --color-text-tertiary: rgba(27, 43, 74, 0.55);
+
+  /* ===== Colors - Status ===== */
+  --color-success: #2ecc71;
+  --color-error: #c00000;
+  --color-error-dark: #b80000;
+  --color-danger: #c00000;
+  --color-red: #c00000;
+  --color-warning: #f39c12;
+
+  /* ===== Colors - Background ===== */
+  --color-bg-white: #ffffff;
+  --color-bg-light: #f6f6f8;
+  --color-bg-lighter: #f3f4f7;
+  --color-bg-card-top: #f6f6f8;
+  --color-bg-card-bottom: #f3f4f7;
+
+  /* ===== Colors - Border ===== */
+  --color-border-light: rgba(2, 75, 118, 0.18);
+  --color-border-lighter: rgba(2, 75, 118, 0.20);
+
+  /* ===== Spacing ===== */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 24px;
+  --spacing-2xl: 32px;
+
+  /* ===== Border Radius ===== */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-full: 999px;
+
+  /* ===== Shadows ===== */
+  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 10px 18px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 20px 30px rgba(0, 0, 0, 0.15);
+  --shadow-xl: 0 20px 50px rgba(0, 0, 0, 0.15);
+
+  /* ===== Typography - Sizes ===== */
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-base: 16px;
+  --text-lg: 18px;
+  --text-xl: 20px;
+  --text-2xl: 24px;
+  --text-3xl: 28px;
+  --text-4xl: 32px;
+}

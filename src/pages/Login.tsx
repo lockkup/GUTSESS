@@ -1,6 +1,7 @@
 import { useState } from "react";
 import ForgotPasswordModal from "../components/ForgotPasswordModal";
 import { User, Lock, Eye, EyeOff } from "lucide-react";
+import styles from "./Login.module.css";
 
 type Props = {
   empCode: string;
@@ -27,23 +28,23 @@ export default function Login({
   const canSubmit = empValid && pinValid;
 
   return (
-    <main className="guts-bg">
+    <main className={styles.bg}>
       {/* ✅ App header (แยกจาก login) อยู่บนสุดและกึ่งกลาง */}
-      <header className="guts-app-header" aria-label="Employee Self Service">
-        <h1 className="guts-logo">
-          <span className="guts">GUTS</span> <span className="ess">ESS</span>
+      <header className={styles.appHeader} aria-label="Employee Self Service">
+        <h1 className={styles.logo}>
+          <span className={styles.guts}>GUTS</span> <span className={styles.ess}>ESS</span>
         </h1>
-        <div className="guts-sub-en">Employee Self Service</div>
-        <div className="guts-sub-th">ระบบบริการตนเอง</div>
-        <div className="guts-sub-small">สำหรับพนักงานสำนักงานและสายตรวจ</div>
+        <div className={styles.subEn}>Employee Self Service</div>
+        <div className={styles.subTh}>ระบบบริการตนเอง</div>
+        <div className={styles.subSmall}>สำหรับพนักงานสำนักงานและสายตรวจ</div>
       </header>
 
       {/* ✅ Login card แยกส่วนชัดเจน */}
-      <section className="guts-card" aria-label="Login form">
-        <div className="guts-card-title">เข้าสู่ระบบ</div>
+      <section className={styles.card} aria-label="Login form">
+        <div className={styles.cardTitle}>เข้าสู่ระบบ</div>
 
         <form
-          className="guts-form"
+          className={styles.form}
           onSubmit={(e) => {
             e.preventDefault();
             if (canSubmit) onSubmit();
@@ -51,15 +52,15 @@ export default function Login({
         >
           {/* Employee */}
           <div>
-            <div className="guts-label">รหัสพนักงาน (6 หลัก)</div>
+            <div className={styles.label}>รหัสพนักงาน (6 หลัก)</div>
 
-            <div className="guts-field">
-              <span className="guts-icon-left" aria-hidden="true">
+            <div className={styles.field}>
+              <span className={styles.iconLeft} aria-hidden="true">
                 <User size={18} />
               </span>
 
               <input
-                className="guts-input guts-input--with-left"
+                className={`${styles.input} ${styles.inputWithLeft}`}
                 value={empCode}
                 onChange={(e) => onChangeEmp(e.target.value)}
                 inputMode="numeric"
@@ -71,15 +72,15 @@ export default function Login({
 
           {/* PIN */}
           <div>
-            <div className="guts-label">กรอกรหัส ( PIN 6 หลัก )</div>
+            <div className={styles.label}>กรอกรหัส ( PIN 6 หลัก )</div>
 
-            <div className="guts-field">
-              <span className="guts-icon-left" aria-hidden="true">
+            <div className={styles.field}>
+              <span className={styles.iconLeft} aria-hidden="true">
                 <Lock size={18} />
               </span>
 
               <input
-                className="guts-input guts-input--with-left guts-input--with-right"
+                className={`${styles.input} ${styles.inputWithLeft} ${styles.inputWithRight}`}
                 value={pin}
                 onChange={(e) => onChangePin(e.target.value)}
                 inputMode="numeric"
@@ -90,7 +91,7 @@ export default function Login({
 
               <button
                 type="button"
-                className="guts-icon-right-btn"
+                className={styles.iconRightBtn}
                 onClick={() => setShowPin((v) => !v)}
                 aria-label={showPin ? "ซ่อนรหัส PIN" : "แสดงรหัส PIN"}
                 title={showPin ? "ซ่อนรหัส" : "แสดงรหัส"}
@@ -100,14 +101,14 @@ export default function Login({
             </div>
           </div>
 
-          <button className="guts-btn" type="submit" disabled={!canSubmit}>
+          <button className={styles.btn} type="submit" disabled={!canSubmit}>
             กดเข้าสู่ระบบ
           </button>
 
-          <div className="guts-links">
+          <div className={styles.links}>
             <button
               type="button"
-              className="guts-link primary"
+              className={`${styles.link} ${styles.primary}`}
               onClick={() => setForgotOpen(true)}
             >
               คลิกลืมรหัสผ่าน
@@ -115,7 +116,7 @@ export default function Login({
 
             <button
               type="button"
-              className="guts-link secondary"
+              className={`${styles.link} ${styles.secondary}`}
               onClick={() => alert("TODO: คู่มือการใช้งาน")}
             >
               คลิกอ่านคู่มือ

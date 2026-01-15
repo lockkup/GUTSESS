@@ -1,0 +1,47 @@
+/* src/styles/global.css */
+@import './theme.css';
+
+/* ===== Box Sizing ===== */
+* {
+  box-sizing: border-box;
+}
+
+/* ===== Document ===== */
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-family);
+  color: var(--color-text-dark);
+  background: #fff;
+  line-height: 1.5;
+}
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+}
+
+/* ===== Remove Default Styles ===== */
+button {
+  font-family: var(--font-family);
+}
+
+input {
+  font-family: var(--font-family);
+}
+
+/* ===== Typography Resets ===== */
+h1, h2, h3, h4, h5, h6 {
+  margin: 0;
+  font-weight: var(--font-weight-extra-bold);
+}
+
+p {
+  margin: 0;
+}
+
+
