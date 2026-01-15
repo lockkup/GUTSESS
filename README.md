@@ -1,47 +1,78 @@
-# GUTS ESS - Employee Self Service System
+# GUTS ESS_O1 - Employee Self Service System
 
-Employee Self Service Portal built with **React 19 + TypeScript + Vite**
+Modern employee self-service system built with **React 19 + TypeScript + Vite + CSS Modules**
 
 ## 📋 Project Structure
 
 ```
 GUTSESS_01/
+├── public/                    # Static assets
+│
 ├── src/
-│   ├── components/
-│   │   ├── common/           # Reusable components
-│   │   ├── modals/           # Modal dialogs
-│   │   ├── AppHeader.tsx      # Header component
-│   │   ├── BackButton.tsx     # Back button
+│   ├── components/           # Reusable components (with scoped CSS)
+│   │   ├── AppHeader.tsx
+│   │   ├── AppHeader.module.css
+│   │   ├── BackButton.tsx
+│   │   ├── BackButton.module.css
 │   │   ├── FirstLoginModal.tsx
-│   │   └── ForgotPasswordModal.tsx
+│   │   ├── FirstLoginModal.module.css
+│   │   ├── ForgotPasswordModal.tsx
+│   │   └── ForgotPasswordModal.module.css
 │   │
-│   ├── pages/                # Page components (Route-based)
-│   │   ├── Login.tsx         # Login page
-│   │   ├── Home.tsx          # Dashboard home
-│   │   ├── CheckInOut.tsx    # Attendance check-in/out
-│   │   ├── FaceVerify.tsx    # Face recognition verification
-│   │   └── Dashboard.tsx     # Admin dashboard
+│   ├── pages/                # Page components (with scoped CSS)
+│   │   ├── Login.tsx
+│   │   ├── Login.module.css
+│   │   ├── Home.tsx
+│   │   ├── Home.module.css
+│   │   ├── CheckInOut.tsx
+│   │   ├── CheckInOut.module.css
+│   │   ├── FaceVerify.tsx
+│   │   ├── FaceVerify.module.css
+│   │   ├── Dashboard.tsx
+│   │   └── Dashboard.module.css
 │   │
-│   ├── api/                  # API endpoints (empty - ready for expansion)
+│   ├── styles/               # Global styles & theme
+│   │   ├── global.css        # Essential resets only
+│   │   └── theme.css         # CSS variables (colors, spacing, fonts, shadows)
 │   │
-│   ├── services/             # Business logic services (empty - ready for expansion)
-│   │
-│   ├── store/                # State management
+│   ├── api/                  # API services (ready for expansion)
+│   ├── services/             # Business logic services (ready for expansion)
+│   ├── store/                # Redux state management
 │   │   ├── slices/           # Redux slices
-│   │   └── store.tsx         # Redux store
+│   │   └── store.tsx         # Redux store configuration
 │   │
+│   ├── types/                # TypeScript type definitions
+│   ├── utils/                # Utility functions
 │   ├── assets/               # Static assets (images, icons)
 │   │
 │   ├── App.tsx               # Main app component
-│   ├── App.css               # App styles
-│   ├── main.tsx              # Entry point
-│   └── index.css             # Global styles
+│   ├── index.css             # Entry point (imports fonts, theme, global)
+│   ├── main.tsx              # React root entry
+│   └── vite-env.d.ts         # Vite environment types
 │
-├── package.json
-├── tsconfig.json
-├── vite.config.ts
-└── README.md
+├── index.html                # HTML template
+├── package.json              # Dependencies
+├── tsconfig.json             # TypeScript configuration
+├── tsconfig.app.json         # TypeScript app config
+├── tsconfig.node.json        # TypeScript node config
+├── vite.config.ts            # Vite configuration
+├── eslint.config.js          # ESLint configuration
+├── .gitignore                # Git ignore rules
+└── README.md                 # This file
 ```
+
+## 🎨 CSS Architecture: Modular CSS Modules
+
+### Overview
+
+Each component and page has its own **scoped CSS module** (`.module.css`):
+
+- **Components**: `components/ComponentName.module.css`
+- **Pages**: `pages/PageName.module.css`
+- **Global**: Only essential resets in `styles/global.css`
+- **Theme**: Centralized CSS variables in `styles/theme.css`
+
+
 
 ## 📦 Dependencies
 
@@ -61,78 +92,14 @@ GUTSESS_01/
 - **vite** (^7.2.4) - Build tool & dev server
 - **@vitejs/plugin-react** (^5.1.1) - React plugin for Vite
 - **eslint** (^9.39.1) - Code linter
-- **@eslint/js** (^9.39.1) - ESLint JavaScript plugin
-- **eslint-plugin-react-hooks** (^7.0.1) - React hooks linting
-- **eslint-plugin-react-refresh** (^0.4.24) - React refresh plugin
 - **typescript-eslint** (^8.46.4) - TypeScript ESLint support
-- **@types/react** (^19.2.5) - React type definitions
-- **@types/react-dom** (^19.2.3) - React DOM type definitions
-- **@types/node** (^24.10.1) - Node.js type definitions
-- **globals** (^16.5.0) - Global variables definitions
 
-## 🚀 Getting Started
 
-### Install Dependencies
-```bash
-npm install
-```
 
-### Development Server
-```bash
-npm run dev
-```
-Opens at `http://localhost:5173`
 
-### Build for Production
-```bash
-npm run build
-```
 
-### Lint Code
-```bash
-npm lint
-```
+# Project - Update
 
-### Preview Production Build
-```bash
-npm run preview
-```
-
-## 🎯 Features
-
-✅ Employee login with PIN  
-✅ First-time user onboarding  
-✅ Check-in/Check-out with face verification  
-✅ Attendance history  
-✅ Employee dashboard  
-✅ Responsive design (mobile-first)  
-✅ Thai language support  
-✅ Icon-based UI with FontAwesome & Lucide React  
-
-## 👥 Team
-
-- **Owner**: lockkup
-- **Contributors**: Posuza (Employee)
-
-## 📝 Recent Update
-
-Updated by Peter - Project structure and documentation completed
-
-## 🛠️ Tech Stack
-
-| Category | Technology |
-|----------|-----------|
-| **Frontend Framework** | React 19 |
-| **Language** | TypeScript 5.9 |
-| **Build Tool** | Vite 7 |
-| **Package Manager** | npm |
-| **Linting** | ESLint 9 |
-| **Icons** | FontAwesome 7 + Lucide React |
-| **Forms** | React Hook Form 7 |
-| **Validation** | Zod 4 |
-| **Styling** | CSS |
-
-## 📧 Contact & Support
-
-For issues or feature requests, contact the development team.
+- organize the projects 
+- adding theme,moduless.css to compents and Page 
 
