@@ -1,0 +1,237 @@
+/* src/pages/Attendance/FaceVerify/FaceVerify.module.css */
+
+/* ===== Card container ===== */
+.fvCard{
+  margin-top: 10px;
+  border-radius: 22px;
+  border: 2px solid rgba(2,75,118,0.18);
+  background: rgba(255,255,255,0.78);
+  box-shadow: 0 14px 26px rgba(0,0,0,0.10);
+  padding: 14px;
+}
+
+/* title (ใน TSX มีใช้ แต่ index.css ที่คุณแปะมาไม่มี) */
+.fvTitle{
+  font-weight: 900;
+  font-size: 18px;
+  color: rgba(27,43,74,0.92);
+  margin-bottom: 10px;
+}
+
+/* ===== Camera frame ===== */
+.fvFrame{
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: 22px;
+  overflow: hidden;
+  background: #2b2b2b;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12);
+}
+
+/* video/img fit */
+.fvVideo,
+.fvImg{
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* top icons row (เผื่ออนาคต) */
+.fvTopIcons{
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  display: flex;
+  justify-content: space-between;
+  z-index: 5;
+  color: rgba(255,255,255,0.85);
+}
+
+.fvIco{
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: rgba(0,0,0,0.25);
+  backdrop-filter: blur(6px);
+}
+
+/* guide circle */
+.fvCircle{
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 62%;
+  aspect-ratio: 1 / 1;
+  border-radius: 999px;
+  border: 8px solid rgba(255,255,255,0.35);
+  z-index: 4;
+}
+
+/* corner brackets */
+.fvCorner{
+  position: absolute;
+  width: 58px;
+  height: 58px;
+  border: 4px solid rgba(255,255,255,0.65);
+  border-radius: 16px;
+  z-index: 4;
+}
+
+.tl{ top: 18px; left: 18px; border-right: 0; border-bottom: 0; }
+.tr{ top: 18px; right: 18px; border-left: 0; border-bottom: 0; }
+.bl{ bottom: 18px; left: 18px; border-right: 0; border-top: 0; }
+.br{ bottom: 18px; right: 18px; border-left: 0; border-top: 0; }
+
+/* hide input & canvas */
+.fvFile{ position: absolute; inset: 0; opacity: 0; pointer-events: none; }
+.fvCanvas{ display: none; }
+
+/* ===== Text & error ===== */
+.fvText{
+  margin-top: 12px;
+  text-align: center;
+  font-weight: 900;
+  color: rgba(27,43,74,0.85);
+  font-size: 18px;
+}
+
+.fvError{
+  margin-top: 10px;
+  font-weight: 800;
+  color: #b80000;
+  background: rgba(192,0,0,0.08);
+  border: 1px solid rgba(192,0,0,0.18);
+  padding: 10px 12px;
+  border-radius: 12px;
+}
+
+/* location hint (ใน TSX มีใช้ แต่ index.css ที่คุณแปะมาไม่มี) */
+.fvLocHint{
+  margin-top: 10px;
+  font-weight: 800;
+  color: rgba(27,43,74,0.82);
+  background: rgba(2,75,118,0.06);
+  border: 1px solid rgba(2,75,118,0.14);
+  padding: 10px 12px;
+  border-radius: 12px;
+  line-height: 1.35;
+}
+
+/* ===== Primary / Secondary buttons ===== */
+.fvPrimary{
+  margin-top: 12px;
+  width: 100%;
+  height: clamp(56px, 6.6vw, 62px);
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+
+  color: #fff;
+  font-weight: 900;
+  font-size: 20px;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+
+  background: linear-gradient(90deg, var(--brand), var(--brandDark));
+  box-shadow: 0 16px 26px rgba(0,0,0,0.12);
+}
+
+.fvPrimary:disabled{
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.fvPrimaryIcon{ font-size: 20px; }
+
+.fvPrimaryGreen{
+  background: linear-gradient(90deg, #1fbf5b, #149a44);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.fvPrimaryGreen:hover{ filter: brightness(1.05); }
+.fvPrimaryGreen:disabled{ opacity: 0.6; }
+
+.fvSecondary{
+  margin-top: 10px;
+  width: 100%;
+  height: clamp(56px, 6.6vw, 62px);
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+
+  color: #fff;
+  font-weight: 900;
+  font-size: 20px;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+
+  background: linear-gradient(90deg, var(--brand), var(--brandDark));
+  box-shadow: 0 16px 26px rgba(0,0,0,0.12);
+}
+
+/* ===== Bottom area ===== */
+.fvBottom{
+  margin-top: 12px;
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid rgba(2,75,118,0.18);
+  padding-top: 12px;
+}
+
+/* back button class you pass into <BackButton className="..."/> */
+.fvBackBtn{
+  width: 100%;
+  height: clamp(56px, 6.6vw, 62px);
+  border-radius: 30px;
+  border: 2px solid #000;
+  background: #000;
+  color: #fff;
+  font-weight: 900;
+  font-size: clamp(16px, 2.1vw, 18px);
+  cursor: pointer;
+  box-shadow: 0 10px 16px rgba(0,0,0,0.22);
+  transition: transform 0.08s ease, opacity 0.15s ease;
+}
+
+.fvBackBtn:hover{ opacity: 0.92; }
+.fvBackBtn:active{ transform: translateY(1px); }
+
+/* ===== Placeholder (ยังไม่มีภาพถ่าย) ===== */
+.fvEmpty{
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  background: linear-gradient(180deg, rgba(245,248,252,0.95), rgba(235,240,246,0.95));
+}
+
+.fvEmptyIcon{
+  width: 86px;
+  height: 86px;
+  border-radius: 22px;
+  display: grid;
+  place-items: center;
+  background: rgba(2,75,118,0.10);
+  border: 2px solid rgba(2,75,118,0.18);
+  color: rgba(2,75,118,0.75);
+  font-size: 34px;
+  margin-bottom: 10px;
+}
+
+.fvEmptyText{
+  font-weight: 900;
+  font-size: 18px;
+  color: rgba(27,43,74,0.72);
+}

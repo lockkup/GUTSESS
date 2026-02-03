@@ -1,4 +1,6 @@
+// src/components/FirstLoginModal.tsx
 import { useEffect, useRef } from "react";
+import styles from "./FirstLoginModal.module.css";
 
 type Props = {
   open: boolean;
@@ -34,7 +36,7 @@ export default function FirstLoginModal({
 
   return (
     <div
-      className="guts-modal-overlay"
+      className={styles.overlay}
       role="dialog"
       aria-modal="true"
       aria-label="First login"
@@ -43,11 +45,11 @@ export default function FirstLoginModal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="guts-modal">
-        <div className="guts-modal-head">
-          <h3 className="guts-modal-title">เข้าใช้งานครั้งแรก</h3>
+      <div className={styles.modal}>
+        <div className={styles.head}>
+          <h3 className={styles.title}>เข้าใช้งานครั้งแรก</h3>
           <button
-            className="guts-icon-btn"
+            className={styles.iconBtn}
             type="button"
             onClick={onClose}
             aria-label="Close"
@@ -56,22 +58,23 @@ export default function FirstLoginModal({
           </button>
         </div>
 
-        <p className="guts-modal-desc">
-          กรุณากดขอรหัสผ่านเพื่อรับรหัสผ่านชั่วคราว ระบบจะส่งไปที่อีเมลที่ลงทะเบียนไว้
+        <p className={styles.desc}>
+          กรุณากดขอรหัสผ่านเพื่อรับรหัสผ่านชั่วคราว <br></br>
+          ระบบจะส่งไปที่อีเมลที่ลงทะเบียนไว้
         </p>
 
-        <div className="guts-form" style={{ marginTop: 10 }}>
-          <div className="guts-label">รหัสพนักงาน (6 หลัก)</div>
+        <div className={styles.form}>
+          <div className={styles.label}>รหัสพนักงาน (6 หลัก)</div>
 
-          <div className="guts-codebox" aria-label="Employee code">
+          <div className={styles.codebox} aria-label="Employee code">
             {empCode || "______"}
           </div>
 
-          <div className="guts-modal-actions">
+          <div className={styles.actions}>
             <button
               ref={btnRef}
               type="button"
-              className="guts-btn"
+              className={styles.btnPrimary}
               onClick={onRequestPassword}
             >
               กดขอรหัสผ่าน
@@ -79,14 +82,14 @@ export default function FirstLoginModal({
 
             <button
               type="button"
-              className="guts-btn-back"
+              className={styles.btnBack}
               onClick={onClose}
             >
               ย้อนกลับ
             </button>
           </div>
 
-          <div className="guts-warn" style={{ marginTop: 10 }}>
+          <div className={styles.warn}>
             ระบบจะส่งรหัสไปอีเมลที่ลงทะเบียนไว้ (ตัวอย่าง: @xxxxx)
             <br />
             หากไม่ได้รับภายใน 5 นาที กรุณาติดต่อผู้ดูแลระบบ

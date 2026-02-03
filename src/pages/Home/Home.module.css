@@ -1,0 +1,135 @@
+/* src/pages/Home/Home.module.css */
+
+.home { width: min(520px, 92vw); margin: 0 auto; }
+
+/* --- title --- */
+.title {
+  margin: 10px 0 12px;
+  display: flex;
+  font-weight: 900;
+  color: var(--blueText);
+  font-size: 18px;
+}
+
+/* ✅ change stack -> grid 2 columns like mock */
+.menuStack{
+  display:grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+@media (min-width: 520px){
+  .menuStack{
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+}
+
+/* 2) ปุ่มครอบ */
+.menuBtn{
+  width:100%;
+  border:0;
+  background:transparent;
+  cursor:pointer;
+  padding:0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.menuBtn:focus-visible{
+  outline: 3px solid rgba(2,75,118,0.28);
+  outline-offset: 4px;
+  border-radius: 18px;
+}
+
+/* 3) ตัว tile */
+.menuBox{
+  border-radius: 18px;
+  border: 1px solid rgba(2,75,118,0.16);
+  background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(245,249,255,0.88));
+  box-shadow:
+    0 10px 18px rgba(0,0,0,0.08),
+    0 2px 0 rgba(255,255,255,0.65) inset;
+
+  height: 64px;
+  padding: 10px 14px;
+
+  display:grid;
+  grid-template-columns: 52px 1fr;
+  align-items:center;
+  gap: 12px;
+
+  transition: transform 140ms ease, box-shadow 180ms ease, border-color 180ms ease;
+  will-change: transform;
+}
+
+/* hover/active */
+.menuBtn:hover .menuBox{
+  transform: translateY(-2px);
+  border-color: rgba(2,75,118,0.22);
+  box-shadow:
+    0 14px 26px rgba(0,0,0,0.11),
+    0 2px 0 rgba(255,255,255,0.65) inset;
+}
+
+.menuBtn:active .menuBox{
+  transform: translateY(0px) scale(0.99);
+}
+
+/* 4) วงกลมไอคอน */
+.iconWrap{
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 30% 30%, #ffffff 0%, #e8f1ff 55%, #dbe9ff 100%);
+  border: 1px solid rgba(2,75,118,0.18);
+  box-shadow: 0 6px 12px rgba(0,0,0,0.06);
+  display:grid;
+  place-items:center;
+}
+
+.fa{
+  font-size: 20px;
+  color: var(--brand);
+  display:block;
+}
+
+/* 5) ข้อความ */
+.text{
+  text-align: left;
+  font-weight: 800;
+  color: rgba(27,43,74,0.92);
+  font-size: 20px;
+  line-height: 1.2;
+  letter-spacing: 0.2px;
+}
+
+/* actions */
+.actions { margin-top: 16px; display: grid; gap: 10px; }
+
+/* logout -> red bar like mock */
+.logout{
+  width: 100%;
+  border-radius: 30px;
+  border: 0;
+  background: var(--red);
+  color: #fff;
+  height: 54px;
+  font-weight: 900;
+  cursor: pointer;
+  font-size: 20px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+
+  box-shadow: 0 16px 26px rgba(192,0,0,0.22);
+}
+
+.logoutFa { font-size: 18px; }
+
+/* กันจอเล็กมากๆ */
+@media (max-width: 360px){
+  .menuStack { grid-template-columns: 1fr; }
+}

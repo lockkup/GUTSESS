@@ -1,0 +1,95 @@
+/* src/layout/Header/Header.module.css */
+
+.header { text-align: center; }
+
+.logo {
+  margin: 0;
+  font-size: clamp(34px, 4.2vw, 44px);
+  font-weight: 900;
+  letter-spacing: 0.6px;
+  line-height: 1.05;
+}
+
+.logoGuts {
+  color: #1d4a82;
+  text-shadow:
+    0 3px 0 rgba(0,0,0,0.22),
+    0 10px 18px rgba(0,0,0,0.12);
+}
+
+.logoEss {
+  color: var(--red);
+  text-shadow:
+    0 3px 0 rgba(0,0,0,0.22),
+    0 10px 18px rgba(0,0,0,0.12);
+}
+
+.subEn {
+  margin-top: 6px;
+  font-weight: 800;
+  color: var(--red);
+  font-size: clamp(20px, 1.8vw, 18px);
+}
+
+.subTh {
+  margin-top: 2px;
+  font-weight: 800;
+  color: var(--blueText);
+  font-size: clamp(18px, 1.9vw, 16px);
+}
+
+.subSmall {
+  margin-top: 2px;
+  font-weight: 800;
+  color: var(--blueText);
+  font-size: clamp(18px, 1.9vw, 16px);
+}
+
+/* usercard */
+.usercard{
+  margin-top: 10px;
+  width: 100%;
+  max-width: 520px;
+
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  padding: 10px 12px;
+  border-radius: 30px;
+
+  background: rgba(255,255,255,0.75);
+  border: 2px solid rgba(2, 75, 118, 0.18);
+  box-shadow: 0 10px 18px rgba(0,0,0,0.10);
+}
+
+.usercardIcon{
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+
+  background: radial-gradient(circle at 30% 30%, #ffffff, #dbe6ff);
+  border: 1px solid rgba(2, 75, 118, 0.20);
+  color: var(--brand);
+  flex: 0 0 auto;
+}
+
+.usercardLabel{
+  color: var(--brand);
+  font-weight: 900;
+  font-size: 16px;
+  flex: 0 0 auto;
+}
+
+.usercardValue{
+  color: rgba(27, 43, 74, 0.85);
+  font-weight: 900;
+  font-size: 16px;
+  letter-spacing: 0.4px;
+
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

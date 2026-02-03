@@ -1,0 +1,153 @@
+/* src/pages/Attendance/CheckInOut/CheckInOut.module.css */
+.attTitle{
+  margin: 14px 0 10px;
+  font-weight: 900;
+  color: rgba(27,43,74,0.92);
+  font-size: 26px;
+  letter-spacing: 0.2px;
+}
+
+/* สรุป IN/OUT */
+.summaryCard{
+  border-radius: 22px;
+  border: 2px solid rgba(2,75,118,0.18);
+  background: rgba(255,255,255,0.78);
+  box-shadow: 0 14px 26px rgba(0,0,0,0.10);
+  padding: 16px 14px;
+
+  display: grid;
+  grid-template-columns: 1fr 10px 1fr;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.col{
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 6px;
+  padding: 6px 4px;
+}
+
+.colHead{
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 900;
+  font-size: 22px;
+  color: rgba(27,43,74,0.90);
+}
+
+.walk{ font-size: 22px; }
+
+.divider{
+  width: 2px;
+  justify-self: center;
+  background: rgba(2,75,118,0.16);
+  border-radius: 999px;
+}
+
+.time{
+  font-weight: 900;
+  font-size: 50px;
+  line-height: 1;
+}
+
+.timeIn{ color: var(--brand); }
+.timeOut{ color: var(--red); }
+
+.date{
+  font-weight: 800;
+  font-size: 18px;
+  color: rgba(27,43,74,0.75);
+}
+
+/* การ์ดปุ่ม */
+.actionCard{
+  margin-top: 14px;
+  border-radius: 22px;
+  border: 2px solid rgba(2,75,118,0.18);
+  background: rgba(255,255,255,0.78);
+  box-shadow: 0 14px 26px rgba(0,0,0,0.10);
+  padding: 18px 14px 14px;
+}
+
+.nowBig{
+  text-align: center;
+  margin-bottom: 14px;
+}
+
+.nowDate{
+  font-weight: 900;
+  font-size: 56px;
+  color: rgba(27,43,74,0.92);
+  line-height: 1.05;
+}
+
+.nowTime{
+  font-weight: 900;
+  font-size: 46px;
+  color: rgba(27,43,74,0.92);
+  margin-top: 6px;
+  line-height: 1.05;
+}
+
+/* ปุ่มใหญ่ */
+.btn{
+  width: 100%;
+  height: 62px;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  font-weight: 900;
+  color: #fff;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+
+  box-shadow: 0 16px 26px rgba(0,0,0,0.12);
+  margin-top: 12px;
+}
+
+.btnIn{ background: linear-gradient(90deg, var(--brand), var(--brandDark)); }
+.btnOut{ background: linear-gradient(90deg, #b80000, var(--red)); }
+
+.btnText{
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 22px;
+  letter-spacing: 0.2px;
+}
+
+.btnSub{
+  /* ใน index.css คุณยังไม่ได้กำหนดไว้ ผมใส่ให้เพื่อคุม layout */
+  display: inline-block;
+}
+
+.btnSmall{
+  opacity: 0.95;
+  font-size: 18px;
+}
+
+/* ลิงก์ดูประวัติ */
+.history{
+  margin-top: 14px;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font-weight: 900;
+  color: rgba(2,75,118,0.85);
+  text-decoration: underline;
+  padding: 12px 6px 4px;
+}
+
+/* มือถือจอเล็ก */
+@media (max-width: 380px){
+  .time{ font-size: 54px; }
+  .nowDate{ font-size: 48px; }
+  .nowTime{ font-size: 40px; }
+}

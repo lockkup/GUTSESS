@@ -1,4 +1,4 @@
-// src/pages/CheckInOut.tsx
+// src/pages/Attendance/CheckInOut/index.tsx
 import { useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -7,8 +7,10 @@ import {
   faRightFromBracket,
 } from "@fortawesome/free-solid-svg-icons";
 
-import AppHeader from "../components/AppHeader";
-import BackButton from "../components/BackButton"; // ✅ เพิ่ม
+import Header from "@/layout/Header";
+import BackButton from "@/components/BackButton";
+
+import styles from "./CheckInOut.module.css";
 
 type Props = {
   empCode: string;
@@ -18,7 +20,7 @@ type Props = {
   lastInAt?: string | null;
   lastOutAt?: string | null;
 
-  onBack: () => void; // ✅ เพิ่ม (ให้ใช้ back กลางเหมือน FaceVerify)
+  onBack: () => void;
   onCheckIn: () => void;
   onCheckOut: () => void;
   onViewHistory: () => void;
@@ -73,75 +75,86 @@ export default function CheckInOut({
     <main className="guts-bg">
       <div className="guts-home">
         <section className="guts-home-card" aria-label="CheckInOut">
-          {/* ✅ Header คงเดิม (ย้ายไปอยู่ AppHeader) */}
-          <AppHeader empCode={empCode} displayName={displayName} />
+          <Header empCode={empCode} displayName={displayName} />
 
-          <h2 className="guts-att-title">ลงเวลาเข้า-ออกงาน</h2>
+          <h2 className={styles.attTitle}>ลงเวลาเข้า-ออกงาน</h2>
 
           {/* ===== Card สรุป เข้างาน/ออกงาน ===== */}
           <div
-            className="guts-att-summaryCard"
+            className={styles.summaryCard}
             role="status"
             aria-label="สรุปเวลาเข้า-ออกงาน"
           >
-            <div className="guts-att-col in">
-              <div className="guts-att-colHead">
-                <FontAwesomeIcon icon={faPersonWalking} className="guts-att-walk" />
+            <div className={styles.col}>
+              <div className={styles.colHead}>
+                <FontAwesomeIcon icon={faPersonWalking} className={styles.walk} />
                 <span>เข้างาน</span>
               </div>
 
-              <div className="guts-att-time in">
+              <div className={`${styles.time} ${styles.timeIn}`}>
                 {lastIn ? fmtTimeHHMM(lastIn) : "--:--"}
               </div>
-              <div className="guts-att-date">{lastIn ? fmtThaiDate(lastIn) : "—"}</div>
+              <div className={styles.date}>{lastIn ? fmtThaiDate(lastIn) : "—"}</div>
             </div>
 
-            <div className="guts-att-divider" aria-hidden="true" />
+            <div className={styles.divider} aria-hidden="true" />
 
-            <div className="guts-att-col out">
-              <div className="guts-att-colHead">
-                <FontAwesomeIcon icon={faPersonWalking} className="guts-att-walk" />
+            <div className={styles.col}>
+              <div className={styles.colHead}>
+                <FontAwesomeIcon icon={faPersonWalking} className={styles.walk} />
                 <span>ออกงาน</span>
               </div>
 
-              <div className="guts-att-time out">
+              <div className={`${styles.time} ${styles.timeOut}`}>
                 {lastOut ? fmtTimeHHMM(lastOut) : "--:--"}
               </div>
-              <div className="guts-att-date">{lastOut ? fmtThaiDate(lastOut) : "—"}</div>
+              <div className={styles.date}>{lastOut ? fmtThaiDate(lastOut) : "—"}</div>
             </div>
           </div>
 
           {/* ===== Card เวลาใหญ่ + ปุ่ม ===== */}
-          <div className="guts-att-actionCard" aria-label="ลงเวลา">
-            <div className="guts-att-nowBig">
-              <div className="guts-att-nowDate">{nowDate}</div>
-              <div className="guts-att-nowTime">{nowTime} น.</div>
+          <div className={styles.actionCard} aria-label="ลงเวลา">
+            <div className={styles.nowBig}>
+              <div className={styles.nowDate}>{nowDate}</div>
+              <div className={styles.nowTime}>{nowTime} น.</div>
             </div>
 
-            <button type="button" className="guts-att-btn in" onClick={onCheckIn}>
-              <span className="guts-att-btnText">
-                <span className="guts-att-btnSub">กดเข้างาน</span>
-                <span className="guts-att-btnSmall" aria-hidden="true">
+            <button
+              type="button"
+              className={`${styles.btn} ${styles.btnIn}`}
+              onClick={onCheckIn}
+            >
+              <span className={styles.btnText}>
+                <span className={styles.btnSub}>กดเข้างาน</span>
+                <span className={styles.btnSmall} aria-hidden="true">
                   <FontAwesomeIcon icon={faRightToBracket} />
                 </span>
               </span>
             </button>
 
-            <button type="button" className="guts-att-btn out" onClick={onCheckOut}>
-              <span className="guts-att-btnText">
-                <span className="guts-att-btnSub">กดออกงาน</span>
-                <span className="guts-att-btnSmall" aria-hidden="true">
+            <button
+              type="button"
+              className={`${styles.btn} ${styles.btnOut}`}
+              onClick={onCheckOut}
+            >
+              <span className={styles.btnText}>
+                <span className={styles.btnSub}>กดออกงาน</span>
+                <span className={styles.btnSmall} aria-hidden="true">
                   <FontAwesomeIcon icon={faRightFromBracket} />
                 </span>
               </span>
             </button>
+
+            {/* ยังคงใช้ของเดิมจาก index.css เพื่อไม่กระทบหน้าอื่น */}
             <div className="guts-fv-bottom">
-            <BackButton
-                onClick={onBack}
-                className="guts-fv-backBtn"
-            />
+              <BackButton onClick={onBack} className="guts-fv-backBtn" />
             </div>
-            <button type="button" className="guts-att-history" onClick={onViewHistory}>
+
+            <button
+              type="button"
+              className={styles.history}
+              onClick={onViewHistory}
+            >
               ดูประวัติการลงเวลางาน (ย้อนหลัง 1 เดือน)
             </button>
           </div>
