@@ -1,105 +1,73 @@
-# GUTS ESS_O1 - Employee Self Service System
+# React + TypeScript + Vite update 02032026
 
-Modern employee self-service system built with **React 19 + TypeScript + Vite + CSS Modules**
+This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
-## 📋 Project Structure
+Currently, two official plugins are available:
 
-```
-GUTSESS_01/
-├── public/                    # Static assets
-│
-├── src/
-│   ├── components/           # Reusable components (with scoped CSS)
-│   │   ├── AppHeader.tsx
-│   │   ├── AppHeader.module.css
-│   │   ├── BackButton.tsx
-│   │   ├── BackButton.module.css
-│   │   ├── FirstLoginModal.tsx
-│   │   ├── FirstLoginModal.module.css
-│   │   ├── ForgotPasswordModal.tsx
-│   │   └── ForgotPasswordModal.module.css
-│   │
-│   ├── pages/                # Page components (with scoped CSS)
-│   │   ├── Login.tsx
-│   │   ├── Login.module.css
-│   │   ├── Home.tsx
-│   │   ├── Home.module.css
-│   │   ├── CheckInOut.tsx
-│   │   ├── CheckInOut.module.css
-│   │   ├── FaceVerify.tsx
-│   │   ├── FaceVerify.module.css
-│   │   ├── Dashboard.tsx
-│   │   └── Dashboard.module.css
-│   │
-│   ├── styles/               # Global styles & theme
-│   │   ├── global.css        # Essential resets only
-│   │   └── theme.css         # CSS variables (colors, spacing, fonts, shadows)
-│   │
-│   ├── api/                  # API services (ready for expansion)
-│   ├── services/             # Business logic services (ready for expansion)
-│   ├── store/                # Redux state management
-│   │   ├── slices/           # Redux slices
-│   │   └── store.tsx         # Redux store configuration
-│   │
-│   ├── types/                # TypeScript type definitions
-│   ├── utils/                # Utility functions
-│   ├── assets/               # Static assets (images, icons)
-│   │
-│   ├── App.tsx               # Main app component
-│   ├── index.css             # Entry point (imports fonts, theme, global)
-│   ├── main.tsx              # React root entry
-│   └── vite-env.d.ts         # Vite environment types
-│
-├── index.html                # HTML template
-├── package.json              # Dependencies
-├── tsconfig.json             # TypeScript configuration
-├── tsconfig.app.json         # TypeScript app config
-├── tsconfig.node.json        # TypeScript node config
-├── vite.config.ts            # Vite configuration
-├── eslint.config.js          # ESLint configuration
-├── .gitignore                # Git ignore rules
-└── README.md                 # This file
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+
+## React Compiler
+
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+
+## Expanding the ESLint configuration
+
+If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+
+```js
+export default defineConfig([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{ts,tsx}'],
+    extends: [
+      // Other configs...
+
+      // Remove tseslint.configs.recommended and replace with this
+      tseslint.configs.recommendedTypeChecked,
+      // Alternatively, use this for stricter rules
+      tseslint.configs.strictTypeChecked,
+      // Optionally, add this for stylistic rules
+      tseslint.configs.stylisticTypeChecked,
+
+      // Other configs...
+    ],
+    languageOptions: {
+      parserOptions: {
+        project: ['./tsconfig.node.json', './tsconfig.app.json'],
+        tsconfigRootDir: import.meta.dirname,
+      },
+      // other options...
+    },
+  },
+])
 ```
 
-## 🎨 CSS Architecture: Modular CSS Modules
+You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
 
-### Overview
+```js
+// eslint.config.js
+import reactX from 'eslint-plugin-react-x'
+import reactDom from 'eslint-plugin-react-dom'
 
-Each component and page has its own **scoped CSS module** (`.module.css`):
-
-- **Components**: `components/ComponentName.module.css`
-- **Pages**: `pages/PageName.module.css`
-- **Global**: Only essential resets in `styles/global.css`
-- **Theme**: Centralized CSS variables in `styles/theme.css`
-
-
-
-## 📦 Dependencies
-
-### Runtime Dependencies
-- **react** (^19.2.0) - UI library
-- **react-dom** (^19.2.0) - React DOM rendering
-- **@fortawesome/react-fontawesome** (^3.1.1) - Icon library (FontAwesome)
-- **@fortawesome/fontawesome-svg-core** (^7.1.0) - FontAwesome core
-- **@fortawesome/free-solid-svg-icons** (^7.1.0) - FontAwesome solid icons
-- **lucide-react** (^0.562.0) - Alternative icon library
-- **react-hook-form** (^7.71.0) - Form state management
-- **zod** (^4.3.5) - TypeScript-first schema validation
-- **clsx** (^2.1.1) - Utility for conditional CSS classes
-
-### Development Dependencies
-- **typescript** (~5.9.3) - TypeScript compiler
-- **vite** (^7.2.4) - Build tool & dev server
-- **@vitejs/plugin-react** (^5.1.1) - React plugin for Vite
-- **eslint** (^9.39.1) - Code linter
-- **typescript-eslint** (^8.46.4) - TypeScript ESLint support
-
-
-
-
-
-# Project - Update
-
-- organize the projects 
-- adding theme,moduless.css to compents and Page 
-
+export default defineConfig([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{ts,tsx}'],
+    extends: [
+      // Other configs...
+      // Enable lint rules for React
+      reactX.configs['recommended-typescript'],
+      // Enable lint rules for React DOM
+      reactDom.configs.recommended,
+    ],
+    languageOptions: {
+      parserOptions: {
+        project: ['./tsconfig.node.json', './tsconfig.app.json'],
+        tsconfigRootDir: import.meta.dirname,
+      },
+      // other options...
+    },
+  },
+])
+```
