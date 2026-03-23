@@ -2,12 +2,13 @@
 import { useMemo, useState } from "react";
 import Login from "./pages/Login";
 import Home from "./pages/Home";
+import Mo from "./pages/Mo/Mo";
 import Dashboard from "./pages/Dashboard";
 import CheckInOut from "./pages/Attendance/CheckInOut";
 import FaceVerify from "./pages/Attendance/FaceVerify";
 import FirstLoginModal from "./components/FirstLoginModal";
 
-type Route = "login" | "home" | "dashboard" | "checkInOut" | "faceVerify";
+type Route = "login" | "home" | "dashboard" | "checkInOut" | "faceVerify" | "mo";
 type PunchType = "in" | "out";
 
 export default function App() {
@@ -128,6 +129,7 @@ export default function App() {
           onLogout={onLogout}
           onGoCheckInOut={() => push("checkInOut")}
           onGoLeaveOnline={() => alert("TODO: ไปหน้า ลาออนไลน์")}
+          onGoMo={() => push("mo")}
         />
       )}
 
@@ -155,7 +157,9 @@ export default function App() {
           onViewHistory={() => alert("TODO: เปิดหน้าประวัติย้อนหลัง 1 เดือน")}
         />
       )}
-
+      {route === "mo" && (
+        <Mo empCode={empCode} displayName={displayName} />
+      )}
       {route === "dashboard" && (
         <Dashboard empCode={empCode} onLogout={onLogout} />
       )}

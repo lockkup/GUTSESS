@@ -1,0 +1,21 @@
+@import "./charts.css";
+
+/* DonutChart-specific overrides */
+
+.chart-card, .chart-controls {
+  overflow: visible;
+}
+
+/* Match rl-card sizing */
+.chart-card {
+  padding: 14px 16px 10px;
+  border-radius: 12px;
+  margin-bottom: 0;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.chart-controls input[type="date"] {
+	position: relative;
+	z-index: 20;
+}

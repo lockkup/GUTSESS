@@ -1,0 +1,39 @@
+.mo-verticalbar {
+  width: 100%;
+}
+
+.verticalbar-card {
+  background: linear-gradient(180deg, var(--cardTop), var(--cardBottom));
+  border: 1px solid rgba(2, 75, 118, 0.06);
+  border-radius: 12px;
+  box-shadow: 0 6px 14px rgba(2, 75, 118, 0.03);
+  padding: 12px 12px 8px;
+  margin-bottom: 16px;
+}
+
+.verticalbar-title {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--blueText);
+  margin: 0;
+}
+
+.verticalbar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.verticalbar-controls {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}

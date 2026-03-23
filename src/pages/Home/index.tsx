@@ -21,7 +21,7 @@ type Props = {
   onGoCheckInOut: () => void;
   onGoLeaveOnline: () => void;
 
-  onGoManpower?: () => void;
+  onGoMo?: () => void;
   onGoDiscipline?: () => void;
   onGoUniform?: () => void;
   onGoOther?: () => void;
@@ -33,7 +33,7 @@ export default function Home({
   onLogout,
   onGoCheckInOut,
   onGoLeaveOnline,
-  onGoManpower,
+  onGoMo,
   onGoDiscipline,
   onGoUniform,
   onGoOther,
@@ -65,7 +65,7 @@ export default function Home({
               </div>
             </button>
 
-            <button type="button" className={styles.menuBtn} onClick={onGoManpower}>
+            <button type="button" className={styles.menuBtn} onClick={onGoMo}>
               <div className={styles.menuBox}>
                 <div className={styles.iconWrap} aria-hidden="true">
                   <FontAwesomeIcon className={styles.fa} icon={faUsers} />

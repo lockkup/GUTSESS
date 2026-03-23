@@ -1,0 +1,60 @@
+.chart-card {
+  padding: 3px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, var(--cardTop), var(--cardBottom));
+  box-shadow: 0 6px 14px rgba(2, 75, 118, 0.03);
+  border: 1px solid rgba(2, 75, 118, 0.06);
+  color: var(--textDark);
+  margin-bottom: 16px;
+}
+
+.chart-controls {
+  margin-bottom: 12px;
+  border: 1px solid rgba(2, 75, 118, 0.06);
+  border-radius: 8px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.9);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-size: 14px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.chart-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.chart-title {
+  font-size: 1.125rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: var(--blueText);
+}
+
+.chart-container {
+  width: 100%;
+  min-height: 140px;
+}
+
+.chart-mobile {
+  height: 192px;
+  display: block;
+  width: 100%;
+}
+
+.chart-desktop {
+  height: 256px;
+  display: none;
+  width: 100%;
+}
+
+@media (min-width: 640px) {
+  .chart-mobile { display: none; }
+  .chart-desktop { display: block; }
+}

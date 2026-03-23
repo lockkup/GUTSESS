@@ -1,0 +1,129 @@
+/* Minimal MO styles — only selectors used by src/pages/Mo.tsx */
+
+/* top-right meta (date/time) */
+.guts-card-meta {
+  text-align: right;
+  margin-top: 8px;
+  margin-bottom: 6px;
+  line-height: 1.1;
+}
+.guts-meta-year {
+  font-weight: 800;
+  font-size: 15px;
+  color: var(--blueText);
+}
+.guts-meta-date {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--blueText);
+}
+
+/* page title */
+.guts-att-title {
+  margin: 14px 0 22px;
+  font-weight: 900;
+  color: var(--blueText);
+  font-size: 20px;
+  letter-spacing: 0.1px;
+}
+
+/* Make sure MO page title keeps its larger bottom gap when other global
+   rules target `.guts-att-title`. This selector is more specific so it wins. */
+.guts-home-card .guts-att-title {
+  margin-bottom: 22px;
+}
+
+/* layout helpers referenced from Mo.tsx (kept minimal so module exports exist) */
+.guts-bg {}
+.guts-home {}
+.guts-home-card {}
+
+/* Back button styles - moved from MoHome.module.css */
+.guts-back-outer {
+  display: flex;
+  justify-content: center;
+  padding-top: 10px;
+}
+
+.guts-btn {
+  /* base button */
+  display: block !important;
+  width: 100% !important;
+  height: 48px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 999px !important; /* fully rounded pill */
+  overflow: hidden !important;
+  background: #f2f4f6;
+  color: var(--blueText);
+  box-shadow:
+    0 16px 30px rgba(2, 16, 43, 0.06),
+    0 -6px 12px rgba(2, 16, 43, 0.02),
+    6px 0 12px rgba(2, 16, 43, 0.09),
+    6px 0 12px rgba(2, 16, 43, 0.02);
+  margin: 12px 0 !important;
+  font-weight: 800;
+  font-size: 15px;
+  box-sizing: border-box;
+  transition:
+    background 0.12s ease,
+    transform 0.12s ease,
+    box-shadow 0.12s ease !important;
+}
+
+.guts-back-outer .guts-btn:hover {
+  background: #fff !important;
+  box-shadow:
+    0 26px 52px rgba(2, 16, 43, 0.08),
+    0 -12px 30px rgba(2, 16, 43, 0.03),
+    12px 0 30px rgba(2, 16, 43, 0.035),
+    -12px 0 30px rgba(2, 16, 43, 0.035) !important;
+  transform: translateY(-2px) !important;
+}
+
+.guts-back-outer.mo-back-home {
+  margin-top: 100px !important;
+}
+
+.guts-back-outer .guts-btn.mo-back-home-btn {
+  width: 100%;
+  height: 50px;
+  padding: 0;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  font-weight: 700;
+  background: radial-gradient(circle at 30% 30%, #ffffff, #dbe6ff);
+  border: 1.5px solid rgba(2, 75, 118, 0.09);
+  color: var(--brand);
+  box-shadow:
+    0 10px 24px rgba(2, 16, 43, 0.06),
+    0 -4px 10px rgba(2, 16, 43, 0.02),
+    6px 0 12px rgba(2, 16, 43, 0.02),
+    -6px 0 12px rgba(2, 16, 43, 0.02);
+  margin: 12px 0 !important;
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease,
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.guts-back-outer .guts-btn.mo-back-home-btn:hover {
+  background: radial-gradient(circle at 50% 50%, #ffffff, #dbe6ff) !important;
+  color: #326a95;
+  border: 1.5px solid rgba(2, 75, 118, 0.15);
+  box-shadow:
+    0 18px 40px rgba(2, 16, 43, 0.08),
+    0 -8px 24px rgba(2, 16, 43, 0.03),
+    12px 0 30px rgba(2, 16, 43, 0.035),
+    -12px 0 30px rgba(2, 16, 43, 0.035) !important;
+  transform: translateY(-2px) !important;
+}
+
+
+
+
+
+
