@@ -1,0 +1,89 @@
+/* Clean, consolidated MO styles (only selectors used by src/pages/Mo.tsx) */
+
+/* top-right meta (date/time) */
+.guts-card-meta {
+  text-align: right;
+  margin-top: 8px;
+  margin-bottom: 6px;
+  line-height: 1.1;
+}
+.guts-meta-year {
+  font-weight: 800;
+  font-size: 15px;
+  color: var(--blueText);
+}
+.guts-meta-date {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--blueText);
+}
+
+/* page title */
+.guts-att-title {
+  margin: 14px 0 10px;
+  font-weight: 900;
+  color: var(--blueText);
+  font-size: 20px;
+  letter-spacing: 0.1px;
+}
+
+/* generic content box used on the page */
+.guts-box {
+  background: #ffffff;
+  border-radius: 10px;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid rgba(2, 75, 118, 0.06);
+  box-shadow: 0 6px 14px rgba(2, 75, 118, 0.03);
+}
+
+/* Back button (outside form) */
+.guts-dashboard-grid {
+  padding-bottom: 20px;
+}
+
+/* Back button (outside form) */
+.gut-detail-btns-box {
+  width: 100%;
+  justify-content: space-between; /* spread back pill and action icons */
+  align-items: center;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+}
+
+/* Hover states */
+.gut-back-icon {
+  height: 40px;
+  padding: 10px; /* make it a broader pill */
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--brandDark, rgba(2, 75, 118, 0.9));
+  border: 1px solid rgba(2, 75, 118, 0.06);
+  color: #ffffff;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgba(3, 30, 83, 0.1);
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+
+.gut-back-icon:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 32px rgba(2, 75, 118, 0.1);
+  background: rgba(4, 110, 146, 0.9);
+  border-color: rgba(2, 75, 118, 0.18);
+}
+
+/* ensure the arrow icon follows the button color */
+.gut-back-icon svg {
+  stroke: currentColor !important;
+  fill: none !important;
+}
+
+
+
+
+
+
+
+

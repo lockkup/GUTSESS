@@ -1,0 +1,53 @@
+/* Single unified card wrapping controls + chart */
+.mo-linechart {
+  background: linear-gradient(180deg, var(--cardTop), var(--cardBottom));
+  border: 1px solid rgba(2, 75, 118, 0.06);
+  border-radius: 13px;
+  box-shadow: 0 6px 14px rgba(2, 75, 118, 0.03);
+  margin: 12px 0px;
+}
+
+/* Controls row sits inside the card — no extra box */
+.mo-linechart .chart-controls {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 8px 5px 0px 0px;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+/* Remove the inner chart-card's own background/border so it blends in */
+.mo-linechart .chart-card {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0;
+  margin-bottom: 0;
+}
+
+.chart-pill-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: #fff;
+  border: 1.5px solid rgba(2, 75, 118, 0.35);
+  border-radius: 999px;
+  padding: 4px 20px 4px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(2, 75, 118, 0.9);
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='rgba(2,75,118,0.7)' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px;
+  min-width: 80px;
+}
+
+.chart-pill-select:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

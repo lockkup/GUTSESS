@@ -1,9 +1,9 @@
 /* src/components/FirstLoginModal.module.css */
 
-.modalOverlay {
+.overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.55);
+  background: rgba(0,0,0,0.55);
   display: grid;
   place-items: center;
   padding: 16px;
@@ -12,111 +12,104 @@
 
 .modal {
   width: min(520px, 94vw);
-  border-radius: var(--radius-lg);
-  background: linear-gradient(180deg, var(--color-bg-light), var(--color-bg-lighter));
-  box-shadow: var(--shadow-xl);
+  border-radius: 16px;
+  background: linear-gradient(180deg, var(--cardTop), var(--cardBottom));
+  box-shadow: 0 22px 60px rgba(0,0,0,0.35);
   padding: 18px;
 }
 
-.modalHead {
+.head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
-  margin-bottom: 8px;
 }
 
-.modalTitle {
+.title {
   margin: 0;
-  font-weight: var(--font-weight-extra-bold);
-  color: var(--color-text-light);
+  flex: 1;              /* ✅ ให้หัวข้อกินพื้นที่กลาง */
+  text-align: center;   /* ✅ ให้อยู่กลาง */
+  font-weight: 900;
+  color: var(--blueText);
   font-size: clamp(18px, 2.5vw, 22px);
 }
 
 .iconBtn {
-  border: none;
+  margin-left: auto;    /* ✅ ดันไปขวาสุด */
+  border: 0;
   background: transparent;
   cursor: pointer;
   font-size: 22px;
-  font-weight: var(--font-weight-extra-bold);
-  color: rgba(0, 0, 0, 0.65);
+  font-weight: 900;
+  color: rgba(0,0,0,0.65);
   line-height: 1;
   padding: 6px 10px;
-  border-radius: var(--radius-sm);
+  border-radius: 10px;
 }
 
-.iconBtn:hover {
-  background: rgba(0, 0, 0, 0.06);
-}
+.iconBtn:hover { background: rgba(0,0,0,0.06); }
 
-.modalDesc {
+.desc {
   margin: 8px 0 12px;
-  color: var(--color-text-secondary);
-  font-weight: var(--font-weight-bold);
+  color: rgba(27, 43, 74, 0.85);
+  font-weight: 700;
   font-size: 14px;
   line-height: 1.35;
 }
 
 .form {
-  margin-top: var(--spacing-lg);
   display: grid;
-  gap: var(--spacing-md);
+  gap: 10px;
+  margin-top: 10px;
 }
 
-.label {
-  text-align: center;
-  font-weight: var(--font-weight-bold);
-  color: var(--color-text-light);
-  font-size: clamp(14px, 1.9vw, 16px);
+.label{
+  text-align: center;      /* ✅ กึ่งกลางแนวนอน (ข้อความ) */
+  font-weight: 900;
+  color: rgba(27,43,74,0.85);
+  font-size: 14px;
+  display: flex;           /* ✅ จัดกึ่งกลางแบบชัวร์ */
+  align-items: center;     /* ✅ กึ่งกลางแนวตั้ง */
+  justify-content: center; /* ✅ กึ่งกลางแนวนอน */
 }
-
 .codebox {
   width: 100%;
   height: clamp(56px, 6.6vw, 62px);
-  border-radius: var(--radius-sm);
+  border-radius: 10px;
   background: transparent;
-  border: 2px solid var(--color-primary);
-  color: var(--color-text-dark);
+  border: 2px solid var(--brand);
+  color: var(--textDark);
   display: grid;
   place-items: center;
-  font-weight: var(--font-weight-extra-bold);
+  font-weight: 900;
   letter-spacing: 1px;
-  font-size: clamp(22px, 3.4vw, 32px);
+  font-size: 18px;
 }
 
-.modalActions {
+.actions {
   display: grid;
   gap: 10px;
-  margin-top: 12px;
 }
 
-.btn {
+.btnPrimary {
+  width: 100%;
   height: clamp(56px, 6.6vw, 62px);
-  border-radius: var(--radius-full);
-  background: var(--color-primary);
-  border: 2px solid var(--color-primary);
-  color: #fff;
-  font-weight: var(--font-weight-extra-bold);
-  font-size: clamp(18px, 2.4vw, 20px);
-  letter-spacing: 0.2px;
+  border-radius: 999px;
+  border: 0;
   cursor: pointer;
-  box-shadow: 0 12px 18px rgba(0, 0, 0, 0.22);
-  transition: transform 0.08s ease, background 0.15s ease;
+
+  background: linear-gradient(90deg, var(--brand), var(--brandDark));
+  color: #fff;
+
+  font-weight: 900;
+  font-size: clamp(16px, 2.4vw, 20px);
+
+  box-shadow: 0 16px 26px rgba(0,0,0,0.12);
+  transition: transform 0.08s ease, opacity 0.15s ease, filter 0.15s ease;
 }
 
-.btn:hover:not(:disabled) {
-  background: var(--color-primary-dark);
-  border-color: var(--color-primary-dark);
-}
-
-.btn:active:not(:disabled) {
-  transform: translateY(1px);
-}
-
-.btn:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
+.btnPrimary:hover { filter: brightness(1.05); }
+.btnPrimary:active { transform: translateY(1px); }
+.btnPrimary:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .btnBack {
   width: 100%;
@@ -125,27 +118,21 @@
   border: 2px solid #000;
   background: #000;
   color: #fff;
-  font-weight: var(--font-weight-extra-bold);
+  font-weight: 900;
   font-size: clamp(16px, 2.1vw, 18px);
-  letter-spacing: 0.2px;
   cursor: pointer;
-  box-shadow: 0 10px 16px rgba(0, 0, 0, 0.22);
+  box-shadow: 0 10px 16px rgba(0,0,0,0.22);
   transition: transform 0.08s ease, opacity 0.15s ease;
 }
 
-.btnBack:hover {
-  opacity: 0.92;
-}
-
-.btnBack:active {
-  transform: translateY(1px);
-}
+.btnBack:hover { opacity: 0.92; }
+.btnBack:active { transform: translateY(1px); }
 
 .warn {
   margin-top: 10px;
   text-align: center;
-  color: var(--color-error);
-  font-weight: var(--font-weight-black);
+  color: var(--red);
+  font-weight: 900;
   font-size: clamp(12px, 1.8vw, 13px);
   line-height: 1.35;
 }

@@ -1,3 +1,4 @@
+// src/components/FirstLoginModal.tsx
 import { useEffect, useRef } from "react";
 import styles from "./FirstLoginModal.module.css";
 
@@ -35,7 +36,7 @@ export default function FirstLoginModal({
 
   return (
     <div
-      className={styles.modalOverlay}
+      className={styles.overlay}
       role="dialog"
       aria-modal="true"
       aria-label="First login"
@@ -45,8 +46,8 @@ export default function FirstLoginModal({
       }}
     >
       <div className={styles.modal}>
-        <div className={styles.modalHead}>
-          <h3 className={styles.modalTitle}>เข้าใช้งานครั้งแรก</h3>
+        <div className={styles.head}>
+          <h3 className={styles.title}>เข้าใช้งานครั้งแรก</h3>
           <button
             className={styles.iconBtn}
             type="button"
@@ -57,22 +58,23 @@ export default function FirstLoginModal({
           </button>
         </div>
 
-        <p className={styles.modalDesc}>
-          กรุณากดขอรหัสผ่านเพื่อรับรหัสผ่านชั่วคราว ระบบจะส่งไปที่อีเมลที่ลงทะเบียนไว้
+        <p className={styles.desc}>
+          กรุณากดขอรหัสผ่านเพื่อรับรหัสผ่านชั่วคราว <br></br>
+          ระบบจะส่งไปที่อีเมลที่ลงทะเบียนไว้
         </p>
 
-        <div className={styles.form} style={{ marginTop: 10 }}>
+        <div className={styles.form}>
           <div className={styles.label}>รหัสพนักงาน (6 หลัก)</div>
 
           <div className={styles.codebox} aria-label="Employee code">
             {empCode || "______"}
           </div>
 
-          <div className={styles.modalActions}>
+          <div className={styles.actions}>
             <button
               ref={btnRef}
               type="button"
-              className={styles.btn}
+              className={styles.btnPrimary}
               onClick={onRequestPassword}
             >
               กดขอรหัสผ่าน
@@ -87,7 +89,7 @@ export default function FirstLoginModal({
             </button>
           </div>
 
-          <div className={styles.warn} style={{ marginTop: 10 }}>
+          <div className={styles.warn}>
             ระบบจะส่งรหัสไปอีเมลที่ลงทะเบียนไว้ (ตัวอย่าง: @xxxxx)
             <br />
             หากไม่ได้รับภายใน 5 นาที กรุณาติดต่อผู้ดูแลระบบ

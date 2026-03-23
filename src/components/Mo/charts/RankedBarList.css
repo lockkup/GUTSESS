@@ -1,0 +1,252 @@
+.rl-card {
+  background: linear-gradient(180deg, var(--cardTop), var(--cardBottom));
+  border: 1px solid rgba(2, 75, 118, 0.06);
+  border-radius: 12px;
+  box-shadow: 0 6px 14px rgba(2, 75, 118, 0.03);
+  padding: 14px 16px 10px;
+  color: var(--textDark);
+}
+
+.rl-title {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--blueText);
+  margin: 0;
+}
+
+.rl-back-btn {
+  background: none;
+  border: none;
+  padding: 0 3px 0 0;
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--blueText, #024b76);
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 0.15s;
+  line-height: 1;
+}
+
+.rl-back-btn:hover {
+  opacity: 1;
+}
+
+.rl-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rl-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rl-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+  gap: 6px;
+}
+
+.rl-label-row:hover .rl-name {
+  opacity: 0.75;
+}
+
+.rl-chevron {
+  font-size: 14px;
+  line-height: 1;
+  color: var(--blueText, #024b76);
+  opacity: 0.4;
+  transition: transform 0.2s ease, opacity 0.2s;
+  transform: rotate(90deg);
+}
+
+.rl-chevron--open {
+  transform: rotate(270deg);
+  opacity: 0.8;
+}
+
+/* Expanded breakdown */
+.rl-breakdown {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(2, 75, 118, 0.04);
+  border: 1px solid rgba(2, 75, 118, 0.07);
+}
+
+.rl-breakdown-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rl-breakdown-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  width: 80px;
+  flex-shrink: 0;
+  color: var(--textDark);
+}
+
+.rl-breakdown-track {
+  flex: 1;
+  height: 7px;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.rl-breakdown-bar {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.35s ease;
+}
+
+.rl-breakdown-value {
+  font-size: 11px;
+  font-weight: 700;
+  width: 32px;
+  text-align: right;
+  flex-shrink: 0;
+  color: var(--textDark);
+}
+
+.rl-row--expanded {
+  background: rgba(2, 75, 118, 0.025);
+  border-radius: 8px;
+  padding: 4px 6px;
+}
+
+.rl-row--top .rl-label-row {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.rl-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 8px;
+}
+
+.rl-value {
+  flex-shrink: 0;
+  font-weight: 700;
+}
+
+.rl-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.rl-header-row .rl-title {
+  margin: 0;
+}
+
+/* 3-dot kebab button */
+.rl-kebab-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.rl-kebab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+  opacity: 0.5;
+  transition: opacity 0.15s;
+}
+
+.rl-kebab:hover {
+  opacity: 1;
+}
+
+.rl-kebab span {
+  display: block;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--blueText, #024b76);
+}
+
+/* Legend popup — hidden by default, shown on kebab hover */
+.rl-legend-popup {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 100;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  min-width: 130px;
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  box-shadow: 0 8px 24px rgba(2, 75, 118, 0.12), 0 1px 4px rgba(0,0,0,0.08);
+}
+
+.rl-kebab-wrap:hover .rl-legend-popup {
+  display: flex;
+}
+
+.rl-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--textDark);
+  white-space: nowrap;
+}
+
+.rl-legend-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* track is now a flex row that fills proportionally to max */
+.rl-track {
+  /* width is set inline as % of max */
+  min-width: 4px;
+  height: 10px;
+  background: transparent;
+  border-radius: 999px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: row;
+  transition: width 0.4s ease;
+}
+
+.rl-bar {
+  height: 100%;
+  flex-shrink: 0;
+  transition: width 0.4s ease;
+}

@@ -1,0 +1,189 @@
+/* src/pages/Login/login.module.css */
+/* ===== Layout ===== */
+.guts-bg {
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto auto;
+  justify-items: center;
+  align-content: start;
+  row-gap: clamp(10px, 2vh, 16px);
+  padding: clamp(14px, 3.5vw, 40px);
+}
+
+.guts-app-header {
+  width: min(640px, 92vw);
+  text-align: center;
+  margin-top: clamp(0px, 1.2vh, 8px);
+}
+
+.guts-card {
+  width: min(640px, 92vw);
+  border-radius: 18px;
+  padding: clamp(18px, 3.2vw, 28px);
+  background: linear-gradient(180deg, var(--cardTop), var(--cardBottom));
+  box-shadow:
+    0 22px 60px rgba(0, 0, 0, 0.25),
+    0 10px 18px rgba(0, 0, 0, 0.14);
+}
+
+.guts-card-title {
+  text-align: center;
+  font-weight: 900;
+  color: var(--blueText);
+  font-size: 25px;
+  margin-top: 20px;
+}
+
+/* ===== Form ===== */
+.guts-form {
+  margin-top: clamp(14px, 2.6vw, 18px);
+  display: grid;
+  gap: clamp(12px, 2vw, 14px);
+}
+
+.guts-label {
+  text-align: center;
+  font-weight: 800;
+  color: var(--blueText);
+  font-size: clamp(14px, 1.9vw, 16px);
+  margin-top: 10px;
+}
+
+/* ===== Input with icons ===== */
+.guts-field {
+  position: relative;
+}
+
+.guts-icon-left {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--brand);
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+.guts-input {
+  width: 100%;
+  height: clamp(52px, 6.2vw, 58px);
+  border-radius: 10px;
+
+  background: #fff;
+  border: 2px solid var(--brand);
+
+  color: var(--textDark);
+  font-size: clamp(16px, 2.2vw, 18px);
+  font-weight: 700;
+  padding: 0 16px;
+  outline: none;
+  box-shadow: none;
+  margin-top: 10px;
+}
+
+.guts-input::placeholder {
+  color: rgba(27, 43, 74, 0.45);
+  font-weight: 600;
+}
+
+.guts-input:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 4px rgba(2, 75, 118, 0.18);
+}
+
+.guts-input--with-left {
+  padding-left: 46px;
+}
+
+.guts-input--with-right {
+  padding-right: 52px;
+}
+
+/* Eye button */
+.guts-icon-right-btn {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 38px;
+  height: 38px;
+  border: 0;
+  background: transparent;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  color: var(--brand);
+  border-radius: 10px;
+}
+
+.guts-icon-right-btn:hover {
+  background: rgba(2, 75, 118, 0.08);
+}
+
+.guts-icon-right-btn:focus-visible {
+  outline: 2px solid rgba(2, 75, 118, 0.35);
+  outline-offset: 2px;
+}
+
+/* ===== Submit button ===== */
+.guts-btn {
+  height: clamp(56px, 6.6vw, 62px);
+  border-radius: 30px;
+
+  background: var(--brand);
+  border: 2px solid var(--brand);
+  color: #fff;
+
+  font-weight: 900;
+  font-size: 20px;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  box-shadow: 0 12px 18px rgba(0, 0, 0, 0.22);
+  transition: transform 0.08s ease, background 0.15s ease, opacity 0.15s ease;
+}
+
+.guts-btn:hover:not(:disabled) {
+  background: var(--brandDark);
+  border-color: var(--brandDark);
+}
+
+.guts-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.guts-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ===== Links ===== */
+.guts-links {
+  margin-top: 10px;
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+}
+
+.guts-link {
+  border: 0;
+  background: transparent;
+  padding: 6px 8px;
+  font-weight: 800;
+  cursor: pointer;
+  font-size: clamp(14px, 1.9vw, 16px);
+}
+
+.guts-link.primary {
+  color: #2a77ff;
+}
+
+.guts-link.secondary {
+  color: rgba(27, 43, 74, 0.55);
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 420px) {
+  .guts-card {
+    border-radius: 16px;
+  }
+}

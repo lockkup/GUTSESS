@@ -1,0 +1,83 @@
+.chart-card {
+  padding: 3px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, var(--cardTop), var(--cardBottom));
+  box-shadow: 0 6px 14px rgba(2, 75, 118, 0.03);
+  border: 1px solid rgba(2, 75, 118, 0.06);
+  color: var(--textDark);
+  margin-bottom: 16px;
+}
+
+.chart-controls {
+  margin-bottom: 12px;
+  border: 1px solid rgba(2, 75, 118, 0.06);
+  border-radius: 8px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.9);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-size: 14px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.chart-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.chart-title {
+  font-size: 1.125rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: var(--blueText);
+}
+
+.chart-container {
+  width: 100%;
+  min-height: 140px;
+}
+
+.chart-mobile {
+  height: 192px;
+  display: block;
+  width: 100%;
+}
+
+.chart-desktop {
+  height: 256px;
+  display: none;
+  width: 100%;
+}
+
+@media (min-width: 640px) {
+  .chart-mobile { display: none; }
+  .chart-desktop { display: block; }
+}
+
+.chart-pill-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: #fff;
+  border: 1.5px solid rgba(2, 75, 118, 0.35);
+  border-radius: 999px;
+  padding: 4px 28px 4px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(2, 75, 118, 0.9);
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='rgba(2,75,118,0.7)' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px;
+  min-width: 80px;
+}
+
+.chart-pill-select:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

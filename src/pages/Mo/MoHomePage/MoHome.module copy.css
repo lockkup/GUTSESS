@@ -1,0 +1,421 @@
+/* Buttons used on the Mo home screen (Add New / Search) */
+.guts-mo-btn {
+  margin: 20px 0;
+  display: flex;
+  justify-content: center; /* center buttons in their container */
+}
+
+.guts-mo-btn button {
+  min-width: 200px;
+  max-width: 420px;
+  width: 100%;
+  height: 60px;
+  padding: 0 18px;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 23px;
+  letter-spacing: 0.3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  cursor: pointer;
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease,
+    background 0.12s ease;
+  box-shadow: 0 10px 24px rgba(1, 58, 88, 0.12);
+  border: 0;
+}
+
+/* Primary: Add New */
+.mo-home-addnew {
+  background: linear-gradient(
+    90deg,
+    var(--brand, #0277bd),
+    var(--brandDark, #014f86)
+  );
+  color: #fff;
+}
+.mo-home-addnew:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 36px rgba(1, 58, 88, 0.18);
+}
+.mo-home-addnew:focus-visible {
+  outline: 3px solid rgba(2, 75, 118, 0.18);
+  outline-offset: 4px;
+  border-radius: 14px;
+}
+
+/* Secondary: Search (match primary) */
+.mo-home-search {
+  background: linear-gradient(
+    90deg,
+    var(--brand, #0277bd),
+    var(--brandDark, #014f86)
+  );
+  color: #fff;
+}
+.mo-home-search:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 36px rgba(1, 58, 88, 0.18);
+}
+.mo-home-search:focus-visible {
+  outline: 3px solid rgba(2, 75, 118, 0.18);
+  outline-offset: 4px;
+  border-radius: 14px;
+}
+
+/* Search field layout when search is active */
+.guts-mo-search-field {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center; /* center like .guts-mo-btn */
+  width: 100%;
+}
+.search-title {
+  display: block;
+  width: 100%;
+  max-width: 420px;
+  font-size: 18px; /* increased size */
+  font-weight: 900;
+  color: var(--blueText);
+  text-align: left;
+  margin: 0 0 10px; /* vertical spacing */
+}
+.guts-mo-search-input {
+  height: 60px; /* match button height */
+  padding: 0 18px;
+  border-radius: 12px;
+  border: 2px solid #014f86; /* bolder border */
+  font-weight: 700;
+  font-size: 18px;
+  width: 100%;
+  max-width: 420px; /* same max width as buttons */
+  box-sizing: border-box;
+}
+.guts-mo-search-field label {
+  width: 100%;
+  max-width: 420px;
+  text-align: center;
+  font-weight: 800;
+}
+.guts-mo-search-input {
+  text-align: center; /* center the input text */
+}
+
+.guts-mo-search-input:focus {
+  border-color: #072134;
+  box-shadow: 0 8px 20px rgba(2, 75, 118, 0.06);
+  outline: none;
+}
+.guts-mo-search-actions {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+  max-width: 420px; /* keep actions aligned with input */
+}
+.guts-mo-search-actions .mo-home-addnew,
+.guts-mo-search-actions .mo-home-search {
+  flex: 1 1 0;
+  height: 60px; /* match primary button height */
+}
+
+/* Search bar (used on MO page) */
+.mo-search {
+  margin-bottom: 10px;
+}
+.mo-search-inner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff;
+  border-radius: 12px; /* slightly less rounded */
+  padding: 7px 14px;
+  border: 2px solid var(--brandDark, #014f86); /* stronger border */
+  box-shadow: 0 6px 18px rgba(1, 50, 90, 0.06);
+}
+.mo-search-inner svg {
+  width: 22px;
+  height: 22px;
+  stroke: var(--brandDark, #014f86);
+  stroke-width: 2.6;
+  color: var(--brandDark, #014f86);
+}
+.mo-search-inner input {
+  border: 0;
+  outline: none;
+  flex: 1;
+  padding: 10px 8px;
+  font-weight: 700;
+  font-size: 16px;
+  color: rgba(27, 43, 74, 0.9);
+  background: transparent;
+}
+/* Hide native browser clear controls (so only our clear button is visible) */
+.mo-search-inner input::-webkit-search-decoration,
+.mo-search-inner input::-webkit-search-cancel-button,
+.mo-search-inner input::-webkit-search-results-button,
+.mo-search-inner input::-webkit-search-results-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+.mo-search-inner input::-ms-clear,
+.mo-search-inner input::-ms-reveal {
+  display: none;
+  width: 0;
+  height: 0;
+}
+.mo-search-clear {
+  background: rgba(44, 123, 229, 0.06);
+  border: 0;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  font-size: 15px;
+  color: var(--accent, #2c7be5);
+  cursor: pointer;
+  padding: 0;
+  border-radius: 999px;
+  box-shadow: none;
+}
+.mo-search-clear svg {
+  width: 18px;
+  height: 18px;
+  stroke: var(--accent, #2c7be5);
+  stroke-width: 2.4;
+}
+/* make hover visible: change background and target SVG stroke (color alone doesn't affect SVG stroke when stroke is explicit) */
+.mo-search-clear:hover svg {
+  stroke: rgba(249, 249, 249, 0.95);
+}
+
+/* Simple search results list shown under the search bar */
+.search-results {
+  padding: 0;
+  background: #fff;
+  box-shadow: 0 5px 10px rgba(1, 79, 134, 0.1);
+  overflow: hidden;
+}
+.search-results-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.1); /* subtle tint */
+  color: var(--blueText);
+  font-size: 15px;
+}
+.search-results-header svg {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  stroke: var(--brandDark, #014f86);
+}
+.search-result {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 6px 10px;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(2, 75, 118, 0.06);
+}
+.search-result:hover {
+  background: rgba(2, 75, 118, 0.03);
+}
+.search-result:last-child {
+  border-bottom: 0;
+}
+.result-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  /* match the subtle tint used by .search-results-header */
+  background: rgba(0, 0, 0, 0.1);
+  color: var(--brandDark, #014f86);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+}
+.result-body-col{
+	  display: flex;
+	  flex-direction: column;
+	  flex: 1;
+	  width: 100%;
+	  min-width: 0;
+}
+
+.result-top-row {
+	  display: flex;
+	  flex-direction: row;
+	  justify-content: space-between;
+	  align-items: center;
+	  width: 100%;
+	  gap: 8px;
+	  min-width: 0;
+}
+.result-title {
+  font-weight: 800;
+  color: var(--blueText);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+.result-sub {
+  font-size: 13px;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.result-bottom-row {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.result-lines {
+  flex: 1;
+  min-width: 0;
+}
+
+
+/* make the chevron/action use brandDark for consistency */
+.mo-item-open {
+  border: 0;
+  background: transparent;
+  color: var(--brandDark, #014f86);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.mo-item-open svg {
+  width: 22px;
+  height: 22px;
+  stroke-width: 3;
+  stroke: currentColor;
+  display: block;
+}
+
+/* Flex-only layout helpers for the title/date block. No padding or margins added. */
+.result-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.result-top {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+.result-date {
+  font-size: 12px;
+  color: #6b7280;
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Back button styles local to MO home (circular, matching usercard icon) */
+.guts-back-outer {
+  display: flex;
+  justify-content: center;
+  padding-top: 10px;
+}
+
+.guts-back-btn {
+  /* base button */
+  display: block !important;
+  width: 100% !important;
+  height: 48px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 999px !important; /* fully rounded pill */
+  overflow: hidden !important;
+  background: #f2f4f6;
+  color: var(--blueText);
+  /* omnidirectional soft shadow: spread around the button */
+  /* balanced, low-density omnidirectional shadow */
+  /* stronger downward shadow, lighter on sides & top */
+  /* reduced side/top spread: stronger drop, lighter sides/top */
+  box-shadow:
+    0 16px 30px rgba(2, 16, 43, 0.06),
+    /* primary drop (down) */ 0 -6px 12px rgba(2, 16, 43, 0.02),
+    /* subtle lift above */ 6px 0 12px rgba(2, 16, 43, 0.09),
+    /* soft side spread */ 6px 0 12px rgba(2, 16, 43, 0.02);
+  /* small vertical margin for spacing */
+  margin: 12px 0 !important;
+  font-weight: 800;
+  font-size: 15px;
+  box-sizing: border-box;
+  transition:
+    background 0.12s ease,
+    transform 0.12s ease,
+    box-shadow 0.12s ease !important;
+}
+
+.guts-back-outer .guts-back-btn:hover {
+  background: #fff !important;
+  /* hover: slightly stronger but still low-density, balanced around button */
+  box-shadow:
+    0 26px 52px rgba(2, 16, 43, 0.08),
+    /* stronger downward on hover */ 0 -12px 30px rgba(2, 16, 43, 0.03),
+    12px 0 30px rgba(2, 16, 43, 0.035),
+    -12px 0 30px rgba(2, 16, 43, 0.035) !important;
+  transform: translateY(-2px) !important;
+}
+
+/* stronger selector in case other layout rules override the simple class */
+.guts-back-outer.mo-back-home {
+  margin-top: 100px !important;
+}
+
+.guts-back-outer .guts-btn.mo-back-home-btn {
+  width: 100%;
+  height: 50px;
+  padding: 0;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  font-weight: 700;
+  background: radial-gradient(circle at 30% 30%, #ffffff, #dbe6ff);
+  border: 1.5px solid rgba(2, 75, 118, 0.09);
+  color: var(--brand);
+  /* softer, directional shadow: downward emphasis, lighter sides/top */
+  box-shadow:
+    0 10px 24px rgba(2, 16, 43, 0.06),
+    0 -4px 10px rgba(2, 16, 43, 0.02),
+    6px 0 12px rgba(2, 16, 43, 0.02),
+    -6px 0 12px rgba(2, 16, 43, 0.02);
+  /* small vertical spacing to match other back buttons */
+  margin: 12px 0 !important;
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease,
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+/* hover: stronger selector to beat other `guts-btn:hover` definitions */
+.guts-back-outer .guts-btn.mo-back-home-btn:hover {
+  background: radial-gradient(circle at 50% 50%, #ffffff, #dbe6ff) !important;
+  color: #326a95;
+  border: 1.5px solid rgba(2, 75, 118, 0.15);
+  box-shadow:
+    0 18px 40px rgba(2, 16, 43, 0.08),
+    0 -8px 24px rgba(2, 16, 43, 0.03),
+    12px 0 28px rgba(2, 16, 43, 0.03),
+    -12px 0 28px rgba(2, 16, 43, 0.03);
+}

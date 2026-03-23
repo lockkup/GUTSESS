@@ -1,0 +1,133 @@
+/* src/components/CameraModal.module.css */
+.backdrop{
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0,0,0,0.55);
+  display: grid;
+  place-items: center;
+  padding: 14px;
+}
+
+.modal{
+  width: min(520px, 100%);
+  border-radius: 22px;
+  background: rgba(255,255,255,0.96);
+  border: 2px solid rgba(2,75,118,0.18);
+  box-shadow: 0 24px 44px rgba(0,0,0,0.28);
+  overflow: hidden;
+}
+
+.header{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(2,75,118,0.14);
+}
+
+.title{
+  font-weight: 900;
+  color: rgba(27,43,74,0.92);
+}
+
+.close{
+  border: 0;
+  background: rgba(0,0,0,0.06);
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.body{
+  padding: 14px;
+}
+
+.frame{
+  width: min(94vw, 520px);
+  height: min(78vh, 820px);
+  aspect-ratio: 9 / 16;
+  position: relative;
+  overflow: hidden;
+  border-radius: 22px;
+}
+
+.video{
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.circle{
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 62%;
+  aspect-ratio: 1 / 1;
+  border-radius: 999px;
+
+  /* ✅ ใช้ตัวแปร เพื่อให้เปลี่ยนสีจาก TSX ได้แน่นอน */
+  border: 8px solid var(--circleBorder, rgba(255,255,255,0.35));
+  box-shadow: var(--circleShadow, none);
+
+  z-index: 4;
+}
+
+.corner{
+  position: absolute;
+  width: 58px;
+  height: 58px;
+  border: 4px solid rgba(255,255,255,0.65);
+  border-radius: 16px;
+  z-index: 4;
+}
+.tl{ top: 18px; left: 18px; border-right: 0; border-bottom: 0; }
+.tr{ top: 18px; right: 18px; border-left: 0; border-bottom: 0; }
+.bl{ bottom: 18px; left: 18px; border-right: 0; border-top: 0; }
+.br{ bottom: 18px; right: 18px; border-left: 0; border-top: 0; }
+
+.status{
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  text-align: center;
+  background: rgba(0,0,0,0.7);
+  padding: 8px 16px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  max-width: 92%;
+}
+
+.canvas{ display: none; }
+
+.captureBtn{
+  margin-top: 12px;
+  width: 100%;
+  height: clamp(56px, 6.6vw, 62px);
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+
+  color: #fff;
+  font-weight: 900;
+  font-size: 20px;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+
+  background: linear-gradient(90deg, var(--brand), var(--brandDark));
+  box-shadow: 0 16px 26px rgba(0,0,0,0.12);
+}
+.captureBtn:disabled{
+  opacity: 0.65;
+  cursor: not-allowed;
+}

@@ -1,0 +1,110 @@
+/* ConfirmDeleteDialog.module.css */
+.confirm-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(3, 20, 40, 0.48);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1200;
+  padding: 18px;
+}
+.confirm-dialog-card {
+  width: 100%;
+  max-width: 420px; /* narrower card for detail page */
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 20px 40px rgba(3, 16, 42, 0.18);
+  padding: 16px 18px;
+  box-sizing: border-box;
+  border: 1px solid rgba(185,28,28,0.12); /* subtle red border to match delete action */
+}
+.confirm-dialog-title {
+  font-weight: 900;
+  font-size: 18px;
+  color: rgb(185,28,28); /* use delete red for title */
+  margin-bottom: 8px;
+}
+.confirm-dialog-desc {
+  color: rgba(27,43,74,0.8);
+  font-size: 14px;
+  margin-bottom: 14px;
+}
+.confirm-dialog-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr; /* two equal buttons */
+  gap: 12px; /* spacing between buttons */
+  justify-content: stretch;
+}
+/* Target the global button classes so existing app-wide button styles apply inside this module */
+.confirm-dialog-actions :global(.guts-btn) {
+  width: 100%; /* fill available cell */
+  padding: 10px 14px;
+  height: 44px;
+  border-radius: 999px;
+  font-weight: 900;
+  border: 2px solid transparent; /* base stroke to make buttons feel heavier */
+}
+
+/* Cancel: white background, subtle border and red text to match delete */
+.confirm-dialog-actions :global(.guts-btn.guts-cancel-btn) {
+  background: #ffffff;
+  color: rgb(185,28,28); /* make cancel text red to match delete */
+  border: 2px solid rgba(185,28,28,0.18); /* slightly stronger red border */
+  box-shadow: 0 6px 14px rgba(185,28,28,0.04);
+}
+.confirm-dialog-actions :global(.guts-btn.guts-cancel-btn):hover {
+  background: #fff7f7; /* subtle warm hover */
+  color: rgb(185,28,28);
+  border-color: rgba(185,28,28,0.28);
+  box-shadow: 0 8px 20px rgba(185,28,28,0.06);
+}
+
+/* Confirm: use delete-like red styling for strong visual similarity */
+.confirm-dialog-actions :global(.guts-btn.guts-submit-btn) {
+  background: rgb(185,28,28);
+  color: #fff;
+  border: 2px solid rgb(150,20,20); /* thicker stroke */
+  box-shadow: 0 10px 28px rgba(185,28,28,0.14);
+}
+.confirm-dialog-actions :global(.guts-btn.guts-submit-btn):hover {
+  background: rgb(140,18,18); /* deeper red on hover */
+  border-color: rgb(110,12,12);
+  transform: translateY(-1px);
+  box-shadow: 0 12px 32px rgba(140,18,18,0.18);
+  filter: none; /* avoid general brightness filters */
+}
+
+/* Local module classes so component can reference styles.btn / styles.cancelBtn / styles.submitBtn */
+.btn {
+  width: 100%;
+  padding: 10px 14px;
+  height: 44px;
+  border-radius: 999px;
+  font-weight: 900;
+  border: 2px solid transparent;
+}
+.cancel-btn {
+  background: #ffffff;
+  color: rgb(185,28,28);
+  border: 2px solid rgba(185,28,28,0.18);
+  box-shadow: 0 6px 14px rgba(185,28,28,0.04);
+}
+.cancel-btn:hover {
+  background: #fff7f7;
+  color: rgb(185,28,28);
+  border-color: rgba(185,28,28,0.28);
+  box-shadow: 0 8px 20px rgba(185,28,28,0.06);
+}
+.submit-btn {
+  background: rgb(185,28,28);
+  color: #fff;
+  border: 2px solid rgb(150,20,20);
+  box-shadow: 0 10px 28px rgba(185,28,28,0.14);
+}
+.submit-btn:hover {
+  background: rgb(140,18,18);
+  border-color: rgb(110,12,12);
+  transform: translateY(-1px);
+  box-shadow: 0 12px 32px rgba(140,18,18,0.18);
+}

@@ -1,0 +1,49 @@
+@import "./charts.css";
+
+/* PieChart specific overrides can go here */
+
+.donut-legend {
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	gap: 8px;
+	height: 100%;
+}
+
+.donut-legend-item {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 4px 0;
+}
+
+.legend-label {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.legend-swatch {
+	width: 12px;
+	height: 12px;
+	border-radius: 2px;
+}
+
+.legend-name {
+	font-size: 13px;
+	color: var(--text-muted, #333);
+}
+
+.legend-value {
+	font-weight: 600;
+	font-size: 13px;
+}
+
+.chart-card, .chart-controls {
+	overflow: visible;
+}
+
+.chart-controls input[type="date"] {
+	position: relative;
+	z-index: 20;
+}

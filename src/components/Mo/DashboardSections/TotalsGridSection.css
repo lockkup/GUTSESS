@@ -1,0 +1,67 @@
+.mo-totals {
+  width: 100%;
+}
+
+.totals-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 3fr));
+  gap: 4px;
+  align-items: stretch;
+}
+
+.totals-card {
+  border-radius: 10px;
+  padding: 12px;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  min-height: 72px;
+  box-shadow: 0 6px 14px rgba(2, 75, 118, 0.06);
+  font-family: 'Prompt', prompt, sans-serif;
+}
+
+.totals-count-row {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+}
+
+.totals-count {
+  font-weight: 600;
+  font-size: 19px;
+  line-height: 1;
+  overflow-wrap: break-word;
+  word-break: break-all;
+  max-width: 100%;
+  text-align: right;
+}
+
+.totals-unit {
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 1;
+  max-width: 100%;
+}
+
+.totals-label {
+  margin-top: auto;
+  font-size: 18px;
+  font-family: 'Prompt', prompt, sans-serif;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+  opacity: 0.95;
+  text-align: right;
+  align-self: flex-end;
+}
+
+.card-blue { background: #1e6fb3; }
+.card-teal { background: #2b9aa3; }
+.card-green { background: #3fb374; }
+.card-orange { background: #f59e2e; }
+.card-red { background: #e76b6b; }
+
