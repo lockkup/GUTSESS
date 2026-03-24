@@ -1,6 +1,8 @@
 /* src/layout/Header/Header.module.css */
 
-.header { text-align: center; }
+.header {
+  text-align: center;
+}
 
 .logo {
   margin: 0;
@@ -13,15 +15,15 @@
 .logoGuts {
   color: #1d4a82;
   text-shadow:
-    0 3px 0 rgba(0,0,0,0.22),
-    0 10px 18px rgba(0,0,0,0.12);
+    0 3px 0 rgba(0, 0, 0, 0.22),
+    0 10px 18px rgba(0, 0, 0, 0.12);
 }
 
 .logoEss {
   color: var(--red);
   text-shadow:
-    0 3px 0 rgba(0,0,0,0.22),
-    0 10px 18px rgba(0,0,0,0.12);
+    0 3px 0 rgba(0, 0, 0, 0.22),
+    0 10px 18px rgba(0, 0, 0, 0.12);
 }
 
 .subEn {
@@ -46,7 +48,7 @@
 }
 
 /* usercard */
-.usercard{
+.usercard {
   margin-top: 10px;
   width: 100%;
   max-width: 520px;
@@ -58,12 +60,12 @@
   padding: 10px 12px;
   border-radius: 30px;
 
-  background: rgba(255,255,255,0.75);
+  background: rgba(255, 255, 255, 0.75);
   border: 2px solid rgba(2, 75, 118, 0.18);
-  box-shadow: 0 10px 18px rgba(0,0,0,0.10);
+  box-shadow: 0 10px 18px rgba(0, 0, 0, 0.1);
 }
 
-.usercardIcon{
+.usercardIcon {
   width: 34px;
   height: 34px;
   border-radius: 999px;
@@ -71,19 +73,19 @@
   place-items: center;
 
   background: radial-gradient(circle at 30% 30%, #ffffff, #dbe6ff);
-  border: 1px solid rgba(2, 75, 118, 0.20);
+  border: 1px solid rgba(2, 75, 118, 0.2);
   color: var(--brand);
   flex: 0 0 auto;
 }
 
-.usercardLabel{
+.usercardLabel {
   color: var(--brand);
   font-weight: 900;
   font-size: 16px;
   flex: 0 0 auto;
 }
 
-.usercardValue{
+.usercardValue {
   color: rgba(27, 43, 74, 0.85);
   font-weight: 900;
   font-size: 16px;

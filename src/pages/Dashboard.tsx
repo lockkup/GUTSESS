@@ -39,7 +39,8 @@ export default function Dashboard({ empCode, onLogout }: Props) {
         <header className="guts-dash-top">
           <div>
             <div className="guts-dash-brand">
-              <span className="guts">GUTS</span> <span className="ess">ESS</span>
+              <span className="guts">GUTS</span>{" "}
+              <span className="ess">ESS</span>
             </div>
             <div className="guts-dash-sub">
               Employee Self Service • ผู้ใช้: <strong>{empCode}</strong>
@@ -65,7 +66,11 @@ export default function Dashboard({ empCode, onLogout }: Props) {
         {/* Menu grid */}
         <div className="guts-dash-grid">
           {items.map((it) => (
-            <button key={it.title} className="guts-dash-card" onClick={it.onClick}>
+            <button
+              key={it.title}
+              className="guts-dash-card"
+              onClick={it.onClick}
+            >
               <div className="guts-dash-icon">{it.icon}</div>
               <div className="guts-dash-title">{it.title}</div>
               <div className="guts-dash-desc">{it.desc}</div>

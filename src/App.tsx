@@ -8,7 +8,13 @@ import CheckInOut from "./pages/Attendance/CheckInOut";
 import FaceVerify from "./pages/Attendance/FaceVerify";
 import FirstLoginModal from "./components/FirstLoginModal";
 
-type Route = "login" | "home" | "dashboard" | "checkInOut" | "faceVerify" | "mo";
+type Route =
+  | "login"
+  | "home"
+  | "dashboard"
+  | "checkInOut"
+  | "faceVerify"
+  | "mo";
 type PunchType = "in" | "out";
 
 export default function App() {
@@ -37,8 +43,7 @@ export default function App() {
   const push = (r: Route) =>
     setStack((s) => (s[s.length - 1] === r ? s : [...s, r]));
 
-  const back = () =>
-    setStack((s) => (s.length > 1 ? s.slice(0, -1) : s));
+  const back = () => setStack((s) => (s.length > 1 ? s.slice(0, -1) : s));
 
   function onlyDigits6(v: string) {
     return v.replace(/\D/g, "").slice(0, 6);
@@ -152,14 +157,12 @@ export default function App() {
           displayName={displayName}
           punchType={punchType}
           onBack={back}
-          onConfirm={onFaceConfirm}                // ✅ save only
+          onConfirm={onFaceConfirm} // ✅ save only
           onGoCheckInOut={goCheckInOutFromFaceVerify} // ✅ ไปหน้า checkInOut ตอนกด OK
           onViewHistory={() => alert("TODO: เปิดหน้าประวัติย้อนหลัง 1 เดือน")}
         />
       )}
-      {route === "mo" && (
-        <Mo empCode={empCode} displayName={displayName} />
-      )}
+      {route === "mo" && <Mo empCode={empCode} displayName={displayName} />}
       {route === "dashboard" && (
         <Dashboard empCode={empCode} onLogout={onLogout} />
       )}

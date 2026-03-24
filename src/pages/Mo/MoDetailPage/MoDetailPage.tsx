@@ -1,20 +1,17 @@
 // src/pages/Home.tsx
 import { useState, useEffect } from "react";
-import {
-  ChevronDown,
-  ChevronRight,
-  ArrowLeft,
-} from "lucide-react";
+import { ChevronDown, ChevronRight, ArrowLeft } from "lucide-react";
 import styles from "./MoDetailPage.module.css";
+import { useStore } from "../../../store/store";
+import type { SectorReport } from "../../../store/store";
 
 type Props = {
   onCancel?: () => void;
-  item?: any;
+  item?: SectorReport;
 };
 
 export default function MoDetailPage(props: Props) {
-  console.log(props)
-  const [date] = useState(() => new Date().toLocaleDateString("th-TH"));
+  const sectors = useStore((state) => state.sectors);
   const [region, setRegion] = useState("");
   // ลา
   const [sickLeave, setSickLeave] = useState("");
@@ -23,8 +20,6 @@ export default function MoDetailPage(props: Props) {
 
   // กำลังพล
   const [absentCount, setAbsentCount] = useState("");
-  const [onDutyCount, setOnDutyCount] = useState("");
-  const [workHours, setWorkHours] = useState("18");
   // breakdown for การควงกะ
   const [workShiftOpen, setWorkShiftOpen] = useState(true);
   const [shift18, setShift18] = useState("");
@@ -33,16 +28,12 @@ export default function MoDetailPage(props: Props) {
   // collapse state for "กำลังพล" box
   const [personnelOpen, setPersonnelOpen] = useState(true);
   // ผิดข้อปฏิบัติ / การตักเตือน
-  const [disciplineType, setDisciplineType] = useState("");
   const [disciplineNote, setDisciplineNote] = useState("");
   // collapse + numeric counts for ผิดข้อปฏิบัติ UI
   const [disciplineOpen, setDisciplineOpen] = useState(true);
   const [sleepCount, setSleepCount] = useState("");
   const [phoneCount, setPhoneCount] = useState("");
   const [badgeCount, setBadgeCount] = useState("");
-  // เครื่องแต่งกาย
-  const [uniformIssue, setUniformIssue] = useState("");
-  const [uniformNote, setUniformNote] = useState("");
   // เครื่องแต่งกาย - counts
   const [hatCount, setHatCount] = useState("");
   const [shirtCount, setShirtCount] = useState("");
@@ -51,7 +42,6 @@ export default function MoDetailPage(props: Props) {
   // collapse state for เครื่องแต่งกาย
   const [uniformOpen, setUniformOpen] = useState(true);
   // อื่น ๆ
-  const [otherEvent, setOtherEvent] = useState<"พบผู้งาน" | "อบรม" | "">("");
   const [otherNote, setOtherNote] = useState("");
   // "อื่น ๆ" detailed rows
   const [foundCount, setFoundCount] = useState("");
@@ -69,35 +59,47 @@ export default function MoDetailPage(props: Props) {
     // populate fields from the incoming case record
     setRegion(it.location ?? "");
 
-    setSickLeave(it.leave_sick_count != null ? String(it.leave_sick_count) : "");
-    setPersonalLeave(it.leave_business_count != null ? String(it.leave_business_count) : "");
-    setOtherLeaveType(it.leave_other_count != null ? String(it.leave_other_count) : "");
+    setSickLeave(
+      it.leave_sick_count != null ? String(it.leave_sick_count) : "",
+    );
+    setPersonalLeave(
+      it.leave_business_count != null ? String(it.leave_business_count) : "",
+    );
+    setOtherLeaveType(
+      it.leave_other_count != null ? String(it.leave_other_count) : "",
+    );
 
     setAbsentCount(it.absent_count != null ? String(it.absent_count) : "");
-    setOnDutyCount(it.on_duty_count != null ? String(it.on_duty_count) : "");
-    setWorkHours(it.work_hours != null ? String(it.work_hours) : workHours);
 
     setShift18(it.shift_18_count != null ? String(it.shift_18_count) : "");
     setShift24(it.shift_24_count != null ? String(it.shift_24_count) : "");
     setShift36(it.shift_36_count != null ? String(it.shift_36_count) : "");
 
-    setSleepCount(it.rule_sleep_count != null ? String(it.rule_sleep_count) : "");
-    setPhoneCount(it.rule_phone_count != null ? String(it.rule_phone_count) : "");
-    setBadgeCount(it.rule_no_card_count != null ? String(it.rule_no_card_count) : "");
-    setDisciplineNote(it.warning ?? "");
-
-    setUniformIssue(it.uniform_issue ?? "");
-    setUniformNote(it.uniform_note ?? "");
+    setSleepCount(
+      it.rule_sleep_count != null ? String(it.rule_sleep_count) : "",
+    );
+    setPhoneCount(
+      it.rule_use_phone_count != null ? String(it.rule_use_phone_count) : "",
+    );
+    setBadgeCount(
+      it.rule_no_card_count != null ? String(it.rule_no_card_count) : "",
+    );
+    setDisciplineNote(it.other_extral ?? "");
 
     setHatCount(it.wear_hat_count != null ? String(it.wear_hat_count) : "");
-    setShirtCount(it.wear_shirt_count != null ? String(it.wear_shirt_count) : "");
-    setPantsCount(it.wear_pants_count != null ? String(it.wear_pants_count) : "");
-    setShoesCount(it.wear_shoes_count != null ? String(it.wear_shoes_count) : "");
+    setShirtCount(
+      it.wear_shirt_count != null ? String(it.wear_shirt_count) : "",
+    );
+    setPantsCount(it.wear_pant_count != null ? String(it.wear_pant_count) : "");
+    setShoesCount(it.wear_shoe_count != null ? String(it.wear_shoe_count) : "");
 
     setFoundCount(it.other_job_count != null ? String(it.other_job_count) : "");
     setFoundNote(it.other_job ?? "");
-    setTrainCount(it.other_training_count != null ? String(it.other_training_count) : "");
+    setTrainCount(
+      it.other_training_count != null ? String(it.other_training_count) : "",
+    );
     setTrainNote(it.other_training ?? "");
+    setOtherNote(it.other_extral ?? "");
   }, [props.item]);
 
   return (
@@ -116,10 +118,16 @@ export default function MoDetailPage(props: Props) {
         </button>
       </div>
       <div className={styles["guts-Mo-layout"]}>
-        <div className={`${styles["guts-box-title"]} ${styles["box-id"]}`}>#{props.item?.id ?? ""}</div>
+        <div className={`${styles["guts-box-title"]} ${styles["box-id"]}`}>
+          #{props.item?.id ?? ""}
+        </div>
         <div className={styles["guts-box"]}>
           <div className={styles["guts-box-title"]}>ภาค</div>
-          <div className={[styles["guts-field-row"], styles["full-width"]].join(" ")}>
+          <div
+            className={[styles["guts-field-row"], styles["full-width"]].join(
+              " ",
+            )}
+          >
             <input
               className={styles["guts-input"]}
               value={region}
@@ -154,8 +162,14 @@ export default function MoDetailPage(props: Props) {
               )}
             </button>
           </div>
-          <div className={`${styles["guts-box-body"]} ${leaveOpen ? "" : styles["collapsed"]}`}>
-            <div className={[styles["guts-field-row"], styles["two-col"]].join(" ")}>
+          <div
+            className={`${styles["guts-box-body"]} ${leaveOpen ? "" : styles["collapsed"]}`}
+          >
+            <div
+              className={[styles["guts-field-row"], styles["two-col"]].join(
+                " ",
+              )}
+            >
               <label className={styles["guts-label"]}>ลาป่วย</label>
               <div className={styles["guts-input-group"]}>
                 <input
@@ -177,7 +191,11 @@ export default function MoDetailPage(props: Props) {
               </div>
             </div>
 
-            <div className={[styles["guts-field-row"], styles["two-col"]].join(" ")}>
+            <div
+              className={[styles["guts-field-row"], styles["two-col"]].join(
+                " ",
+              )}
+            >
               <label className={styles["guts-label"]}>ลากิจ</label>
               <div className={styles["guts-input-group"]}>
                 <input
@@ -199,7 +217,11 @@ export default function MoDetailPage(props: Props) {
               </div>
             </div>
 
-            <div className={[styles["guts-field-row"], styles["two-col"]].join(" ")}>
+            <div
+              className={[styles["guts-field-row"], styles["two-col"]].join(
+                " ",
+              )}
+            >
               <label className={styles["guts-label"]}>ลาอื่น ๆ</label>
               <div className={styles["guts-input-group"]}>
                 <input
@@ -249,8 +271,14 @@ export default function MoDetailPage(props: Props) {
             </button>
           </div>
 
-          <div className={`${styles["guts-box-body"]} ${personnelOpen ? "" : styles["collapsed"]}`}>
-            <div className={[styles["guts-field-row"], styles["two-col"]].join(" ")}>
+          <div
+            className={`${styles["guts-box-body"]} ${personnelOpen ? "" : styles["collapsed"]}`}
+          >
+            <div
+              className={[styles["guts-field-row"], styles["two-col"]].join(
+                " ",
+              )}
+            >
               <label className={styles["guts-label"]}>ขาดงาน</label>
               <div className={styles["guts-input-group"]}>
                 <input
@@ -296,7 +324,11 @@ export default function MoDetailPage(props: Props) {
               <div
                 className={`${styles["guts-subbox-body"]} ${workShiftOpen ? "" : styles["collapsed"]}`}
               >
-                <div className={[styles["guts-field-row"], styles["two-col"]].join(" ")}>
+                <div
+                  className={[styles["guts-field-row"], styles["two-col"]].join(
+                    " ",
+                  )}
+                >
                   <label className={styles["guts-label"]}>จัด 18 ชั่วโมง</label>
                   <div className={styles["guts-input-group"]}>
                     <input
@@ -317,7 +349,11 @@ export default function MoDetailPage(props: Props) {
                   </div>
                 </div>
 
-                <div className={[styles["guts-field-row"], styles["two-col"]].join(" ")}>
+                <div
+                  className={[styles["guts-field-row"], styles["two-col"]].join(
+                    " ",
+                  )}
+                >
                   <label className={styles["guts-label"]}>จัด 24 ชั่วโมง</label>
                   <div className={styles["guts-input-group"]}>
                     <input
@@ -338,7 +374,11 @@ export default function MoDetailPage(props: Props) {
                   </div>
                 </div>
 
-                <div className={[styles["guts-field-row"], styles["two-col"]].join(" ")}>
+                <div
+                  className={[styles["guts-field-row"], styles["two-col"]].join(
+                    " ",
+                  )}
+                >
                   <label className={styles["guts-label"]}>จัด 36 ชั่วโมง</label>
                   <div className={styles["guts-input-group"]}>
                     <input
@@ -391,8 +431,14 @@ export default function MoDetailPage(props: Props) {
             </button>
           </div>
 
-          <div className={`${styles["guts-box-body"]} ${disciplineOpen ? "" : styles["collapsed"]}`}>
-            <div className={[styles["guts-field-row"], styles["two-col"]].join(" ")}>
+          <div
+            className={`${styles["guts-box-body"]} ${disciplineOpen ? "" : styles["collapsed"]}`}
+          >
+            <div
+              className={[styles["guts-field-row"], styles["two-col"]].join(
+                " ",
+              )}
+            >
               <label className={styles["guts-label"]}>หลับเวร</label>
               <div className={styles["guts-input-group"]}>
                 <input
@@ -413,7 +459,11 @@ export default function MoDetailPage(props: Props) {
               </div>
             </div>
 
-            <div className={[styles["guts-field-row"], styles["two-col"]].join(" ")}>
+            <div
+              className={[styles["guts-field-row"], styles["two-col"]].join(
+                " ",
+              )}
+            >
               <label className={styles["guts-label"]}>เล่นโทรศัพท์</label>
               <div className={styles["guts-input-group"]}>
                 <input
@@ -434,7 +484,11 @@ export default function MoDetailPage(props: Props) {
               </div>
             </div>
 
-            <div className={[styles["guts-field-row"], styles["two-col"]].join(" ")}>
+            <div
+              className={[styles["guts-field-row"], styles["two-col"]].join(
+                " ",
+              )}
+            >
               <label className={styles["guts-label"]}>ไม่แขวนบัตร</label>
               <div className={styles["guts-input-group"]}>
                 <input
@@ -455,10 +509,20 @@ export default function MoDetailPage(props: Props) {
               </div>
             </div>
             <div className={styles["guts-field-row"]}>
-              <label className={[styles["guts-label"], styles["section-label"]].join(" ")}>การตักเตือน</label>
+              <label
+                className={[styles["guts-label"], styles["section-label"]].join(
+                  " ",
+                )}
+              >
+                การตักเตือน
+              </label>
             </div>
 
-            <div className={[styles["guts-field-row"], styles["full-width"]].join(" ")}>
+            <div
+              className={[styles["guts-field-row"], styles["full-width"]].join(
+                " ",
+              )}
+            >
               <textarea
                 className={styles["guts-input-full"]}
                 rows={2}
@@ -498,8 +562,14 @@ export default function MoDetailPage(props: Props) {
             </button>
           </div>
 
-          <div className={`${styles["guts-box-body"]} ${uniformOpen ? "" : styles["collapsed"]}`}>
-            <div className={[styles["guts-field-row"], styles["two-col"]].join(" ")}>
+          <div
+            className={`${styles["guts-box-body"]} ${uniformOpen ? "" : styles["collapsed"]}`}
+          >
+            <div
+              className={[styles["guts-field-row"], styles["two-col"]].join(
+                " ",
+              )}
+            >
               <label className={styles["guts-label"]}>หมวก เก่า:</label>
               <div className={styles["guts-input-group"]}>
                 <input
@@ -520,7 +590,11 @@ export default function MoDetailPage(props: Props) {
               </div>
             </div>
 
-            <div className={[styles["guts-field-row"], styles["two-col"]].join(" ")}>
+            <div
+              className={[styles["guts-field-row"], styles["two-col"]].join(
+                " ",
+              )}
+            >
               <label className={styles["guts-label"]}>เสื้อ เก่า:</label>
               <div className={styles["guts-input-group"]}>
                 <input
@@ -541,7 +615,11 @@ export default function MoDetailPage(props: Props) {
               </div>
             </div>
 
-            <div className={[styles["guts-field-row"], styles["two-col"]].join(" ")}>
+            <div
+              className={[styles["guts-field-row"], styles["two-col"]].join(
+                " ",
+              )}
+            >
               <label className={styles["guts-label"]}>กางเกง เก่า:</label>
               <div className={styles["guts-input-group"]}>
                 <input
@@ -562,7 +640,11 @@ export default function MoDetailPage(props: Props) {
               </div>
             </div>
 
-            <div className={[styles["guts-field-row"], styles["two-col"]].join(" ")}>
+            <div
+              className={[styles["guts-field-row"], styles["two-col"]].join(
+                " ",
+              )}
+            >
               <label className={styles["guts-label"]}>รองเท้า เก่า:</label>
               <div className={styles["guts-input-group"]}>
                 <input
@@ -587,7 +669,9 @@ export default function MoDetailPage(props: Props) {
 
         <div className={styles["guts-box"]}>
           <div className={styles["guts-box-title"]}>อื่น ๆ</div>
-          <div className={[styles["guts-field-row"], styles["two-col"]].join(" ")}>
+          <div
+            className={[styles["guts-field-row"], styles["two-col"]].join(" ")}
+          >
             <label className={styles["guts-label"]}>พบผู้ว่างจ้าง:</label>
             <div className={styles["guts-input-group"]}>
               <input
@@ -619,7 +703,10 @@ export default function MoDetailPage(props: Props) {
             />
           </div>
 
-          <div className={[styles["guts-field-row"], styles["two-col"]].join(" ")} style={{ marginTop: 8 }}>
+          <div
+            className={[styles["guts-field-row"], styles["two-col"]].join(" ")}
+            style={{ marginTop: 8 }}
+          >
             <label className={styles["guts-label"]}>อบรม:</label>
             <div className={styles["guts-input-group"]}>
               <input
@@ -650,7 +737,10 @@ export default function MoDetailPage(props: Props) {
               placeholder="รายละเอียด/เวลา/ผู้เกี่ยวข้อง"
             />
           </div>
-          <div className={[styles["guts-field-row"], styles["two-col"]].join(" ")} style={{ marginTop: 8 }}>
+          <div
+            className={[styles["guts-field-row"], styles["two-col"]].join(" ")}
+            style={{ marginTop: 8 }}
+          >
             <label className={styles["guts-label"]}>เพิ่มเติม:</label>
           </div>
 
@@ -658,14 +748,13 @@ export default function MoDetailPage(props: Props) {
             <textarea
               className={`${styles["guts-input-full"]} ${styles["guts-detail-textarea"]}`}
               rows={2}
-              value={trainNote}
+              value={otherNote}
               disabled={true}
-              onChange={(e) => setTrainNote(e.target.value)}
+              onChange={(e) => setOtherNote(e.target.value)}
               placeholder="รายละเอียด/เวลา/ผู้เกี่ยวข้อง"
             />
           </div>
         </div>
-
       </div>
     </>
   );

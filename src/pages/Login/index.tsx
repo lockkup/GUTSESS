@@ -9,6 +9,7 @@ import styles from "./login.module.css";
 type Props = {
   empCode: string;
   pin: string;
+  isFirstTime?: boolean;
   onChangeEmp: (v: string) => void;
   onChangePin: (v: string) => void;
   onSubmit: () => void;
@@ -18,6 +19,7 @@ type Props = {
 export default function Login({
   empCode,
   pin,
+  isFirstTime = false,
   onChangeEmp,
   onChangePin,
   onSubmit,
@@ -28,7 +30,7 @@ export default function Login({
 
   const empValid = /^\d{6}$/.test(empCode);
   const pinValid = /^\d{6}$/.test(pin);
-  const canSubmit = empValid && pinValid;
+  const canSubmit = isFirstTime ? empValid : empValid && pinValid;
 
   return (
     <main className={styles["guts-bg"]}>
@@ -74,39 +76,43 @@ export default function Login({
           </div>
 
           {/* PIN */}
-          <div>
-            <div className={styles["guts-label"]}>กรอกรหัส ( PIN 6 หลัก )</div>
+          {!isFirstTime && (
+            <div>
+              <div className={styles["guts-label"]}>
+                กรอกรหัส ( PIN 6 หลัก )
+              </div>
 
-            <div className={styles["guts-field"]}>
-              <span className={styles["guts-icon-left"]} aria-hidden="true">
-                <Lock size={18} />
-              </span>
+              <div className={styles["guts-field"]}>
+                <span className={styles["guts-icon-left"]} aria-hidden="true">
+                  <Lock size={18} />
+                </span>
 
-              <input
-                className={[
-                  styles["guts-input"],
-                  styles["guts-input--with-left"],
-                  styles["guts-input--with-right"],
-                ].join(" ")}
-                value={pin}
-                onChange={(e) => onChangePin(e.target.value)}
-                inputMode="numeric"
-                autoComplete="off"
-                type={showPin ? "text" : "password"}
-                aria-label="PIN 6 digits"
-              />
+                <input
+                  className={[
+                    styles["guts-input"],
+                    styles["guts-input--with-left"],
+                    styles["guts-input--with-right"],
+                  ].join(" ")}
+                  value={pin}
+                  onChange={(e) => onChangePin(e.target.value)}
+                  inputMode="numeric"
+                  autoComplete="off"
+                  type={showPin ? "text" : "password"}
+                  aria-label="PIN 6 digits"
+                />
 
-              <button
-                type="button"
-                className={styles["guts-icon-right-btn"]}
-                onClick={() => setShowPin((v) => !v)}
-                aria-label={showPin ? "ซ่อนรหัส PIN" : "แสดงรหัส PIN"}
-                title={showPin ? "ซ่อนรหัส" : "แสดงรหัส"}
-              >
-                {showPin ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
+                <button
+                  type="button"
+                  className={styles["guts-icon-right-btn"]}
+                  onClick={() => setShowPin((v) => !v)}
+                  aria-label={showPin ? "ซ่อนรหัส PIN" : "แสดงรหัส PIN"}
+                  title={showPin ? "ซ่อนรหัส" : "แสดงรหัส"}
+                >
+                  {showPin ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
           <button
             className={styles["guts-btn"]}

@@ -47,7 +47,11 @@ export default function Home({
           <h2 className={styles.title}>หน้าหลัก</h2>
 
           <div className={styles.menuStack}>
-            <button type="button" className={styles.menuBtn} onClick={onGoCheckInOut}>
+            <button
+              type="button"
+              className={styles.menuBtn}
+              onClick={onGoCheckInOut}
+            >
               <div className={styles.menuBox}>
                 <div className={styles.iconWrap} aria-hidden="true">
                   <FontAwesomeIcon className={styles.fa} icon={faClock} />
@@ -56,7 +60,11 @@ export default function Home({
               </div>
             </button>
 
-            <button type="button" className={styles.menuBtn} onClick={onGoLeaveOnline}>
+            <button
+              type="button"
+              className={styles.menuBtn}
+              onClick={onGoLeaveOnline}
+            >
               <div className={styles.menuBox}>
                 <div className={styles.iconWrap} aria-hidden="true">
                   <FontAwesomeIcon className={styles.fa} icon={faBed} />
@@ -74,7 +82,11 @@ export default function Home({
               </div>
             </button>
 
-            <button type="button" className={styles.menuBtn} onClick={onGoDiscipline}>
+            <button
+              type="button"
+              className={styles.menuBtn}
+              onClick={onGoDiscipline}
+            >
               <div className={styles.menuBox}>
                 <div className={styles.iconWrap} aria-hidden="true">
                   <FontAwesomeIcon className={styles.fa} icon={faGavel} />
@@ -83,7 +95,11 @@ export default function Home({
               </div>
             </button>
 
-            <button type="button" className={styles.menuBtn} onClick={onGoUniform}>
+            <button
+              type="button"
+              className={styles.menuBtn}
+              onClick={onGoUniform}
+            >
               <div className={styles.menuBox}>
                 <div className={styles.iconWrap} aria-hidden="true">
                   <FontAwesomeIcon className={styles.fa} icon={faShirt} />
@@ -92,7 +108,11 @@ export default function Home({
               </div>
             </button>
 
-            <button type="button" className={styles.menuBtn} onClick={onGoOther}>
+            <button
+              type="button"
+              className={styles.menuBtn}
+              onClick={onGoOther}
+            >
               <div className={styles.menuBox}>
                 <div className={styles.iconWrap} aria-hidden="true">
                   <FontAwesomeIcon className={styles.fa} icon={faEllipsis} />
@@ -105,7 +125,10 @@ export default function Home({
           <div className={styles.actions}>
             <button className={styles.logout} type="button" onClick={onLogout}>
               ออกจากระบบ
-              <FontAwesomeIcon className={styles.logoutFa} icon={faRightFromBracket} />
+              <FontAwesomeIcon
+                className={styles.logoutFa}
+                icon={faRightFromBracket}
+              />
             </button>
           </div>
         </section>
