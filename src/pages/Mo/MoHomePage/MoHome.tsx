@@ -203,19 +203,13 @@ export default function MoHome(props: Props) {
 
   if (subView === "detail" && selectedItem) {
     return (
-      <MoDetailPage
-        item={selectedItem}
-        onCancel={() => setSubView("main")}
-      />
+      <MoDetailPage item={selectedItem} onCancel={() => setSubView("main")} />
     );
   }
 
   if (subView === "update" && selectedItem) {
     return (
-      <MoUpdatePage
-        item={selectedItem}
-        onCancel={() => setSubView("main")}
-      />
+      <MoUpdatePage item={selectedItem} onCancel={() => setSubView("main")} />
     );
   }
 
@@ -565,7 +559,6 @@ export default function MoHome(props: Props) {
         </>
       )}
     </>
+    //any select page redner child page here
   );
 }
-
-export { MoHome };

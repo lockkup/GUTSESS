@@ -1,8 +1,10 @@
 // src/pages/Home.tsx
 import { useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, ArrowLeft } from "lucide-react";
 import styles from "./MoNewPage.module.css";
 import { useStore } from "../../../store/store";
+import ConfirmCancelDialog from "../../../components/Mo/ConfirmCancelDialog";
+import InfoModel from "../../../components/Mo/InfoModel";
 
 type Props = {
   onCancel?: () => void;
@@ -51,7 +53,46 @@ export default function MoNewPage(props: Props) {
   // new: collapse state for "ลา" card
   const [leaveOpen, setLeaveOpen] = useState(true);
 
+  // confirmation dialog state
+  const [showConfirmCancel, setShowConfirmCancel] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+
   const { createReport, sectors } = useStore();
+
+  // helper to check if anything is filled in
+  const isDirty = () => {
+    return (
+      sickLeave !== "" ||
+      personalLeave !== "" ||
+      otherLeaveType !== "" ||
+      absentCount !== "" ||
+      shift18 !== "" ||
+      shift24 !== "" ||
+      shift36 !== "" ||
+      disciplineNote !== "" ||
+      sleepCount !== "" ||
+      phoneCount !== "" ||
+      badgeCount !== "" ||
+      hatCount !== "" ||
+      shirtCount !== "" ||
+      pantsCount !== "" ||
+      shoesCount !== "" ||
+      otherNote !== "" ||
+      foundCount !== "" ||
+      foundNote !== "" ||
+      trainCount !== "" ||
+      trainNote !== ""
+    );
+  };
+
+  const handleCancel = () => {
+    if (isDirty()) {
+      setShowConfirmCancel(true);
+    } else {
+      if (props.onCancel) props.onCancel();
+      else window.history.back();
+    }
+  };
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -81,8 +122,9 @@ export default function MoNewPage(props: Props) {
       wear_shirt_count: Number(shirtCount) || 0,
       wear_pant_count: Number(pantsCount) || 0,
       wear_shoe_count: Number(shoesCount) || 0,
-      other_job: foundNote,
-      other_job_count: Number(foundCount) || 0,
+      warning: disciplineNote,
+      other_Job: foundNote,
+      other_Job_count: Number(foundCount) || 0,
       other_training: trainNote,
       other_training_count: Number(trainCount) || 0,
       other_extral: otherNote,
@@ -94,8 +136,7 @@ export default function MoNewPage(props: Props) {
 
     createReport(payload)
       .then(() => {
-        alert("บันทึกรายงานสำเร็จ!");
-        if (props.onCancel) props.onCancel();
+        setShowSuccess(true);
       })
       .catch((err) => {
         alert(`เกิดข้อผิดพลาดในการบันทึก: ${err}`);
@@ -104,6 +145,38 @@ export default function MoNewPage(props: Props) {
 
   return (
     <>
+      <div className={styles["guts-back-outer"]} aria-hidden>
+        <button
+          type="button"
+          className={styles["guts-back-btn"]}
+          onClick={handleCancel}
+        >
+          <ArrowLeft size={18} />
+        </button>
+      </div>
+
+      <ConfirmCancelDialog
+        open={showConfirmCancel}
+        onCancel={() => setShowConfirmCancel(false)}
+        onConfirm={() => {
+          setShowConfirmCancel(false);
+          if (props.onCancel) props.onCancel();
+          else window.history.back();
+        }}
+      />
+      
+      <InfoModel
+        open={showSuccess}
+        onClose={() => {
+          setShowSuccess(false);
+          if (props.onCancel) props.onCancel();
+          else window.history.back();
+        }}
+        variant="success"
+        title="บันทึกรายงานสำเร็จ!"
+        description="ระบบได้ทำการบันทึกข้อมูลของคุณเรียบร้อยแล้ว"
+      />
+
       <form className={styles["guts-Mo-layout"]} onSubmit={onSubmit}>
         <div className={styles["guts-box"]}>
           <div className={styles["guts-box-title"]}>ภาค</div>
@@ -769,19 +842,6 @@ export default function MoNewPage(props: Props) {
           </button>
         </div>
       </form>
-
-      <div className={styles["guts-back-outer"]} aria-hidden>
-        <button
-          type="button"
-          className={[styles["guts-btn"], styles["guts-back-btn"]].join(" ")}
-          onClick={() => {
-            if (props.onCancel) return props.onCancel();
-            return window.history.back();
-          }}
-        >
-          Cancel
-        </button>
-      </div>
     </>
   );
 }

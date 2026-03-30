@@ -1,0 +1,86 @@
+/* ConfirmCancelDialog.module.css */
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(3, 20, 40, 0.48);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1210;
+  padding: 18px;
+}
+
+.dialog-card {
+  width: 100%;
+  max-width: 420px;
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 20px 40px rgba(3, 16, 42, 0.18);
+  padding: 18px 20px;
+  box-sizing: border-box;
+  text-align: center;
+  border: 1px solid rgba(2, 75, 118, 0.1);
+}
+
+.dialog-title {
+  font-weight: 900;
+  font-size: 19px;
+  margin-bottom: 10px;
+  color: var(--brandDark);
+}
+
+.dialog-desc {
+  color: rgba(27, 43, 74, 0.85);
+  font-size: 14.5px;
+  line-height: 1.5;
+  margin-bottom: 20px;
+}
+
+.dialog-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.btn {
+  height: 44px;
+  border-radius: 999px;
+  font-weight: 900;
+  font-size: 15px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  border: 0;
+}
+
+/* Primary focus: keep filling form */
+.keep-btn {
+  background: var(--brandDark);
+  color: #fff;
+  box-shadow: 0 8px 16px rgba(2, 75, 118, 0.15);
+}
+.keep-btn:hover {
+  background: #035a8c;
+  transform: translateY(-1px);
+}
+
+/* Secondary: discard changes */
+.discard-btn {
+  background: #f1f5f9;
+  color: #475569;
+}
+.discard-btn:hover {
+  background: #e2e8f0;
+  color: #334155;
+}
+
+@media (min-width: 320px) {
+  .dialog-actions {
+    flex-direction: row;
+    grid-template-columns: 1fr 1fr;
+    display: grid;
+  }
+}

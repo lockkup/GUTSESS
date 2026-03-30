@@ -13,11 +13,13 @@ export interface SectorReport {
   shift_18_count: number;
   shift_24_count: number;
   shift_36_count: number;
+  warning?: string;
   wear_hat_count: number;
   wear_shirt_count: number;
-  wear_pants_count: number;
-  wear_shoes_count: number;
-  other_job: string;
+  wear_pant_count: number;
+  wear_shoe_count: number;
+  other_Job?: string;
+  other_Job_count?: number;
   created_at?: string;
   created_by: string;
 }

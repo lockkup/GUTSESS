@@ -8,6 +8,7 @@ import {
   Trash2,
 } from "lucide-react";
 import ConfirmDeleteDialog from "../../../components/Mo/ConfirmDeleteDialog";
+import InfoModel from "../../../components/Mo/InfoModel";
 import styles from "./MoUpdatePage.module.css";
 import { useStore } from "../../../store/store";
 
@@ -61,6 +62,9 @@ export default function MoUpdatePage(props: Props) {
   const [foundNote, setFoundNote] = useState("");
   const [trainCount, setTrainCount] = useState("");
   const [trainNote, setTrainNote] = useState("");
+  // extra fields used in sector_report
+  const [onDutyCount, setOnDutyCount] = useState("");
+  const [workHours, setWorkHours] = useState("");
 
   // new: collapse state for "ลา" card
   const [leaveOpen, setLeaveOpen] = useState(true);
@@ -69,6 +73,7 @@ export default function MoUpdatePage(props: Props) {
   // Note: `true` means the *form actions* (bottom) are visible — keep icons hidden on open
   const [showActionIcons, setShowActionIcons] = useState(false);
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
 
   useEffect(() => {
     const it = props.item;
@@ -89,7 +94,7 @@ export default function MoUpdatePage(props: Props) {
 
     setAbsentCount(it.absent_count != null ? String(it.absent_count) : "");
     setOnDutyCount(it.on_duty_count != null ? String(it.on_duty_count) : "");
-    setWorkHours(it.work_hours != null ? String(it.work_hours) : workHours);
+    setWorkHours(it.work_hours != null ? String(it.work_hours) : "");
 
     setShift18(it.shift_18_count != null ? String(it.shift_18_count) : "");
     setShift24(it.shift_24_count != null ? String(it.shift_24_count) : "");
@@ -104,7 +109,7 @@ export default function MoUpdatePage(props: Props) {
     setBadgeCount(
       it.rule_no_card_count != null ? String(it.rule_no_card_count) : "",
     );
-    setDisciplineNote(it.other_extral ?? "");
+    setDisciplineNote(it.warning ?? "");
 
     setHatCount(it.wear_hat_count != null ? String(it.wear_hat_count) : "");
     setShirtCount(
@@ -113,8 +118,8 @@ export default function MoUpdatePage(props: Props) {
     setPantsCount(it.wear_pant_count != null ? String(it.wear_pant_count) : "");
     setShoesCount(it.wear_shoe_count != null ? String(it.wear_shoe_count) : "");
 
-    setFoundCount(it.other_job_count != null ? String(it.other_job_count) : "");
-    setFoundNote(it.other_job ?? "");
+    setFoundCount(it.other_Job_count != null ? String(it.other_Job_count) : "");
+    setFoundNote(it.other_Job ?? "");
     setTrainCount(
       it.other_training_count != null ? String(it.other_training_count) : "",
     );
@@ -143,8 +148,9 @@ export default function MoUpdatePage(props: Props) {
       wear_shirt_count: Number(shirtCount) || 0,
       wear_pant_count: Number(pantsCount) || 0,
       wear_shoe_count: Number(shoesCount) || 0,
-      other_job: foundNote,
-      other_job_count: Number(foundCount) || 0,
+      warning: disciplineNote,
+      other_Job: foundNote,
+      other_Job_count: Number(foundCount) || 0,
       other_training: trainNote,
       other_training_count: Number(trainCount) || 0,
       other_extral: otherNote,
@@ -153,9 +159,8 @@ export default function MoUpdatePage(props: Props) {
 
     updateReport(props.item.id, payload)
       .then(() => {
-        alert("อัปเดตรายงานสำเร็จ!");
         setShowActionIcons(false);
-        if (props.onCancel) props.onCancel();
+        setShowSuccess(true);
       })
       .catch((err) => {
         alert(`เกิดข้อผิดพลาดในการอัปเดต: ${err}`);
@@ -236,6 +241,17 @@ export default function MoUpdatePage(props: Props) {
         description={"รายการนี้จะถูกลบออกจากระบบ ไม่สามารถกู้คืนได้"}
         onCancel={cancelDelete}
         onConfirm={confirmDelete}
+      />
+      <InfoModel
+        open={showSuccess}
+        onClose={() => {
+          setShowSuccess(false);
+          if (props.onCancel) props.onCancel();
+          else window.history.back();
+        }}
+        variant="success"
+        title="อัปเดตรายงานสำเร็จ!"
+        description="ระบบได้ทำการอัปเดตข้อมูลของคุณเรียบร้อยแล้ว"
       />
       <form
         className={`${styles["guts-Mo-layout"]} ${showActionIcons ? styles["icons-visible"] : styles["icons-hidden"]}`}

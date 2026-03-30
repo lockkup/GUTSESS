@@ -84,7 +84,7 @@ export default function MoDetailPage(props: Props) {
     setBadgeCount(
       it.rule_no_card_count != null ? String(it.rule_no_card_count) : "",
     );
-    setDisciplineNote(it.other_extral ?? "");
+    setDisciplineNote(it.warning ?? "");
 
     setHatCount(it.wear_hat_count != null ? String(it.wear_hat_count) : "");
     setShirtCount(
@@ -93,8 +93,8 @@ export default function MoDetailPage(props: Props) {
     setPantsCount(it.wear_pant_count != null ? String(it.wear_pant_count) : "");
     setShoesCount(it.wear_shoe_count != null ? String(it.wear_shoe_count) : "");
 
-    setFoundCount(it.other_job_count != null ? String(it.other_job_count) : "");
-    setFoundNote(it.other_job ?? "");
+    setFoundCount(it.other_Job_count != null ? String(it.other_Job_count) : "");
+    setFoundNote(it.other_Job ?? "");
     setTrainCount(
       it.other_training_count != null ? String(it.other_training_count) : "",
     );
