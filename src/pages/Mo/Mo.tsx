@@ -25,8 +25,8 @@ export default function Mo({ empCode, displayName, onBackHome }: Props) {
   });
 
   return (
-    <main className="guts-bg">
-      <div className="guts-home">
+    <main className={`guts-bg ${styles["mo-bg"]}`}>
+      <div className={`guts-home ${styles["mo-page-wrap"]}`}>
         <section className="guts-home-card" aria-label="Mo">
           <Header empCode={empCode} displayName={displayName} />
 

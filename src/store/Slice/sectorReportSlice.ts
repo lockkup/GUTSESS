@@ -6,6 +6,12 @@ export interface SectorReport {
   sector_id: number;
   report_date: string;
   status: string;
+  approved_status?: "PENDING" | "APPROVED" | "REJECT";
+  approved_by?: string;
+  approved_at?: string;
+  approved_remark?: string;
+  updated_by?: string;
+  updated_at?: string;
   leave_sick_count: number;
   leave_business_count: number;
   leave_other_count: number;

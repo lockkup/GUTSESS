@@ -23,8 +23,9 @@ export interface SectorReportCreate {
     other_training?: string;
     other_training_count?: number;
     other_extral?: string;
+    // Server auto-assigns approval/audit fields from actor headers.
     approved_by?: string;
-    created_by: string;
+    created_by?: string;
 }
 
 export const sectorReportService = {
@@ -102,5 +103,5 @@ export const sectorReportService = {
             }
         });
         if (!response.ok) throw new Error('Failed to delete sector report');
-    }
+    },
 };

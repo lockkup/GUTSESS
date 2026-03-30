@@ -128,7 +128,6 @@ export default function MoNewPage(props: Props) {
       other_training: trainNote,
       other_training_count: Number(trainCount) || 0,
       other_extral: otherNote,
-      approved_by: "600001", // Default approver for testing
       created_by: props.empCode || "ADMIN",
     };
 

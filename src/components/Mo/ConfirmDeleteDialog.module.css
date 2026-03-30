@@ -21,13 +21,13 @@
 }
 .confirm-dialog-title {
   font-weight: 900;
-  font-size: 18px;
+  font-size: 20px;
   color: rgb(185,28,28); /* use delete red for title */
   margin-bottom: 8px;
 }
 .confirm-dialog-desc {
   color: rgba(27,43,74,0.8);
-  font-size: 14px;
+  font-size: 16px;
   margin-bottom: 14px;
 }
 .confirm-dialog-actions {
@@ -79,9 +79,10 @@
 .btn {
   width: 100%;
   padding: 10px 14px;
-  height: 44px;
+  height: 46px;
   border-radius: 999px;
   font-weight: 900;
+  font-size: 18px;
   border: 2px solid transparent;
 }
 .cancel-btn {

@@ -38,6 +38,19 @@
 .guts-home {}
 .guts-home-card {}
 
+/* Put bottom spacing on the outermost MO page container so it is visible
+   even when inner wrappers are clipped by parent scroll containers. */
+.mo-bg {
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+}
+
+/* Add page-level bottom breathing room for all MO sub-pages
+   (main/new/detail/update/dashboard) so content doesn't touch viewport edge. */
+.mo-page-wrap {
+  padding-bottom: 0;
+  margin-bottom: 0;
+}
+
 /* Back button styles - moved from MoHome.module.css */
 .guts-back-outer {
   display: flex;
@@ -121,9 +134,4 @@
     -12px 0 30px rgba(2, 16, 43, 0.035) !important;
   transform: translateY(-2px) !important;
 }
-
-
-
-
-
 

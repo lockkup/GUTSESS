@@ -10,6 +10,8 @@ type Props = {
   item?: SectorReport;
 };
 
+type ApprovalStatus = "PENDING" | "APPROVED" | "REJECT";
+
 export default function MoDetailPage(props: Props) {
   const sectors = useStore((state) => state.sectors);
   const [region, setRegion] = useState("");
@@ -51,6 +53,27 @@ export default function MoDetailPage(props: Props) {
 
   // new: collapse state for "ลา" card
   const [leaveOpen, setLeaveOpen] = useState(true);
+  const [approvalStatus, setApprovalStatus] = useState<ApprovalStatus>("PENDING");
+  const [approvalRemark, setApprovalRemark] = useState("");
+
+  function toApprovalStatus(value?: string): ApprovalStatus {
+    if (value === "APPROVED" || value === "REJECT" || value === "PENDING") {
+      return value;
+    }
+    return "PENDING";
+  }
+
+  function approvalStatusLabel(value: ApprovalStatus): string {
+    if (value === "APPROVED") return "อนุมัติแล้ว";
+    if (value === "REJECT") return "ไม่อนุมัติ";
+    return "รออนุมัติ";
+  }
+
+  function approvalBoxClass(value: ApprovalStatus): string {
+    if (value === "APPROVED") return styles["approval-box-approved"];
+    if (value === "REJECT") return styles["approval-box-reject"];
+    return styles["approval-box-pending"];
+  }
 
   useEffect(() => {
     const it = props.item;
@@ -100,6 +123,8 @@ export default function MoDetailPage(props: Props) {
     );
     setTrainNote(it.other_training ?? "");
     setOtherNote(it.other_extral ?? "");
+    setApprovalStatus(toApprovalStatus(it.approved_status));
+    setApprovalRemark(it.approved_remark ?? "");
   }, [props.item]);
 
   return (
@@ -118,8 +143,24 @@ export default function MoDetailPage(props: Props) {
         </button>
       </div>
       <div className={styles["guts-Mo-layout"]}>
-        <div className={`${styles["guts-box-title"]} ${styles["box-id"]}`}>
-          #{props.item?.id ?? ""}
+        <div className={styles["report-meta"]}>
+          <div className={styles["meta-right"]}>
+            <span
+              className={[
+                styles["status-badge"],
+                approvalStatus === "APPROVED"
+                  ? styles["status-approved"]
+                  : approvalStatus === "REJECT"
+                    ? styles["status-reject"]
+                    : styles["status-pending"],
+              ].join(" ")}
+            >
+              {approvalStatusLabel(approvalStatus)}
+            </span>
+            <div className={`${styles["guts-box-title"]} ${styles["box-id"]}`}>
+              #{props.item?.id ?? ""}
+            </div>
+          </div>
         </div>
         <div className={styles["guts-box"]}>
           <div className={styles["guts-box-title"]}>ภาค</div>
@@ -134,6 +175,31 @@ export default function MoDetailPage(props: Props) {
               disabled={true}
               onChange={(e) => setRegion(e.target.value)}
               placeholder="ระบุภาคที่ปฏิบัติงาน"
+            />
+          </div>
+        </div>
+        <div
+          className={[
+            styles["guts-box"],
+            styles["approval-box"],
+            approvalBoxClass(approvalStatus),
+          ].join(" ")}
+        >
+          <div className={styles["approval-header"]}>
+            <div className={styles["guts-box-title"]}>การอนุมัติ</div>
+          </div>
+          <div
+            className={[styles["guts-field-row"], styles["full-width"]].join(
+              " ",
+            )}
+          >
+            <textarea
+              className={`${styles["guts-input-full"]} ${styles["approval-remark"]}`}
+              rows={2}
+              value={approvalRemark}
+              disabled={true}
+              onChange={(e) => setApprovalRemark(e.target.value)}
+              placeholder="หมายเหตุการอนุมัติ/ไม่อนุมัติ"
             />
           </div>
         </div>

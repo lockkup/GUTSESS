@@ -71,6 +71,27 @@ export default function MoHome(props: Props) {
     date: "",
   });
 
+  function toApprovalStatus(value?: string): "PENDING" | "APPROVED" | "REJECT" {
+    if (value === "APPROVED" || value === "REJECT" || value === "PENDING") {
+      return value;
+    }
+    return "PENDING";
+  }
+
+  function approvalStatusLabel(value?: string): string {
+    const status = toApprovalStatus(value);
+    if (status === "APPROVED") return "อนุมัติ";
+    if (status === "REJECT") return "ไม่อนุมัติ";
+    return "รออนุมัติ";
+  }
+
+  function approvalStatusClass(value?: string): string {
+    const status = toApprovalStatus(value);
+    if (status === "APPROVED") return styles["item-status-approved"];
+    if (status === "REJECT") return styles["item-status-reject"];
+    return styles["item-status-pending"];
+  }
+
   function openSearch() {
     setSearchSection(true);
     setSubView("main"); // Ensure main view is active for search section
@@ -291,8 +312,18 @@ export default function MoHome(props: Props) {
                       </div>
                       <div className={styles["location-check-body-col"]}>
                         <div className={styles["location-check-top-row"]}>
-                          <div className={styles["location-check-title"]}>
-                            {r.location ?? "-"}
+                          <div className={styles["item-title-wrap"]}>
+                            <div className={styles["location-check-title"]}>
+                              {r.location ?? "-"}
+                            </div>
+                            <span
+                              className={[
+                                styles["item-status-badge"],
+                                approvalStatusClass(r.approved_status),
+                              ].join(" ")}
+                            >
+                              {approvalStatusLabel(r.approved_status)}
+                            </span>
                           </div>
                           <p className={styles["location-check-date"]}>
                             {r.create_at
@@ -492,8 +523,18 @@ export default function MoHome(props: Props) {
                   </div>
                   <div className={styles["result-body-col"]}>
                     <div className={styles["result-top-row"]}>
-                      <div className={styles["result-title"]}>
-                        {r.location ?? "-"}
+                      <div className={styles["item-title-wrap"]}>
+                        <div className={styles["result-title"]}>
+                          {r.location ?? "-"}
+                        </div>
+                        <span
+                          className={[
+                            styles["item-status-badge"],
+                            approvalStatusClass(r.approved_status),
+                          ].join(" ")}
+                        >
+                          {approvalStatusLabel(r.approved_status)}
+                        </span>
                       </div>
                       <p className={styles["result-date"]}>
                         {r.create_at

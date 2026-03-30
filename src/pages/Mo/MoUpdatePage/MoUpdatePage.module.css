@@ -170,6 +170,7 @@
 /* MO form shell */
 .guts-Mo-layout {
   margin-top: 10px;
+  margin-bottom: 12px;
   border-radius: 20px;
   border: 2px solid rgba(2, 75, 118, 0.18);
   background: rgba(255, 255, 255, 0.78);
@@ -183,14 +184,14 @@
 
 /* When the inline action icons are hidden, use a lighter border/shadow */
 .guts-Mo-layout.icons-hidden {
-  border: 1px solid rgba(2, 75, 118, 0.06);
-  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.04);
+  border: 2px solid rgba(2, 75, 118, 0.18);
+  box-shadow: 0 14px 26px rgba(0, 0, 0, 0.1);
 }
 
 /* Explicit rule for visible state to ensure consistent look */
 .guts-Mo-layout.icons-visible {
-  border: 2px solid rgba(2, 75, 118, 0.18);
-  box-shadow: 0 14px 26px rgba(0, 0, 0, 0.1);
+  border: 2px solid rgba(2, 75, 118, 0.24);
+  box-shadow: 0 18px 34px rgba(2, 75, 118, 0.14);
 }
 
 /* box title */
@@ -209,6 +210,92 @@
   width: 100%;
   padding-right: 8px;
   box-sizing: border-box;
+}
+
+.report-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.meta-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.report-meta .box-id {
+  margin: 0;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 900;
+  border: 1px solid transparent;
+  line-height: 1;
+  white-space: nowrap;
+  word-break: keep-all;
+}
+
+.status-pending {
+  background: rgba(217, 119, 6, 0.12);
+  color: rgb(146, 64, 14);
+  border-color: rgba(217, 119, 6, 0.25);
+}
+
+.status-approved {
+  background: rgba(16, 185, 129, 0.12);
+  color: rgb(6, 95, 70);
+  border-color: rgba(16, 185, 129, 0.25);
+}
+
+.status-reject {
+  background: rgba(185, 28, 28, 0.12);
+  color: rgb(127, 29, 29);
+  border-color: rgba(185, 28, 28, 0.25);
+}
+
+.approval-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.approval-header .guts-box-title {
+  margin-bottom: 0;
+}
+
+.guts-box.approval-box {
+  border-width: 1px;
+}
+
+.guts-box.approval-box-pending {
+  border: 1px solid rgba(217, 119, 6, 0.28);
+  background: rgba(217, 119, 6, 0.03);
+  box-shadow: inset 0 0 0 1px rgba(217, 119, 6, 0.03);
+}
+
+.guts-box.approval-box-approved {
+  border: 1px solid rgba(16, 185, 129, 0.28);
+  background: rgba(16, 185, 129, 0.03);
+  box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.03);
+}
+
+.guts-box.approval-box-reject {
+  border: 1px solid rgba(185, 28, 28, 0.28);
+  background: rgba(185, 28, 28, 0.03);
+  box-shadow: inset 0 0 0 1px rgba(185, 28, 28, 0.06);
 }
 
 .guts-box {
@@ -483,6 +570,69 @@
   max-width: 100% !important;
   box-sizing: border-box;
 }
+
+.approval-select {
+  max-width: 60%;
+  width: 100%;
+  height: 35px;
+  border-radius: 7px;
+  padding: 8px 12px;
+  font-weight: 700;
+  font-size: 15px;
+  border: 1px solid rgba(2, 75, 118, 0.12);
+  background: transparent;
+  box-shadow: none;
+}
+
+.approval-select-pending {
+  background: rgba(217, 119, 6, 0.08);
+  border-color: rgba(217, 119, 6, 0.3);
+  color: rgb(146, 64, 14);
+}
+
+.approval-select-approved {
+  background: rgba(16, 185, 129, 0.08);
+  border-color: rgba(16, 185, 129, 0.3);
+  color: rgb(6, 95, 70);
+}
+
+.approval-select-reject {
+  background: rgba(185, 28, 28, 0.08);
+  border-color: rgba(185, 28, 28, 0.3);
+  color: rgb(127, 29, 29);
+}
+
+/* Stronger selectors to beat generic `.guts-field-row select` border rules */
+.guts-field-row .approval-select.approval-select-pending {
+  border-color: rgba(217, 119, 6, 0.22);
+}
+
+.guts-field-row .approval-select.approval-select-approved {
+  border-color: rgba(16, 185, 129, 0.22);
+}
+
+.guts-field-row .approval-select.approval-select-reject {
+  border-color: rgba(185, 28, 28, 0.22);
+}
+
+.approval-remark {
+  min-height: 52px !important;
+  background: transparent !important;
+}
+
+/* Status border color for approval remark textarea */
+.guts-box.approval-box-pending .approval-remark {
+  border-color: rgba(217, 119, 6, 0.22) !important;
+}
+
+.guts-box.approval-box-approved .approval-remark {
+  border-color: rgba(16, 185, 129, 0.22) !important;
+}
+
+.guts-box.approval-box-reject .approval-remark {
+  border-color: rgba(185, 28, 28, 0.22) !important;
+}
+
 
 /* ensure detail-box textareas use the same full-width styling */
 .guts-detail-box .guts-input-full,

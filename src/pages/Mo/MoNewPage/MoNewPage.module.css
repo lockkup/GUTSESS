@@ -67,6 +67,7 @@
 /* MO form shell */
 .guts-Mo-layout {
   margin-top: 10px;
+  margin-bottom: 12px;
   border-radius: 20px;
   border: 2px solid rgba(2, 75, 118, 0.18);
   background: rgba(255, 255, 255, 0.78);

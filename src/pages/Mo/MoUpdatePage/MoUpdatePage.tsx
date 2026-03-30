@@ -19,6 +19,8 @@ type Props = {
   item?: SectorReport;
 };
 
+type ApprovalStatus = "PENDING" | "APPROVED" | "REJECT";
+
 export default function MoUpdatePage(props: Props) {
   console.log(props);
   const [date] = useState(() => new Date().toLocaleDateString("th-TH"));
@@ -74,6 +76,34 @@ export default function MoUpdatePage(props: Props) {
   const [showActionIcons, setShowActionIcons] = useState(false);
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [successTitle, setSuccessTitle] = useState("อัปเดตรายงานสำเร็จ!");
+  const [successDescription, setSuccessDescription] = useState(
+    "ระบบได้ทำการอัปเดตข้อมูลของคุณเรียบร้อยแล้ว",
+  );
+  const [approvalStatus, setApprovalStatus] = useState<ApprovalStatus>("PENDING");
+  const [approvalRemark, setApprovalRemark] = useState("");
+
+  const currentEmployee = useStore((state) => state.currentEmployee);
+  const isManager = currentEmployee?.role_id === 2;
+
+  function toApprovalStatus(value?: string): ApprovalStatus {
+    if (value === "APPROVED" || value === "REJECT" || value === "PENDING") {
+      return value;
+    }
+    return "PENDING";
+  }
+
+  function approvalStatusLabel(value: ApprovalStatus): string {
+    if (value === "APPROVED") return "อนุมัติแล้ว";
+    if (value === "REJECT") return "ไม่อนุมัติ";
+    return "รออนุมัติ";
+  }
+
+  function approvalBoxClass(value: ApprovalStatus): string {
+    if (value === "APPROVED") return styles["approval-box-approved"];
+    if (value === "REJECT") return styles["approval-box-reject"];
+    return styles["approval-box-pending"];
+  }
 
   useEffect(() => {
     const it = props.item;
@@ -125,6 +155,8 @@ export default function MoUpdatePage(props: Props) {
     );
     setTrainNote(it.other_training ?? "");
     setOtherNote(it.other_extral ?? "");
+    setApprovalStatus(toApprovalStatus(it.approved_status));
+    setApprovalRemark(it.approved_remark ?? "");
   }, [props.item]);
 
   const { updateReport, deleteReport } = useStore();
@@ -154,12 +186,19 @@ export default function MoUpdatePage(props: Props) {
       other_training: trainNote,
       other_training_count: Number(trainCount) || 0,
       other_extral: otherNote,
-      updated_by: "600001", // Testing
+      ...(isManager
+        ? {
+            approved_status: approvalStatus,
+            approved_remark: approvalRemark,
+          }
+        : {}),
     };
 
     updateReport(props.item.id, payload)
       .then(() => {
         setShowActionIcons(false);
+        setSuccessTitle("อัปเดตรายงานสำเร็จ!");
+        setSuccessDescription("ระบบได้ทำการอัปเดตข้อมูลของคุณเรียบร้อยแล้ว");
         setShowSuccess(true);
       })
       .catch((err) => {
@@ -180,8 +219,9 @@ export default function MoUpdatePage(props: Props) {
 
     deleteReport(props.item.id)
       .then(() => {
-        alert("ลบรายการเรียบร้อยแล้ว");
-        if (props.onCancel) props.onCancel();
+        setSuccessTitle("ลบรายการสำเร็จ!");
+        setSuccessDescription("ระบบได้ลบรายการนี้ออกจากระบบเรียบร้อยแล้ว");
+        setShowSuccess(true);
       })
       .catch((err) => {
         alert(`เกิดข้อผิดพลาดในการลบ: ${err}`);
@@ -250,15 +290,31 @@ export default function MoUpdatePage(props: Props) {
           else window.history.back();
         }}
         variant="success"
-        title="อัปเดตรายงานสำเร็จ!"
-        description="ระบบได้ทำการอัปเดตข้อมูลของคุณเรียบร้อยแล้ว"
+        title={successTitle}
+        description={successDescription}
       />
       <form
         className={`${styles["guts-Mo-layout"]} ${showActionIcons ? styles["icons-visible"] : styles["icons-hidden"]}`}
         onSubmit={onSubmit}
       >
-        <div className={`${styles["guts-box-title"]} ${styles["box-id"]}`}>
-          #{props.item?.id ?? ""}
+        <div className={styles["report-meta"]}>
+          <div className={styles["meta-right"]}>
+            <span
+              className={[
+                styles["status-badge"],
+                approvalStatus === "APPROVED"
+                  ? styles["status-approved"]
+                  : approvalStatus === "REJECT"
+                    ? styles["status-reject"]
+                    : styles["status-pending"],
+              ].join(" ")}
+            >
+              {approvalStatusLabel(approvalStatus)}
+            </span>
+            <div className={`${styles["guts-box-title"]} ${styles["box-id"]}`}>
+              #{props.item?.id ?? ""}
+            </div>
+          </div>
         </div>
         <div className={styles["guts-box"]}>
           <div className={styles["guts-box-title"]}>ภาค</div>
@@ -273,6 +329,59 @@ export default function MoUpdatePage(props: Props) {
               disabled={!showActionIcons}
               onChange={(e) => setRegion(e.target.value)}
               placeholder="ระบุภาคที่ปฏิบัติงาน"
+            />
+          </div>
+        </div>
+        <div
+          className={[
+            styles["guts-box"],
+            styles["approval-box"],
+            approvalBoxClass(approvalStatus),
+          ].join(" ")}
+        >
+          <div className={styles["approval-header"]}>
+            <div className={styles["guts-box-title"]}>การอนุมัติ</div>
+          </div>
+          {isManager ? (
+            <div
+              className={[styles["guts-field-row"], styles["two-col"]].join(
+                " ",
+              )}
+            >
+              <label className={styles["guts-label"]}>สถานะ</label>
+              <select
+                className={[
+                  styles["approval-select"],
+                  approvalStatus === "APPROVED"
+                    ? styles["approval-select-approved"]
+                    : approvalStatus === "REJECT"
+                      ? styles["approval-select-reject"]
+                      : styles["approval-select-pending"],
+                ].join(" ")}
+                value={approvalStatus}
+                disabled={!showActionIcons}
+                onChange={(e) =>
+                  setApprovalStatus(toApprovalStatus(e.target.value))
+                }
+              >
+                <option value="PENDING">รออนุมัติ</option>
+                <option value="APPROVED">อนุมัติแล้ว</option>
+                <option value="REJECT">ไม่อนุมัติ</option>
+              </select>
+            </div>
+          ) : null}
+          <div
+            className={[styles["guts-field-row"], styles["full-width"]].join(
+              " ",
+            )}
+          >
+            <textarea
+              className={`${styles["guts-input-full"]} ${styles["approval-remark"]}`}
+              rows={2}
+              value={approvalRemark}
+              disabled={!isManager || !showActionIcons}
+              onChange={(e) => setApprovalRemark(e.target.value)}
+              placeholder="หมายเหตุการอนุมัติ/ไม่อนุมัติ"
             />
           </div>
         </div>

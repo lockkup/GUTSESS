@@ -10,7 +10,13 @@ export const API_CONFIG = {
         'Content-Type': 'application/json',
         'Accept': 'application/json'
     },
-    getAuthHeader: () => ({
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-    })
+    getAuthHeader: () => {
+        const token = localStorage.getItem('token');
+        const employeeCode = localStorage.getItem('emp_code') || '';
+
+        return {
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+            ...(employeeCode ? { 'X-Employee-Code': employeeCode } : {}),
+        };
+    }
 };

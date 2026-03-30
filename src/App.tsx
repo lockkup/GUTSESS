@@ -62,6 +62,9 @@ export default function App() {
       return;
     }
 
+    // Keep current actor identity for backend audit/authorization headers.
+    localStorage.setItem("emp_code", empCode);
+    localStorage.setItem("token", empCode); // dev fallback until real auth token is integrated
     reset("home");
   }
 
@@ -72,6 +75,8 @@ export default function App() {
 
   function onLogout() {
     setPin("");
+    localStorage.removeItem("emp_code");
+    localStorage.removeItem("token");
     reset("login");
   }
 

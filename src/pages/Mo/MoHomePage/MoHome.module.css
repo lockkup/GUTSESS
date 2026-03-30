@@ -164,6 +164,47 @@
   line-height: 1;
 }
 
+.item-title-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.item-status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 10px;
+  font-weight: 900;
+  border: 1px solid transparent;
+  line-height: 1;
+  white-space: nowrap;
+  word-break: keep-all;
+  flex-shrink: 0;
+}
+
+.item-status-pending {
+  background: rgba(217, 119, 6, 0.1);
+  color: rgb(146, 64, 14);
+  border-color: rgba(217, 119, 6, 0.25);
+}
+
+.item-status-approved {
+  background: rgba(16, 185, 129, 0.1);
+  color: rgb(6, 95, 70);
+  border-color: rgba(16, 185, 129, 0.25);
+}
+
+.item-status-reject {
+  background: rgba(185, 28, 28, 0.1);
+  color: rgb(127, 29, 29);
+  border-color: rgba(185, 28, 28, 0.25);
+}
+
 .location-check-date {
   font-size: 12px;
   color: #6b7280;
@@ -211,7 +252,8 @@
 
 /* stronger selector in case other layout rules override the simple class */
 .guts-back-outer.mo-back-home {
-  margin-top: 100px !important;
+  margin-top: 10px !important;
+  padding-bottom: max(8px, env(safe-area-inset-bottom));
 }
 
 .guts-back-outer .guts-btn.mo-back-home-btn {
@@ -286,7 +328,7 @@
 
 /* Buttons used on the Mo home screen (Add New / Search) */
 .guts-mo-btn {
-  margin: 20px 0;
+  margin: 10px 0;
   display: flex;
   justify-content: center; /* center buttons in their container */
 }
