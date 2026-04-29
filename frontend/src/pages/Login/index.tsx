@@ -4,7 +4,7 @@ import Header from "@/layout/Header";
 import ForgotPasswordModal from "@/components/ForgotPasswordModal";
 import { User, Lock, Eye, EyeOff } from "lucide-react";
 
-import styles from "./login.module.css";
+import styles from "./Login.module.css";
 
 type Props = {
   empCode: string;
@@ -32,7 +32,6 @@ export default function Login({
 
   return (
     <main className={styles["guts-bg"]}>
-      {/* ✅ ใช้ Header ร่วมทุกหน้า */}
       <div
         className={styles["guts-app-header"]}
         aria-label="Employee Self Service"
@@ -50,7 +49,6 @@ export default function Login({
             if (canSubmit) onSubmit();
           }}
         >
-          {/* Employee */}
           <div>
             <div className={styles["guts-label"]}>รหัสพนักงาน (6 หลัก)</div>
 
@@ -73,7 +71,6 @@ export default function Login({
             </div>
           </div>
 
-          {/* PIN */}
           <div>
             <div className={styles["guts-label"]}>กรอกรหัส ( PIN 6 หลัก )</div>
 
