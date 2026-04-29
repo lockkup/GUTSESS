@@ -1,0 +1,79 @@
+react-doctor v0.0.30
+
+[32m✔[39m Select projects to scan [2m›[22m guts-ess
+[2mScanning D:\Projects\guts-ess\frontend...[22m
+
+
+  [31m✗[39m State reset in useEffect — use a key prop to reset component state when props change
+[2m    For derived state, compute inline: `const x = fn(dep)`. For state resets on prop change, use a key prop: `<Component key={prop} />`. See https://react.dev/learn/you-might-not-need-an-effect[22m
+[2m    src/pages/FaceVerify1.tsx: 64[22m
+
+  [33m⚠[39m useEffect simulating an event handler — move logic to an actual event handler instead[33m (2)[39m
+[2m    Move the conditional logic into onClick, onChange, or onSubmit handlers directly[22m
+[2m    src/components/ForgotPasswordModal.tsx: 22[22m
+[2m    src/components/FirstLoginModal.tsx: 21[22m
+
+  [33m⚠[39m Enforce a clickable non-interactive element has at least one keyboard event listener.[33m (2)[39m
+[2m    Visible, non-interactive elements with click handlers must have one of `keyup`, `keydown`, or `keypress` listener.[22m
+[2m    src/components/SuccessModal.tsx: 44, 54[22m
+
+  [33m⚠[39m Static HTML elements with event handlers require a role.[33m (3)[39m
+[2m    Add a role attribute to this element, or use a semantic HTML element instead.[22m
+[2m    src/components/SuccessModal.tsx: 54[22m
+[2m    src/components/OutOfAreaModal.tsx: 50[22m
+[2m    src/components/CameraModal.tsx: 340[22m
+
+  [33m⚠[39m preventDefault() on <form> onSubmit — form won't work without JavaScript. Consider using a server action for progressive enhancement
+[2m    Use `<form action={serverAction}>` (works without JS) or `<button>` instead of `<a>` with preventDefault[22m
+[2m    src/pages/Login/index.tsx: 46[22m
+
+  [33m⚠[39m Component "FaceVerify" has 8 useState calls — consider useReducer for related state[33m (4)[39m
+[2m    Group related state: `const [state, dispatch] = useReducer(reducer, { field1, field2, ... })`[22m
+[2m    src/pages/FaceVerify1.tsx: 31[22m
+[2m    src/components/CameraModal.tsx: 58[22m
+[2m    src/pages/Attendance/FaceVerify/index.tsx: 161[22m
+[2m    src/App.tsx: 13[22m
+
+  [33m⚠[39m Component "FaceVerify" is 429 lines — consider breaking it into smaller focused components[33m (3)[39m
+[2m    Extract logical sections into focused components: `<UserHeader />`, `<UserActions />`, etc.[22m
+[2m    src/pages/FaceVerify1.tsx: 25[22m
+[2m    src/components/CameraModal.tsx: 52[22m
+[2m    src/pages/Attendance/FaceVerify/index.tsx: 154[22m
+
+  [33m⚠[39m 6 setState calls in a single useEffect — consider using useReducer or deriving state[33m (6)[39m
+[2m    Combine into useReducer: `const [state, dispatch] = useReducer(reducer, initialState)`[22m
+[2m    src/pages/FaceVerify1.tsx: 64, 74[22m
+[2m    src/components/CameraModal.tsx: 77, 119, 206[22m
+[2m    src/pages/Attendance/FaceVerify/index.tsx: 193[22m
+
+  [33m⚠[39m transition: "all" animates every property including layout — list only the properties you animate[33m (2)[39m
+[2m    List specific properties: `transition: "opacity 200ms, transform 200ms"` — or in Tailwind use `transition-colors`, `transition-opacity`, or `transition-transform`[22m
+[2m    src/pages/FaceVerify1.tsx: 404[22m
+[2m    src/pages/Attendance/FaceVerify/index.tsx: 454[22m
+
+  [33m⚠[39m 3 sequential await statements that appear independent — use Promise.all() for parallel execution
+[2m    Use `const [a, b] = await Promise.all([fetchA(), fetchB()])` to run independent operations concurrently[22m
+[2m    src/components/CameraModal.tsx: 82[22m
+
+  [33m⚠[39m Unused file
+[2m    This file is not imported by any other file in the project.[22m
+[2m    src\pages\FaceVerify1.tsx[22m
+
+  [2m┌───────────────────────────────────────────────────────┐[22m
+  [2m│[22m [32m┌─────┐[39m                                               [2m│[22m
+  [2m│[22m [32m│ ◠ ◠ │[39m                                               [2m│[22m
+  [2m│[22m [32m│  ▽  │[39m                                               [2m│[22m
+  [2m│[22m [32m└─────┘[39m                                               [2m│[22m
+  [2m│[22m React Doctor [2m(www.react.doctor)[22m                       [2m│[22m
+  [2m│[22m                                                       [2m│[22m
+  [2m│[22m [32m91[39m / 100  [32mGreat[39m                                       [2m│[22m
+  [2m│[22m                                                       [2m│[22m
+  [2m│[22m [32m██████████████████████████████████████████████[39m[2m░░░░[22m    [2m│[22m
+  [2m│[22m                                                       [2m│[22m
+  [2m│[22m [31m✗ 1 error[39m  [33m⚠ 25 warnings[39m  [2macross 10/17 files[22m  [2min 2.7s[22m [2m│[22m
+  [2m└───────────────────────────────────────────────────────┘[22m
+
+[2m  Full diagnostics written to C:\Users\guts\AppData\Local\Temp\react-doctor-e5a337b8-b0c3-47ee-b5b9-a16b6d7f0b94[22m
+
+[2m  Share your results: [36mhttps://www.react.doctor/share?p=guts-ess&s=91&e=1&w=25&f=10[39m[22m
+

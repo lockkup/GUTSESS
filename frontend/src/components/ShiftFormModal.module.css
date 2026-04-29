@@ -1,0 +1,288 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.28);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 1000;
+}
+
+.modal {
+  width: 100%;
+  max-width: 980px;
+  max-height: 90vh;
+  background: #ffffff;
+  border-radius: 24px;
+  box-shadow: 0 24px 64px rgba(16, 24, 40, 0.18);
+  overflow: hidden;
+  border: 1px solid #e4e7ec;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid #eaecf0;
+  background: #ffffff;
+}
+
+.title {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 800;
+  color: #101828;
+}
+
+.closeButton {
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 10px;
+  background: #f2f4f7;
+  color: #344054;
+  font-size: 28px;
+  cursor: pointer;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(90vh - 81px);
+}
+
+.content {
+  padding: 24px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.section {
+  border: 1px solid #eaecf0;
+  border-radius: 18px;
+  padding: 18px;
+  background: #fcfcfd;
+}
+
+.sectionTitle {
+  margin: 0 0 16px;
+  font-size: 24px;
+  font-weight: 800;
+  color: #101828;
+}
+
+.grid2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.label {
+  font-size: 16px;
+  font-weight: 700;
+  color: #344054;
+}
+
+.input,
+.readonlyInput {
+  width: 100%;
+  height: 46px;
+  border: 1px solid #d0d5dd;
+  border-radius: 12px;
+  padding: 0 14px;
+  outline: none;
+  font-size: 16px;
+  color: #101828;
+  background: #ffffff;
+  box-sizing: border-box;
+}
+
+.readonlyInput {
+  background: #f2f4f7;
+  color: #475467;
+}
+
+.switchField {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 46px;
+  padding: 0 4px 0 0;
+}
+
+.switch {
+  position: relative;
+  display: inline-flex;
+  width: 54px;
+  height: 30px;
+}
+
+.switchInput {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.switchSlider {
+  position: absolute;
+  inset: 0;
+  cursor: pointer;
+  background: #d0d5dd;
+  border-radius: 999px;
+  transition: 0.2s ease;
+}
+
+.switchSlider::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  width: 22px;
+  height: 22px;
+  background: #ffffff;
+  border-radius: 50%;
+  transition: 0.2s ease;
+  box-shadow: 0 2px 8px rgba(16, 24, 40, 0.16);
+}
+
+.switchInput:checked + .switchSlider {
+  background: #2563eb;
+}
+
+.switchInput:checked + .switchSlider::before {
+  transform: translateX(24px);
+}
+
+.footer {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-start;
+  padding: 18px 24px 24px;
+  border-top: 1px solid #eaecf0;
+  background: #ffffff;
+}
+
+.saveButton,
+.resetButton,
+.cancelButton {
+  height: 46px;
+  padding: 0 18px;
+  border-radius: 12px;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.saveButton {
+  border: 1px solid #2563eb;
+  background: #2563eb;
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.resetButton {
+  border: 1px solid #d0d5dd;
+  background: #ffffff;
+  color: #344054;
+  font-weight: 700;
+}
+
+.cancelButton {
+  border: 1px solid #fda29b;
+  background: #fff5f5;
+  color: #b42318;
+  font-weight: 800;
+}
+.timeInput {
+  width: 100%;
+  height: 46px;
+  border: 1px solid #d0d5dd;
+  border-radius: 12px;
+  padding: 0 14px;
+  outline: none;
+  font-size: 16px;
+  color: #101828;
+  background: #ffffff;
+  box-sizing: border-box;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+.input:focus,
+.timeInput:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.input[type="date"] {
+  color-scheme: light;
+}
+
+.closeButton:hover,
+.saveButton:hover,
+.resetButton:hover,
+.cancelButton:hover {
+  opacity: 0.9;
+}
+
+.saveButton:active,
+.resetButton:active,
+.cancelButton:active,
+.closeButton:active {
+  transform: translateY(1px);
+}
+
+@media (max-width: 768px) {
+  .overlay {
+    padding: 12px;
+    align-items: flex-start;
+  }
+
+  .modal {
+    max-height: 96vh;
+    border-radius: 18px;
+  }
+
+  .title {
+    font-size: 24px;
+  }
+
+  .content {
+    padding: 16px;
+  }
+
+  .section {
+    padding: 14px;
+  }
+
+  .sectionTitle {
+    font-size: 20px;
+  }
+
+  .grid2 {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .footer {
+    flex-direction: column;
+    padding: 16px;
+  }
+
+  .saveButton,
+  .resetButton,
+  .cancelButton {
+    width: 100%;
+  }
+}
