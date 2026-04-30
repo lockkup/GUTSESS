@@ -67,7 +67,6 @@ python-jose==3.5.0
 python-multipart==0.0.22
 PyYAML==6.0.3
 requests==2.33.1
-retina-face==0.0.17
 rich==15.0.0
 rsa==4.9.1
 setuptools==82.0.1
