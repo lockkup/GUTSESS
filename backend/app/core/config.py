@@ -61,5 +61,29 @@ class Settings(BaseSettings):
             f"@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}?charset=utf8mb4"
         )
 
+    @property
+    def database_url_masked(self) -> str:
+        if self.DB_DRIVER == "sqlite":
+            return f"sqlite:///./{self.SQLITE_DB_FILE}"
+
+        masked_password = "***" if self.DB_PASSWORD else ""
+        return (
+            f"mysql+pymysql://{self.DB_USER}:{masked_password}"
+            f"@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}?charset=utf8mb4"
+        )
+
 
 settings = Settings()
+
+print("========== SETTINGS DEBUG ==========")
+print("APP_ENV =", repr(settings.APP_ENV))
+print("APP_HOST =", repr(settings.APP_HOST))
+print("APP_PORT =", repr(settings.APP_PORT))
+print("DB_DRIVER =", repr(settings.DB_DRIVER))
+print("DB_HOST =", repr(settings.DB_HOST))
+print("DB_PORT =", repr(settings.DB_PORT))
+print("DB_NAME =", repr(settings.DB_NAME))
+print("DB_USER =", repr(settings.DB_USER))
+print("DATABASE_URL =", repr(settings.database_url_masked))
+print("FRONTEND_ORIGIN =", repr(settings.FRONTEND_ORIGIN))
+print("====================================")
