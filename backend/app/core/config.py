@@ -25,9 +25,9 @@ class Settings(BaseSettings):
 
     SQLITE_DB_FILE: str = "guts_ess_attendance_dev.db"
 
-    JWT_SECRET_KEY: str = "your_super_secret_jwt_key_change_this_now_123456789"
+    JWT_SECRET_KEY: str = "change_this_secret_key"
     JWT_ALGORITHM: str = "HS256"
-    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -36,11 +36,18 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_settings(self) -> "Settings":
+        unsafe_jwt_secrets = {
+            "",
+            "change_this_secret_key",
+            "your_super_secret_jwt_key_change_this_now_123456789",
+        }
+
         if (
             self.APP_ENV.lower() == "production"
-            and self.JWT_SECRET_KEY == "change_this_secret_key"
+            and self.JWT_SECRET_KEY in unsafe_jwt_secrets
         ):
             raise ValueError("JWT_SECRET_KEY must be changed in production")
+
         return self
 
     @property
