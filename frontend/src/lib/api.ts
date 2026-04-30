@@ -79,6 +79,8 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     requestHeaders.set("Content-Type", "application/json");
   }
 
+  requestHeaders.set("ngrok-skip-browser-warning", "1");
+
   if (IS_DEV) {
     console.log("[API REQUEST]", {
       method: rest.method ?? "GET",
