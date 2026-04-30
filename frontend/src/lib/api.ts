@@ -56,14 +56,17 @@ async function parseResponseBody(response: Response): Promise<unknown> {
     return undefined;
   }
 
-  const contentType = response.headers.get("Content-Type") ?? "";
+  const raw = await response.text();
 
-  if (contentType.includes("application/json")) {
-    return response.json();
+  if (!raw) {
+    return undefined;
   }
 
-  const text = await response.text();
-  return text || undefined;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -74,6 +77,10 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
   const isFormData = body instanceof FormData;
   const hasBody = body !== undefined && body !== null;
+
+  if (!requestHeaders.has("Accept")) {
+    requestHeaders.set("Accept", "application/json");
+  }
 
   if (hasBody && !isFormData && !requestHeaders.has("Content-Type")) {
     requestHeaders.set("Content-Type", "application/json");
@@ -106,6 +113,12 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
       ok: response.ok,
       data: responseData,
     });
+  }
+
+  if (typeof responseData === "string" && responseData.trim().startsWith("<")) {
+    throw new Error(
+      "API returned HTML instead of JSON. ตรวจสอบ ngrok, backend, หรือ VITE_API_BASE_URL"
+    );
   }
 
   if (!response.ok) {
