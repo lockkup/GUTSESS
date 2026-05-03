@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.api.endpoints import api_router
-from app.core import Base, engine, settings
+from app.core import settings
 from app.models import (  # noqa: F401
     AuditLog,
     Employees,
@@ -21,9 +22,17 @@ from app.models import (  # noqa: F401
 )
 
 
+def parse_allowed_origins(origin_value: str | None) -> list[str]:
+    if not origin_value:
+        return []
+
+    return [origin.strip() for origin in origin_value.split(",") if origin.strip()]
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    Base.metadata.create_all(bind=engine)
+    # ยังไม่แตะ database ตอน start app
+    # ค่อยเปิด logic create_all หรือ migration ตอน DB พร้อมจริง
     yield
 
 
@@ -32,16 +41,21 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+allowed_origins = parse_allowed_origins(settings.FRONTEND_ORIGIN)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.FRONTEND_ORIGIN],
-    allow_origin_regex=r"https://.*\.vercel\.app",
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+BASE_DIR = Path(__file__).resolve().parent.parent
+UPLOAD_DIR = BASE_DIR / "uploads"
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 
 
 @app.get("/")
