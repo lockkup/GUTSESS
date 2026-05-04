@@ -11,6 +11,11 @@ const IS_DEV = import.meta.env.DEV;
 
 function buildUrl(path: string, params?: QueryParams) {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+
+  if (!API_BASE_URL) {
+    throw new Error("VITE_API_BASE_URL is not set");
+  }
+
   const url = new URL(`${API_BASE_URL}${normalizedPath}`);
 
   if (params) {
@@ -86,7 +91,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     requestHeaders.set("Content-Type", "application/json");
   }
 
-  requestHeaders.set("ngrok-skip-browser-warning", "1");
+  requestHeaders.set("bypass-tunnel-reminder", "1");
 
   if (IS_DEV) {
     console.log("[API REQUEST]", {
@@ -117,7 +122,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
   if (typeof responseData === "string" && responseData.trim().startsWith("<")) {
     throw new Error(
-      "API returned HTML instead of JSON. ตรวจสอบ ngrok, backend, หรือ VITE_API_BASE_URL"
+      "API returned HTML instead of JSON. ตรวจสอบ localtunnel, backend, หรือ VITE_API_BASE_URL"
     );
   }
 
