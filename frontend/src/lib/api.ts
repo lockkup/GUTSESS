@@ -91,7 +91,9 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     requestHeaders.set("Content-Type", "application/json");
   }
 
-  requestHeaders.set("bypass-tunnel-reminder", "1");
+  if (API_BASE_URL.includes(".loca.lt")) {
+    requestHeaders.set("bypass-tunnel-reminder", "1");
+  }
 
   if (IS_DEV) {
     console.log("[API REQUEST]", {
@@ -122,7 +124,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
   if (typeof responseData === "string" && responseData.trim().startsWith("<")) {
     throw new Error(
-      "API returned HTML instead of JSON. ตรวจสอบ localtunnel, backend, หรือ VITE_API_BASE_URL"
+      "API returned HTML instead of JSON. ตรวจสอบ backend, tunnel หรือ VITE_API_BASE_URL"
     );
   }
 
