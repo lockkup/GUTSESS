@@ -1,4 +1,3 @@
-// src/pages/Attendance/CheckInOut/index.tsx
 import { useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -9,6 +8,8 @@ import {
 
 import Header from "@/layout/Header";
 import BackButton from "@/components/BackButton";
+import CheckInOutModal from "@/components/CheckInOutModal";
+import { timeRecordService } from "@/services/timeRecord.service";
 
 import styles from "./CheckInOut.module.css";
 
@@ -16,7 +17,6 @@ type Props = {
   empCode: string;
   displayName?: string;
 
-  // เวลาเข้างาน/ออกงานล่าสุด (ของวันนี้หรือครั้งล่าสุด) ส่งเป็น ISO string
   lastInAt?: string | null;
   lastOutAt?: string | null;
 
@@ -59,6 +59,8 @@ export default function CheckInOut({
   onViewHistory,
 }: Props) {
   const [now, setNow] = useState(() => new Date());
+  const [busy, setBusy] = useState(false);
+  const [checkInOutModalOpen, setCheckInOutModalOpen] = useState(false);
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
@@ -71,6 +73,28 @@ export default function CheckInOut({
   const nowDate = fmtThaiDate(now);
   const nowTime = fmtTimeHHMM(now);
 
+  async function handleCheckInClick() {
+    if (busy) return;
+
+    setBusy(true);
+    try {
+      const openRecord =
+        await timeRecordService.getOpenTimeRecordByEmployeeCode(empCode);
+
+      if (openRecord) {
+        setCheckInOutModalOpen(true);
+        return;
+      }
+
+      onCheckIn();
+    } catch (error) {
+      console.error("handleCheckInClick error:", error);
+      onCheckIn();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <main className="guts-bg">
       <div className="guts-home">
@@ -79,7 +103,6 @@ export default function CheckInOut({
 
           <h2 className={styles.attTitle}>ลงเวลาเข้า-ออกงาน</h2>
 
-          {/* ===== Card สรุป เข้างาน/ออกงาน ===== */}
           <div
             className={styles.summaryCard}
             role="status"
@@ -112,13 +135,12 @@ export default function CheckInOut({
             </div>
           </div>
 
-          {/* ===== Card เวลาใหญ่ + ปุ่ม ===== */}
           <div className={styles.actionCard} aria-label="ลงเวลา">
-
             <button
               type="button"
               className={`${styles.btn} ${styles.btnIn}`}
-              onClick={onCheckIn}
+              onClick={() => void handleCheckInClick()}
+              disabled={busy}
             >
               <span className={styles.btnText}>
                 <span className={styles.btnSub}>กดเข้างาน</span>
@@ -132,7 +154,7 @@ export default function CheckInOut({
               <div className={styles.nowDate}>{nowDate}</div>
               <div className={styles.nowTime}>{nowTime} น.</div>
             </div>
-            
+
             <button
               type="button"
               className={`${styles.btn} ${styles.btnOut}`}
@@ -146,7 +168,6 @@ export default function CheckInOut({
               </span>
             </button>
 
-            {/* ยังคงใช้ของเดิมจาก index.css เพื่อไม่กระทบหน้าอื่น */}
             <div className="guts-fv-bottom">
               <BackButton onClick={onBack} className="guts-fv-backBtn" />
             </div>
@@ -161,6 +182,11 @@ export default function CheckInOut({
           </div>
         </section>
       </div>
+
+      <CheckInOutModal
+        open={checkInOutModalOpen}
+        onClose={() => setCheckInOutModalOpen(false)}
+      />
     </main>
   );
 }
