@@ -37,7 +37,7 @@ export type UpdatePayload = {
   face_embedding?: string;
 };
 
-const BASE_PATH = "/face-profiles";
+const BASE_PATH = "/api/face-profiles";
 
 export async function listFaceProfiles(params: ListParams = {}) {
   return api.get<FaceProfile[]>(BASE_PATH, params);
