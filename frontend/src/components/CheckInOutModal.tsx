@@ -19,7 +19,7 @@ export default function CheckInOutModal({ open, onClose }: Props) {
       >
         <div className={styles.title}>มีการลงเวลาเข้างานค้างไว้แล้วในระบบ</div>
         <div className={styles.message}>
-          กรุณาออกงานรายการเดิมก่อน แล้วจึงลงเวลาเข้างานใหม่
+          กรุณากดออกงาน
         </div>
 
         <button
