@@ -665,6 +665,11 @@ export default function FaceVerify({
     setBusy(true);
     setErr("");
 
+    setLocFix(null);
+    setLocHint("");
+    setOutModalOpen(false);
+    setLocStatus("idle");
+
     try {
       const res = await checkLocationGate();
 
