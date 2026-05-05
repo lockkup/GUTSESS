@@ -34,6 +34,8 @@ export default function Home({
   onGoLeaveShifts,
   onGoFaceProfiles,
 }: Props) {
+  const isAdmin = empCode === "036259";
+
   return (
     <main className="guts-bg">
       <div className={styles.home}>
@@ -56,58 +58,62 @@ export default function Home({
               </div>
             </button>
 
-            <button
-              type="button"
-              className={styles.menuBtn}
-              onClick={onGoLeaveShifts}
-            >
-              <div className={styles.menuBox}>
-                <div className={styles.iconWrap} aria-hidden="true">
-                  <FontAwesomeIcon className={styles.fa} icon={faBed} />
-                </div>
-                <div className={styles.text}>แก้ไขข้อมูลกะงาน</div>
-              </div>
-            </button>
+            {isAdmin && (
+              <>
+                <button
+                  type="button"
+                  className={styles.menuBtn}
+                  onClick={onGoLeaveShifts}
+                >
+                  <div className={styles.menuBox}>
+                    <div className={styles.iconWrap} aria-hidden="true">
+                      <FontAwesomeIcon className={styles.fa} icon={faBed} />
+                    </div>
+                    <div className={styles.text}>แก้ไขข้อมูลกะงาน</div>
+                  </div>
+                </button>
 
-            <button
-              type="button"
-              className={styles.menuBtn}
-              onClick={onGoFaceProfiles}
-            >
-              <div className={styles.menuBox}>
-                <div className={styles.iconWrap} aria-hidden="true">
-                  <FontAwesomeIcon className={styles.fa} icon={faUsers} />
-                </div>
-                <div className={styles.text}>เพิ่มข้อมูลใบหน้าพนักงาน</div>
-              </div>
-            </button>
+                <button
+                  type="button"
+                  className={styles.menuBtn}
+                  onClick={onGoFaceProfiles}
+                >
+                  <div className={styles.menuBox}>
+                    <div className={styles.iconWrap} aria-hidden="true">
+                      <FontAwesomeIcon className={styles.fa} icon={faUsers} />
+                    </div>
+                    <div className={styles.text}>เพิ่มข้อมูลใบหน้าพนักงาน</div>
+                  </div>
+                </button>
 
-            <button type="button" className={styles.menuBtn} disabled>
-              <div className={styles.menuBox}>
-                <div className={styles.iconWrap} aria-hidden="true">
-                  <FontAwesomeIcon className={styles.fa} icon={faGavel} />
-                </div>
-                <div className={styles.text}>ผิดข้อปฏิบัติ</div>
-              </div>
-            </button>
+                <button type="button" className={styles.menuBtn} disabled>
+                  <div className={styles.menuBox}>
+                    <div className={styles.iconWrap} aria-hidden="true">
+                      <FontAwesomeIcon className={styles.fa} icon={faGavel} />
+                    </div>
+                    <div className={styles.text}>ผิดข้อปฏิบัติ</div>
+                  </div>
+                </button>
 
-            <button type="button" className={styles.menuBtn} disabled>
-              <div className={styles.menuBox}>
-                <div className={styles.iconWrap} aria-hidden="true">
-                  <FontAwesomeIcon className={styles.fa} icon={faShirt} />
-                </div>
-                <div className={styles.text}>ชุดแต่งกาย</div>
-              </div>
-            </button>
+                <button type="button" className={styles.menuBtn} disabled>
+                  <div className={styles.menuBox}>
+                    <div className={styles.iconWrap} aria-hidden="true">
+                      <FontAwesomeIcon className={styles.fa} icon={faShirt} />
+                    </div>
+                    <div className={styles.text}>ชุดแต่งกาย</div>
+                  </div>
+                </button>
 
-            <button type="button" className={styles.menuBtn} disabled>
-              <div className={styles.menuBox}>
-                <div className={styles.iconWrap} aria-hidden="true">
-                  <FontAwesomeIcon className={styles.fa} icon={faEllipsis} />
-                </div>
-                <div className={styles.text}>อื่นๆ</div>
-              </div>
-            </button>
+                <button type="button" className={styles.menuBtn} disabled>
+                  <div className={styles.menuBox}>
+                    <div className={styles.iconWrap} aria-hidden="true">
+                      <FontAwesomeIcon className={styles.fa} icon={faEllipsis} />
+                    </div>
+                    <div className={styles.text}>อื่นๆ</div>
+                  </div>
+                </button>
+              </>
+            )}
           </div>
 
           <div className={styles.actions}>
