@@ -1,9 +1,10 @@
-// src/App.tsx
 import { useMemo, useState } from "react";
 import Login from "./pages/Login";
 import Home from "./pages/Home";
 import Dashboard from "./pages/Dashboard";
+import Checkpoint from "./pages/Attendance/Checkpoint";
 import CheckInOut from "./pages/Attendance/CheckInOut";
+import AttendanceHistoryPage from "./pages/Attendance/History";
 import FaceVerify from "./pages/Attendance/FaceVerify";
 import Shifts from "./pages/Shifts";
 import FaceProfiles from "./pages/FaceProfiles";
@@ -16,7 +17,9 @@ type Route =
   | "login"
   | "home"
   | "dashboard"
+  | "checkpoint"
   | "checkInOut"
+  | "history"
   | "faceVerify"
   | "shifts"
   | "faceProfiles";
@@ -175,6 +178,11 @@ export default function App() {
     reset("login");
   }
 
+  async function goCheckpoint() {
+    await loadOpenTimeRecord(empCode);
+    push("checkpoint");
+  }
+
   async function goCheckInOut() {
     await loadOpenTimeRecord(empCode);
     push("checkInOut");
@@ -191,6 +199,10 @@ export default function App() {
   function goFaceVerify(type: PunchType) {
     setPunchType(type);
     push("faceVerify");
+  }
+
+  function goHistory() {
+    push("history");
   }
 
   async function onVerifyFaceOnly(embedding: number[]): Promise<void> {
@@ -340,10 +352,21 @@ export default function App() {
           displayName={displayName}
           onLogout={onLogout}
           onGoCheckInOut={() => {
-            void goCheckInOut();
+            void goCheckpoint();
           }}
           onGoLeaveShifts={goShifts}
           onGoFaceProfiles={goFaceProfiles}
+        />
+      )}
+
+      {route === "checkpoint" && (
+        <Checkpoint
+          empCode={empCode}
+          displayName={displayName}
+          onBack={back}
+          onGoCheckInOut={() => {
+            void goCheckInOut();
+          }}
         />
       )}
 
@@ -356,7 +379,15 @@ export default function App() {
           onBack={back}
           onCheckIn={() => goFaceVerify("in")}
           onCheckOut={() => goFaceVerify("out")}
-          onViewHistory={() => alert("TODO: เปิดหน้าประวัติ")}
+          onViewHistory={goHistory}
+        />
+      )}
+
+      {route === "history" && (
+        <AttendanceHistoryPage
+          employeeCode={empCode}
+          employeeName={displayName}
+          onBack={back}
         />
       )}
 
@@ -369,7 +400,7 @@ export default function App() {
           onVerifyFace={onVerifyFaceOnly}
           onConfirm={onFaceConfirm}
           onGoCheckInOut={goCheckInOutFromFaceVerify}
-          onViewHistory={() => alert("TODO: เปิดหน้าประวัติ")}
+          onViewHistory={goHistory}
         />
       )}
 

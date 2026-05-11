@@ -42,11 +42,20 @@
 .cancelButton,
 .smallSecondaryButton,
 .smallDangerButton,
-.iconButton {
+.iconButton,
+.importButton {
   border: none;
   cursor: pointer;
   transition: 0.2s ease;
   font-family: inherit;
+}
+
+.primaryButton,
+.secondaryButton,
+.importButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .primaryButton {
@@ -611,6 +620,23 @@
   background: #fff;
 }
 
+.importButton {
+  height: 48px;
+  padding: 0 18px;
+  border-radius: 14px;
+  background: #ffffff;
+  color: #2d63d1;
+  font-size: 17px;
+  font-weight: 700;
+  border: 1px solid #b8c9f5;
+  box-shadow: 0 6px 16px rgba(31, 46, 85, 0.06);
+}
+
+.importButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 @media (max-width: 920px) {
   .page {
     padding: 18px;
@@ -618,6 +644,7 @@
 
   .pageHeader {
     flex-direction: column;
+    align-items: stretch;
   }
 
   .title {
@@ -632,16 +659,22 @@
 
   .headerActions {
     width: 100%;
+    flex-direction: column;
+    align-items: stretch;
     gap: 10px;
+    flex-wrap: nowrap;
   }
 
   .primaryButton,
   .secondaryButton {
-    height: 42px;
-    padding: 0 14px;
-    font-size: 15px;
-    border-radius: 12px;
-  }
+  height: 48px;
+  padding: 0 18px;
+  border-radius: 14px;
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
 
   .card {
     padding: 16px;
@@ -700,20 +733,4 @@
   .modalFooter > button {
     flex: 1 1 auto;
   }
-}
-.importButton {
-  height: 48px;
-  padding: 0 18px;
-  border-radius: 14px;
-  background: #ffffff;
-  color: #2d63d1;
-  font-size: 17px;
-  font-weight: 700;
-  border: 1px solid #b8c9f5;
-  box-shadow: 0 6px 16px rgba(31, 46, 85, 0.06);
-}
-
-.importButton:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }

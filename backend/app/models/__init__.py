@@ -2,6 +2,8 @@ from .audit_log import AuditLog
 from .employees import Employees
 from .face_profile import FaceProfile
 from .face_profile_change import FaceProfileChange
+from .route import Route
+from .route_site_location import RouteSiteLocation
 from .shift import Shift
 from .shift_change import ShiftChange
 from .site_location import SiteLocation
@@ -13,6 +15,8 @@ __all__ = [
     "Employees",
     "FaceProfile",
     "FaceProfileChange",
+    "Route",
+    "RouteSiteLocation",
     "Shift",
     "ShiftChange",
     "SiteLocation",

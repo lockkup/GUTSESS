@@ -16,12 +16,12 @@
 }
 
 /* --- title --- */
-.title {
-  margin: 10px 0 12px;
-  display: flex;
+.title{
+  margin: 14px 0 10px;
   font-weight: 900;
-  color: var(--blueText);
-  font-size: 18px;
+  color: rgba(27,43,74,0.92);
+  font-size: 26px;
+  letter-spacing: 0.2px;
 }
 
 /* เมนู */

@@ -9,11 +9,15 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api.endpoints import api_router
 from app.core import settings
+from app.core.database import engine
+from app.core.orm import Base
 from app.models import (  # noqa: F401
     AuditLog,
     Employees,
     FaceProfile,
     FaceProfileChange,
+    Route,
+    RouteSiteLocation,
     Shift,
     ShiftChange,
     SiteLocation,
@@ -31,8 +35,7 @@ def parse_allowed_origins(origin_value: str | None) -> list[str]:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # ยังไม่แตะ database ตอน start app
-    # ค่อยเปิด logic create_all หรือ migration ตอน DB พร้อมจริง
+    Base.metadata.create_all(bind=engine)
     yield
 
 

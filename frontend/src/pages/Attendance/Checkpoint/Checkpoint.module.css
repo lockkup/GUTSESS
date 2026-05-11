@@ -1,0 +1,129 @@
+.attTitle {
+  margin: 14px 0 10px;
+  font-weight: 900;
+  color: rgba(27, 43, 74, 0.92);
+  font-size: 26px;
+  letter-spacing: 0.2px;
+}
+
+.tableCard {
+  border-radius: 22px;
+  border: 2px solid rgba(2, 75, 118, 0.18);
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 14px 26px rgba(0, 0, 0, 0.1);
+  padding: 0;
+}
+
+.tableWrap {
+  width: 100%;
+  overflow: hidden;
+  border-radius: 20px;
+}
+
+.headRow,
+.dataRow {
+  display: grid;
+  grid-template-columns: 48% 52%;
+}
+
+.cell {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+}
+
+.headCell {
+  justify-content: center;
+  padding: 8px 6px;
+  background: #173f7a;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
+  border-right: 2px solid #ffffff;
+}
+
+.headRow .headCell:last-child {
+  border-right: none;
+}
+
+.nameCell {
+  justify-content: flex-start;
+  padding: 8px 10px;
+  background: #ececef;
+  color: #0f2348;
+  font-size: 13px;
+  font-weight: 800;
+  border-top: 2px solid #f4f4f6;
+  word-break: break-word;
+}
+
+.statusCell {
+  justify-content: flex-start;
+  padding: 6px 6px 6px 4px;
+  background: #ececef;
+  border-top: 2px solid #f4f4f6;
+}
+
+.statusButton {
+  width: 100%;
+  min-height: 44px;
+  border: 0;
+  border-radius: 12px;
+  padding: 0 8px;
+  font-weight: 800;
+  font-size: 14px;
+  line-height: 1.1;
+  box-shadow: 0 6px 10px rgba(0, 0, 0, 0.08);
+  cursor: default;
+}
+
+.statusButton:disabled {
+  opacity: 1;
+}
+
+.statusDone {
+  background: linear-gradient(90deg, #48d8c5, #39cdbb);
+  color: #0f172a;
+}
+
+.statusCancelled {
+  background: linear-gradient(90deg, #ff6a6a, #ff4747);
+  color: #ffffff;
+}
+
+.statusPending {
+  background: linear-gradient(180deg, #f7f7f7 0%, #ececec 100%);
+  color: #5b6472;
+  cursor: pointer;
+}
+
+.statusProgress {
+  background: linear-gradient(90deg, #ffd83d, #f2c923);
+  color: #3b2f00;
+}
+
+@media (max-width: 380px) {
+  .attTitle {
+    font-size: 22px;
+  }
+
+  .headRow,
+  .dataRow {
+    grid-template-columns: 46% 54%;
+  }
+
+  .headCell {
+    font-size: 12px;
+  }
+
+  .nameCell {
+    font-size: 12px;
+  }
+
+  .statusButton {
+    min-height: 40px;
+    font-size: 12px;
+  }
+}

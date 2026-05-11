@@ -22,6 +22,16 @@ from app.schemas.face_profile_change import (
     FaceProfileChangeResponse,
     FaceProfileChangeUpdate,
 )
+from app.schemas.route import (
+    RouteBase,
+    RouteResponse,
+)
+from app.schemas.route_site_location import (
+    RouteSiteLocationBase,
+    RouteSiteLocationCreate,
+    RouteSiteLocationResponse,
+    RouteSiteLocationUpdate,
+)
 from app.schemas.shift import (
     ShiftBase,
     ShiftCreate,
@@ -71,6 +81,12 @@ __all__ = [
     "FaceProfileChangeCreate",
     "FaceProfileChangeUpdate",
     "FaceProfileChangeResponse",
+    "RouteBase",
+    "RouteResponse",
+    "RouteSiteLocationBase",
+    "RouteSiteLocationCreate",
+    "RouteSiteLocationUpdate",
+    "RouteSiteLocationResponse",
     "ShiftBase",
     "ShiftCreate",
     "ShiftUpdate",

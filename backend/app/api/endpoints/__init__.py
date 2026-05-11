@@ -4,6 +4,8 @@ from .audit_log import router as audit_log_router
 from .employees import router as employees_router
 from .face_profile import router as face_profile_router
 from .face_profile_change import router as face_profile_change_router
+from .route import router as route_router
+from .route_site_location import router as route_site_location_router
 from .shift import router as shift_router
 from .shift_change import router as shift_change_router
 from .site_location import router as site_location_router
@@ -34,6 +36,18 @@ api_router.include_router(
     face_profile_change_router,
     prefix="/face-profile-changes",
     tags=["face_profile_changes"],
+)
+
+api_router.include_router(
+    route_router,
+    prefix="/routes",
+    tags=["routes"],
+)
+
+api_router.include_router(
+    route_site_location_router,
+    prefix="/route-site-locations",
+    tags=["route_site_locations"],
 )
 
 api_router.include_router(
