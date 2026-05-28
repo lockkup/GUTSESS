@@ -4,8 +4,9 @@ import Home from "./pages/Home";
 import Dashboard from "./pages/Dashboard";
 import Checkpoint from "./pages/Attendance/Checkpoint";
 import CheckInOut from "./pages/Attendance/CheckInOut";
-import AttendanceHistoryPage from "./pages/Attendance/History";
+import PatrolReportPage from "./pages/Attendance/PatrolReport";
 import FaceVerify from "./pages/Attendance/FaceVerify";
+import AttendanceFaceVerify from "./pages/Attendance/CheckInOut/AttendanceFaceVerify";
 import Shifts from "./pages/Shifts";
 import FaceProfiles from "./pages/FaceProfiles";
 import FirstLoginModal from "./components/FirstLoginModal";
@@ -19,12 +20,15 @@ type Route =
   | "dashboard"
   | "checkpoint"
   | "checkInOut"
-  | "history"
+  | "patrolReport"
   | "faceVerify"
+  | "attendanceFaceVerify"
   | "shifts"
   | "faceProfiles";
 
 type PunchType = "in" | "out";
+
+type CheckpointActionMode = "checkin" | "checkout";
 
 type EmployeesResponse = {
   employee_code: string;
@@ -33,13 +37,32 @@ type EmployeesResponse = {
   is_active: boolean;
 };
 
+type PassedLocation = {
+  latitude: number;
+  longitude: number;
+  accuracy: number;
+};
+
+type SelectedCheckpoint = {
+  assignmentId: number;
+  unitName: string;
+  mode: CheckpointActionMode;
+  passedLocation: PassedLocation;
+};
+
+type GoCheckInOutPayload = {
+  assignmentId: number;
+  unitName: string;
+  mode: CheckpointActionMode;
+  passedLocation: PassedLocation;
+};
+
 type LocationCoords = {
   latitude: number;
   longitude: number;
   accuracy?: number;
-  siteLocationId?: number;
-  siteLocationName?: string;
-  distanceMeter?: number;
+  assignmentId?: number | null;
+  unitName?: string | null;
 };
 
 const API_BASE_URL =
@@ -100,9 +123,11 @@ export default function App() {
   const [punchType, setPunchType] = useState<PunchType>("in");
 
   const [shiftId] = useState(1);
-  const [openTimeRecord, setOpenTimeRecord] =
-    useState<TimeRecordResponse | null>(null);
+  const [, setOpenTimeRecord] = useState<TimeRecordResponse | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [selectedCheckpoint, setSelectedCheckpoint] =
+    useState<SelectedCheckpoint | null>(null);
 
   const reset = (r: Route) => setStack([r]);
 
@@ -119,25 +144,55 @@ export default function App() {
     return FIRST_LOGIN_EMPLOYEE_CODES.has(code);
   }
 
-  async function loadOpenTimeRecord(employeeCode: string) {
+  function clearCheckInOutTimeState() {
+    setOpenTimeRecord(null);
+    setLastInAt(null);
+    setLastOutAt(null);
+  }
+
+  async function loadOpenAttendanceTimeRecord(employeeCode: string) {
     try {
       const record =
-        await timeRecordService.getOpenTimeRecordByEmployeeCode(employeeCode);
+        await timeRecordService.getOpenAttendanceTimeRecordByEmployeeCode(
+          employeeCode,
+        );
+
+      if (!record) {
+        clearCheckInOutTimeState();
+        return;
+      }
 
       setOpenTimeRecord(record);
-
-      if (record) {
-        setLastInAt(record.checkin ?? null);
-        setLastOutAt(record.checkout ?? null);
-      } else {
-        setLastInAt(null);
-        setLastOutAt(null);
-      }
+      setLastInAt(record.checkin ?? null);
+      setLastOutAt(record.checkout ?? null);
     } catch (error) {
-      console.error("loadOpenTimeRecord error:", error);
-      setOpenTimeRecord(null);
-      setLastInAt(null);
-      setLastOutAt(null);
+      console.error("loadOpenAttendanceTimeRecord error:", error);
+      clearCheckInOutTimeState();
+    }
+  }
+
+  async function loadOpenCheckpointTimeRecord(
+    employeeCode: string,
+    assignmentId: number,
+  ) {
+    try {
+      const record =
+        await timeRecordService.getOpenCheckpointTimeRecordByEmployeeCode(
+          employeeCode,
+          assignmentId,
+        );
+
+      if (!record) {
+        clearCheckInOutTimeState();
+        return;
+      }
+
+      setOpenTimeRecord(record);
+      setLastInAt(record.checkin ?? null);
+      setLastOutAt(record.checkout ?? null);
+    } catch (error) {
+      console.error("loadOpenCheckpointTimeRecord error:", error);
+      clearCheckInOutTimeState();
     }
   }
 
@@ -159,7 +214,7 @@ export default function App() {
       return;
     }
 
-    await loadOpenTimeRecord(empCode);
+    await loadOpenAttendanceTimeRecord(empCode);
     reset("home");
   }
 
@@ -172,19 +227,37 @@ export default function App() {
     setEmpCode("");
     setPin("");
     setDisplayName("");
-    setOpenTimeRecord(null);
-    setLastInAt(null);
-    setLastOutAt(null);
+    clearCheckInOutTimeState();
+    setSelectedCheckpoint(null);
     reset("login");
   }
 
+  async function goDirectCheckInOut() {
+    setSelectedCheckpoint(null);
+    await loadOpenAttendanceTimeRecord(empCode);
+    push("checkInOut");
+  }
+
   async function goCheckpoint() {
-    await loadOpenTimeRecord(empCode);
+    setSelectedCheckpoint(null);
+    clearCheckInOutTimeState();
     push("checkpoint");
   }
 
-  async function goCheckInOut() {
-    await loadOpenTimeRecord(empCode);
+  async function goCheckInOut(payload: GoCheckInOutPayload) {
+    setSelectedCheckpoint({
+      assignmentId: payload.assignmentId,
+      unitName: payload.unitName,
+      mode: payload.mode,
+      passedLocation: payload.passedLocation,
+    });
+
+    if (payload.mode === "checkout") {
+      await loadOpenCheckpointTimeRecord(empCode, payload.assignmentId);
+    } else {
+      clearCheckInOutTimeState();
+    }
+
     push("checkInOut");
   }
 
@@ -196,13 +269,45 @@ export default function App() {
     push("faceProfiles");
   }
 
-  function goFaceVerify(type: PunchType) {
-    setPunchType(type);
-    push("faceVerify");
+  function goPatrolReport() {
+    push("patrolReport");
   }
 
-  function goHistory() {
-    push("history");
+  function goAttendanceFaceVerify(type: PunchType) {
+    setSelectedCheckpoint(null);
+    setPunchType(type);
+    push("attendanceFaceVerify");
+  }
+
+  function goFaceVerify(
+    type: PunchType,
+    payload?: {
+      assignmentId?: number | null;
+      unitName?: string | null;
+      passedLocation?: PassedLocation | null;
+    },
+  ) {
+    if (payload?.assignmentId) {
+      const passedLocation =
+        payload.passedLocation ?? selectedCheckpoint?.passedLocation ?? null;
+
+      if (!passedLocation) {
+        alert(
+          "ไม่พบข้อมูลพิกัดที่ผ่านการตรวจสอบ กรุณากลับไปเลือกจุดจากตารางงานสายตรวจก่อน",
+        );
+        return;
+      }
+
+      setSelectedCheckpoint({
+        assignmentId: payload.assignmentId,
+        unitName: payload.unitName ?? "",
+        mode: type === "in" ? "checkin" : "checkout",
+        passedLocation,
+      });
+    }
+
+    setPunchType(type);
+    push("faceVerify");
   }
 
   async function onVerifyFaceOnly(embedding: number[]): Promise<void> {
@@ -216,6 +321,109 @@ export default function App() {
     }
   }
 
+  async function onAttendanceFaceConfirm(
+    photoDataUrl: string,
+    type: PunchType,
+    _embedding: number[],
+    location: LocationCoords,
+  ) {
+    if (isSubmitting) return;
+
+    try {
+      setIsSubmitting(true);
+
+      const now = new Date();
+      const nowText = formatCheckTime(now);
+      const workDate = formatWorkDate(now);
+
+      if (type === "in") {
+        const existingOpen =
+          await timeRecordService.getOpenAttendanceTimeRecordByEmployeeCode(
+            empCode,
+          );
+
+        if (existingOpen) {
+          setOpenTimeRecord(existingOpen);
+          setLastInAt(existingOpen.checkin ?? null);
+          setLastOutAt(existingOpen.checkout ?? null);
+          throw new Error("มีการลงเวลาเข้างานค้างไว้แล้วในระบบ");
+        }
+
+        const createPayload = {
+          employee_code: empCode,
+          shift_id: shiftId,
+          work_date: workDate,
+
+          current_latitude: location.latitude,
+          current_longitude: location.longitude,
+          gps_accuracy: location.accuracy ?? null,
+
+          checkin: nowText,
+          checkin_lat: location.latitude,
+          checkin_lng: location.longitude,
+          images_checkin_1: photoDataUrl,
+          images_checkin_2: null,
+
+          created_by: empCode,
+        } as Parameters<typeof timeRecordService.createTimeRecord>[0] & {
+          current_latitude: number;
+          current_longitude: number;
+          gps_accuracy: number | null;
+        };
+
+        const created = await timeRecordService.createTimeRecord(createPayload);
+
+        setOpenTimeRecord(created);
+        setLastInAt(created.checkin ?? null);
+        setLastOutAt(created.checkout ?? null);
+      } else {
+        const record =
+          await timeRecordService.getOpenAttendanceTimeRecordByEmployeeCode(
+            empCode,
+          );
+
+        if (!record) {
+          throw new Error("ไม่พบข้อมูลการเข้างานเพื่อทำการออกงาน");
+        }
+
+        const updatePayload = {
+          current_latitude: location.latitude,
+          current_longitude: location.longitude,
+          gps_accuracy: location.accuracy ?? null,
+
+          checkout: nowText,
+          checkout_lat: location.latitude,
+          checkout_lng: location.longitude,
+          images_checkout_1: photoDataUrl,
+          images_checkout_2: null,
+
+          updated_by: empCode,
+        } as Parameters<typeof timeRecordService.updateTimeRecord>[1] & {
+          current_latitude: number;
+          current_longitude: number;
+          gps_accuracy: number | null;
+        };
+
+        const updated = await timeRecordService.updateTimeRecord(
+          record.time_record_id,
+          updatePayload,
+        );
+
+        setOpenTimeRecord(null);
+        setLastInAt(updated.checkin ?? null);
+        setLastOutAt(updated.checkout ?? null);
+      }
+    } catch (error) {
+      console.error("onAttendanceFaceConfirm error:", error);
+
+      throw error instanceof Error
+        ? error
+        : new Error("การบันทึกเวลาล้มเหลว");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
   async function onFaceConfirm(
     photoDataUrl: string,
     type: PunchType,
@@ -224,8 +432,10 @@ export default function App() {
   ) {
     if (isSubmitting) return;
 
-    if (!location.siteLocationId) {
-      throw new Error("ไม่พบรหัสพื้นที่จากฐานข้อมูล กรุณาตรวจสอบ site_locations");
+    if (!location.assignmentId) {
+      throw new Error(
+        "ไม่พบ assignment_id ของจุดรักษาการณ์ กรุณากลับไปเลือกจุดจากตารางงานสายตรวจก่อน",
+      );
     }
 
     try {
@@ -237,7 +447,10 @@ export default function App() {
 
       if (type === "in") {
         const existingOpen =
-          await timeRecordService.getOpenTimeRecordByEmployeeCode(empCode);
+          await timeRecordService.getOpenCheckpointTimeRecordByEmployeeCode(
+            empCode,
+            location.assignmentId,
+          );
 
         if (existingOpen) {
           setOpenTimeRecord(existingOpen);
@@ -246,14 +459,16 @@ export default function App() {
           throw new Error("มีการลงเวลาเข้างานค้างไว้แล้วในระบบ");
         }
 
-        const createPayload: Parameters<
-          typeof timeRecordService.createTimeRecord
-        >[0] = {
+        const createPayload = {
           employee_code: empCode,
           shift_id: shiftId,
           work_date: workDate,
 
-          checkin_location_id: location.siteLocationId,
+          assignment_id: location.assignmentId,
+          current_latitude: location.latitude,
+          current_longitude: location.longitude,
+          gps_accuracy: location.accuracy ?? null,
+
           checkin: nowText,
           checkin_lat: location.latitude,
           checkin_lng: location.longitude,
@@ -261,6 +476,11 @@ export default function App() {
           images_checkin_2: null,
 
           created_by: empCode,
+        } as Parameters<typeof timeRecordService.createTimeRecord>[0] & {
+          assignment_id: number;
+          current_latitude: number;
+          current_longitude: number;
+          gps_accuracy: number | null;
         };
 
         const created = await timeRecordService.createTimeRecord(createPayload);
@@ -270,17 +490,21 @@ export default function App() {
         setLastOutAt(created.checkout ?? null);
       } else {
         const record =
-          openTimeRecord ??
-          (await timeRecordService.getOpenTimeRecordByEmployeeCode(empCode));
+          await timeRecordService.getOpenCheckpointTimeRecordByEmployeeCode(
+            empCode,
+            location.assignmentId,
+          );
 
         if (!record) {
           throw new Error("ไม่พบข้อมูลการเข้างานเพื่อทำการออกงาน");
         }
 
-        const updatePayload: Parameters<
-          typeof timeRecordService.updateTimeRecord
-        >[1] = {
-          checkout_location_id: location.siteLocationId,
+        const updatePayload = {
+          assignment_id: location.assignmentId,
+          current_latitude: location.latitude,
+          current_longitude: location.longitude,
+          gps_accuracy: location.accuracy ?? null,
+
           checkout: nowText,
           checkout_lat: location.latitude,
           checkout_lng: location.longitude,
@@ -288,6 +512,11 @@ export default function App() {
           images_checkout_2: null,
 
           updated_by: empCode,
+        } as Parameters<typeof timeRecordService.updateTimeRecord>[1] & {
+          assignment_id: number;
+          current_latitude: number;
+          current_longitude: number;
+          gps_accuracy: number | null;
         };
 
         const updated = await timeRecordService.updateTimeRecord(
@@ -301,8 +530,10 @@ export default function App() {
       }
     } catch (error) {
       console.error("onFaceConfirm error:", error);
-      alert(error instanceof Error ? error.message : "การบันทึกเวลาล้มเหลว");
-      throw error;
+
+      throw error instanceof Error
+        ? error
+        : new Error("การบันทึกเวลาล้มเหลว");
     } finally {
       setIsSubmitting(false);
     }
@@ -317,6 +548,24 @@ export default function App() {
       return [...s.slice(0, -1), "checkInOut"];
     });
   }
+
+  function goCheckpointFromFaceVerify() {
+    setSelectedCheckpoint(null);
+    clearCheckInOutTimeState();
+
+    setStack((s) => {
+      const checkpointIndex = s.lastIndexOf("checkpoint");
+
+      if (checkpointIndex >= 0) {
+        return s.slice(0, checkpointIndex + 1);
+      }
+
+      return [...s.slice(0, -1), "checkpoint"];
+    });
+  }
+
+  const isCheckpointCheckout = selectedCheckpoint?.mode === "checkout";
+  const checkInOutMode = selectedCheckpoint ? "checkpoint" : "attendance";
 
   return (
     <>
@@ -352,8 +601,12 @@ export default function App() {
           displayName={displayName}
           onLogout={onLogout}
           onGoCheckInOut={() => {
+            void goDirectCheckInOut();
+          }}
+          onGoCheckpoint={() => {
             void goCheckpoint();
           }}
+          onGoPatrolReport={goPatrolReport}
           onGoLeaveShifts={goShifts}
           onGoFaceProfiles={goFaceProfiles}
         />
@@ -364,8 +617,8 @@ export default function App() {
           empCode={empCode}
           displayName={displayName}
           onBack={back}
-          onGoCheckInOut={() => {
-            void goCheckInOut();
+          onGoCheckInOut={(payload) => {
+            void goCheckInOut(payload);
           }}
         />
       )}
@@ -374,20 +627,55 @@ export default function App() {
         <CheckInOut
           empCode={empCode}
           displayName={displayName}
-          lastInAt={lastInAt}
-          lastOutAt={lastOutAt}
+          mode={checkInOutMode}
+          assignmentId={selectedCheckpoint?.assignmentId ?? null}
+          unitName={selectedCheckpoint?.unitName ?? null}
+          passedLocation={selectedCheckpoint?.passedLocation ?? null}
+          lastInAt={
+            selectedCheckpoint
+              ? isCheckpointCheckout
+                ? lastInAt
+                : null
+              : lastInAt
+          }
+          lastOutAt={
+            selectedCheckpoint
+              ? isCheckpointCheckout
+                ? lastOutAt
+                : null
+              : lastOutAt
+          }
           onBack={back}
-          onCheckIn={() => goFaceVerify("in")}
-          onCheckOut={() => goFaceVerify("out")}
-          onViewHistory={goHistory}
+          onCheckIn={(payload) => {
+            if (payload.mode === "attendance") {
+              goAttendanceFaceVerify("in");
+              return;
+            }
+
+            goFaceVerify("in", payload);
+          }}
+          onCheckOut={(payload) => {
+            if (payload.mode === "attendance") {
+              goAttendanceFaceVerify("out");
+              return;
+            }
+
+            goFaceVerify("out", payload);
+          }}
         />
       )}
 
-      {route === "history" && (
-        <AttendanceHistoryPage
-          employeeCode={empCode}
-          employeeName={displayName}
+      {route === "patrolReport" && <PatrolReportPage onBack={back} />}
+
+      {route === "attendanceFaceVerify" && (
+        <AttendanceFaceVerify
+          empCode={empCode}
+          displayName={displayName}
+          punchType={punchType}
           onBack={back}
+          onVerifyFace={onVerifyFaceOnly}
+          onConfirm={onAttendanceFaceConfirm}
+          onGoCheckInOut={goCheckInOutFromFaceVerify}
         />
       )}
 
@@ -395,12 +683,15 @@ export default function App() {
         <FaceVerify
           empCode={empCode}
           displayName={displayName}
+          assignmentId={selectedCheckpoint?.assignmentId ?? null}
+          unitName={selectedCheckpoint?.unitName ?? null}
+          passedLocation={selectedCheckpoint?.passedLocation ?? null}
           punchType={punchType}
           onBack={back}
           onVerifyFace={onVerifyFaceOnly}
           onConfirm={onFaceConfirm}
           onGoCheckInOut={goCheckInOutFromFaceVerify}
-          onViewHistory={goHistory}
+          onGoCheckpoint={goCheckpointFromFaceVerify}
         />
       )}
 

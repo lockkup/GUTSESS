@@ -3,8 +3,8 @@ import {
   faClock,
   faBed,
   faUsers,
-  faGavel,
-  faShirt,
+  faClipboardList,
+  faFileLines,
   faEllipsis,
   faRightFromBracket,
 } from "@fortawesome/free-solid-svg-icons";
@@ -17,12 +17,19 @@ type Props = {
   displayName?: string;
 
   onLogout: () => void;
+
+  // ไปหน้า CheckInOut
   onGoCheckInOut: () => void;
+
+  // ไปหน้า Checkpoint
+  onGoCheckpoint: () => void;
+
+  // ไปหน้า PatrolReport
+  onGoPatrolReport: () => void;
+
   onGoLeaveShifts: () => void;
   onGoFaceProfiles: () => void;
 
-  onGoDiscipline?: () => void;
-  onGoUniform?: () => void;
   onGoOther?: () => void;
 };
 
@@ -31,10 +38,16 @@ export default function Home({
   displayName,
   onLogout,
   onGoCheckInOut,
+  onGoCheckpoint,
+  onGoPatrolReport,
   onGoLeaveShifts,
   onGoFaceProfiles,
+  onGoOther,
 }: Props) {
   const isAdmin = empCode === "036259";
+
+  // รหัสที่ให้เห็นเมนูงานสายตรวจ
+  const canSeePatrolMenu = empCode === "036259" || empCode === "632070";
 
   return (
     <main className="guts-bg">
@@ -85,34 +98,59 @@ export default function Home({
                     <div className={styles.text}>เพิ่มข้อมูลใบหน้าพนักงาน</div>
                   </div>
                 </button>
+              </>
+            )}
 
-                <button type="button" className={styles.menuBtn} disabled>
+            {canSeePatrolMenu && (
+              <>
+                <button
+                  type="button"
+                  className={styles.menuBtn}
+                  onClick={onGoCheckpoint}
+                >
                   <div className={styles.menuBox}>
                     <div className={styles.iconWrap} aria-hidden="true">
-                      <FontAwesomeIcon className={styles.fa} icon={faGavel} />
+                      <FontAwesomeIcon
+                        className={styles.fa}
+                        icon={faClipboardList}
+                      />
                     </div>
-                    <div className={styles.text}>ผิดข้อปฏิบัติ</div>
+                    <div className={styles.text}>ตารางงานสายตรวจ</div>
                   </div>
                 </button>
 
-                <button type="button" className={styles.menuBtn} disabled>
+                <button
+                  type="button"
+                  className={styles.menuBtn}
+                  onClick={onGoPatrolReport}
+                >
                   <div className={styles.menuBox}>
                     <div className={styles.iconWrap} aria-hidden="true">
-                      <FontAwesomeIcon className={styles.fa} icon={faShirt} />
+                      <FontAwesomeIcon
+                        className={styles.fa}
+                        icon={faFileLines}
+                      />
                     </div>
-                    <div className={styles.text}>ชุดแต่งกาย</div>
-                  </div>
-                </button>
-
-                <button type="button" className={styles.menuBtn} disabled>
-                  <div className={styles.menuBox}>
-                    <div className={styles.iconWrap} aria-hidden="true">
-                      <FontAwesomeIcon className={styles.fa} icon={faEllipsis} />
-                    </div>
-                    <div className={styles.text}>อื่นๆ</div>
+                    <div className={styles.text}>รายงานสายตรวจ</div>
                   </div>
                 </button>
               </>
+            )}
+
+            {isAdmin && (
+              <button
+                type="button"
+                className={styles.menuBtn}
+                onClick={onGoOther}
+                disabled={!onGoOther}
+              >
+                <div className={styles.menuBox}>
+                  <div className={styles.iconWrap} aria-hidden="true">
+                    <FontAwesomeIcon className={styles.fa} icon={faEllipsis} />
+                  </div>
+                  <div className={styles.text}>อื่นๆ</div>
+                </div>
+              </button>
             )}
           </div>
 

@@ -1,3 +1,5 @@
+// src/services/timeRecord.service.ts
+
 import { api } from "../lib/api";
 import type {
   GetTimeRecordsParams,
@@ -16,7 +18,8 @@ function isNotFoundError(error: unknown) {
       error.message.includes("404") ||
       error.message.includes("Not Found") ||
       error.message.includes("Open time record not found") ||
-      error.message.includes("Time record not found"))
+      error.message.includes("Time record not found") ||
+      error.message.includes("ไม่พบข้อมูล"))
   );
 }
 
@@ -29,12 +32,16 @@ export const timeRecordService = {
     return api.post<TimeRecordResponse>(`${BASE_PATH}/`, payload);
   },
 
-  async getOpenTimeRecordByEmployeeCode(
+  /**
+   * ใช้กับเมนู "ลงเวลา เข้า-ออกงาน"
+   * Backend จะดึงเฉพาะ time_record ที่ไม่ได้ผูกกับ checkpoint_assignment.time_record_id
+   */
+  async getOpenAttendanceTimeRecordByEmployeeCode(
     employeeCode: string,
   ): Promise<TimeRecordResponse | null> {
     try {
       return await api.get<TimeRecordResponse>(
-        `${BASE_PATH}/open/${encodeURIComponent(employeeCode)}`,
+        `${BASE_PATH}/open/attendance/${encodeURIComponent(employeeCode)}`,
       );
     } catch (error) {
       if (isNotFoundError(error)) {
@@ -45,12 +52,61 @@ export const timeRecordService = {
     }
   },
 
+  /**
+   * ใช้กับเมนู "ตารางงานสายตรวจ"
+   * Backend จะหา time_record ผ่าน checkpoint_assignment.time_record_id
+   * โดยใช้ assignment_id ที่เลือกจากตารางงานสายตรวจ
+   */
+  async getOpenCheckpointTimeRecordByEmployeeCode(
+    employeeCode: string,
+    assignmentId: number,
+  ): Promise<TimeRecordResponse | null> {
+    try {
+      return await api.get<TimeRecordResponse>(
+        `${BASE_PATH}/open/checkpoint/${encodeURIComponent(
+          employeeCode,
+        )}/${assignmentId}`,
+      );
+    } catch (error) {
+      if (isNotFoundError(error)) {
+        return null;
+      }
+
+      throw error;
+    }
+  },
+
+  /**
+   * ฟังก์ชันเดิม
+   * ให้ชี้ไปที่ attendance เท่านั้น เพื่อไม่ให้ดึงข้อมูลสายตรวจมาปน
+   */
+  async getOpenTimeRecordByEmployeeCode(
+    employeeCode: string,
+  ): Promise<TimeRecordResponse | null> {
+    return this.getOpenAttendanceTimeRecordByEmployeeCode(employeeCode);
+  },
+
   getTimeRecordById(timeRecordId: number) {
     return api.get<TimeRecordResponse>(`${BASE_PATH}/${timeRecordId}`);
   },
 
+  /**
+   * ดึงข้อมูล time_record แบบเต็ม
+   * Endpoint: GET /api/time-records/
+   */
   getTimeRecords(params?: GetTimeRecordsParams) {
-    return api.get<TimeRecordListItemResponse[]>(`${BASE_PATH}/`, params);
+    return api.get<TimeRecordResponse[]>(`${BASE_PATH}/`, params);
+  },
+
+  /**
+   * ดึงข้อมูลสำหรับหน้า list/history แบบย่อ
+   * Endpoint: GET /api/time-records/list-items
+   */
+  getTimeRecordListItems(params?: GetTimeRecordsParams) {
+    return api.get<TimeRecordListItemResponse[]>(
+      `${BASE_PATH}/list-items`,
+      params,
+    );
   },
 
   updateTimeRecord(timeRecordId: number, payload: TimeRecordCheckOut) {

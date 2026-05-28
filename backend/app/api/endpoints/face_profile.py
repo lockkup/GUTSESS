@@ -1,17 +1,20 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status, Form, File, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Path, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.core import get_db
 from app.core.constants import DBConstants
-from app.schemas.face_profile import FaceProfileCreate, FaceProfileResponse, FaceProfileUpdate
+from app.schemas.face_profile import (
+    FaceProfileAction,
+    FaceProfileCreate,
+    FaceProfileResponse,
+    FaceProfileUpdate,
+)
 from app.schemas.face_verify import FaceVerifyRequest, FaceVerifyResponse
 from app.services.face_profile import FaceProfileService
 
 router = APIRouter()
-
-FACE_PROFILE_NOT_FOUND_DETAIL = "Face profile not found"
 
 
 @router.post(
@@ -56,6 +59,7 @@ def create_face_profile(
         is_active=is_active,
         created_by=created_by,
     )
+
     return FaceProfileService.create_face_profile(
         db=db,
         payload=payload,
@@ -99,17 +103,11 @@ def get_face_profile_by_id(
     include_deleted: bool = Query(default=False),
     db: Session = Depends(get_db),
 ) -> FaceProfileResponse:
-    face_profile = FaceProfileService.get_face_profile_by_id(
+    return FaceProfileService.get_face_profile_by_id(
         db=db,
         face_profile_id=face_profile_id,
         include_deleted=include_deleted,
     )
-    if face_profile is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=FACE_PROFILE_NOT_FOUND_DETAIL,
-        )
-    return face_profile
 
 
 @router.patch(
@@ -134,19 +132,13 @@ def update_face_profile(
         updated_by=updated_by,
     )
 
-    face_profile = FaceProfileService.update_face_profile(
+    return FaceProfileService.update_face_profile(
         db=db,
         face_profile_id=face_profile_id,
         payload=payload,
         image_file=reference_image,
         face_embedding_json=face_embedding,
     )
-    if face_profile is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=FACE_PROFILE_NOT_FOUND_DETAIL,
-        )
-    return face_profile
 
 
 @router.patch(
@@ -155,25 +147,15 @@ def update_face_profile(
     status_code=status.HTTP_200_OK,
 )
 def deactivate_face_profile(
+    payload: FaceProfileAction,
     face_profile_id: int = Path(..., gt=0),
-    updated_by: str = Query(
-        ...,
-        min_length=DBConstants.EMPLOYEE_CODE_LENGTH,
-        max_length=DBConstants.EMPLOYEE_CODE_LENGTH,
-    ),
     db: Session = Depends(get_db),
 ) -> FaceProfileResponse:
-    face_profile = FaceProfileService.deactivate_face_profile(
+    return FaceProfileService.deactivate_face_profile(
         db=db,
         face_profile_id=face_profile_id,
-        updated_by=updated_by,
+        updated_by=payload.updated_by,
     )
-    if face_profile is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=FACE_PROFILE_NOT_FOUND_DETAIL,
-        )
-    return face_profile
 
 
 @router.patch(
@@ -182,25 +164,15 @@ def deactivate_face_profile(
     status_code=status.HTTP_200_OK,
 )
 def activate_face_profile(
+    payload: FaceProfileAction,
     face_profile_id: int = Path(..., gt=0),
-    updated_by: str = Query(
-        ...,
-        min_length=DBConstants.EMPLOYEE_CODE_LENGTH,
-        max_length=DBConstants.EMPLOYEE_CODE_LENGTH,
-    ),
     db: Session = Depends(get_db),
 ) -> FaceProfileResponse:
-    face_profile = FaceProfileService.activate_face_profile(
+    return FaceProfileService.activate_face_profile(
         db=db,
         face_profile_id=face_profile_id,
-        updated_by=updated_by,
+        updated_by=payload.updated_by,
     )
-    if face_profile is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=FACE_PROFILE_NOT_FOUND_DETAIL,
-        )
-    return face_profile
 
 
 @router.delete(
@@ -209,22 +181,12 @@ def activate_face_profile(
     status_code=status.HTTP_200_OK,
 )
 def delete_face_profile(
+    payload: FaceProfileAction,
     face_profile_id: int = Path(..., gt=0),
-    updated_by: str = Query(
-        ...,
-        min_length=DBConstants.EMPLOYEE_CODE_LENGTH,
-        max_length=DBConstants.EMPLOYEE_CODE_LENGTH,
-    ),
     db: Session = Depends(get_db),
 ) -> FaceProfileResponse:
-    face_profile = FaceProfileService.delete_face_profile(
+    return FaceProfileService.delete_face_profile(
         db=db,
         face_profile_id=face_profile_id,
-        updated_by=updated_by,
+        updated_by=payload.updated_by,
     )
-    if face_profile is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=FACE_PROFILE_NOT_FOUND_DETAIL,
-        )
-    return face_profile

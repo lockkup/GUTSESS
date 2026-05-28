@@ -1,45 +1,85 @@
 /* src/pages/Attendance/FaceVerify/FaceVerify.module.css */
 
+:root {
+  --faceverify-title-size: 23px;
+  --faceverify-unit-size: 16px;
+
+  --faceverify-card-title-size: 18px;
+  --faceverify-text-size: 18px;
+  --faceverify-error-size: 14px;
+  --faceverify-location-hint-size: 14px;
+
+  --faceverify-button-size: 20px;
+  --faceverify-button-icon-size: 20px;
+  --faceverify-back-button-size: clamp(16px, 2.1vw, 18px);
+
+  --faceverify-empty-icon-size: 34px;
+  --faceverify-empty-text-size: 18px;
+}
+
+.attTitle {
+  width: 100%;
+  align-self: stretch;
+  margin: 14px 0 4px;
+  font-weight: 900;
+  color: rgba(27, 43, 74, 0.92);
+  font-size: var(--faceverify-title-size);
+  letter-spacing: 0.2px;
+  text-align: left;
+}
+
+.unitNameText {
+  width: 100%;
+  align-self: stretch;
+  margin: 0 0 8px;
+  color: #0f172a;
+  font-size: var(--faceverify-unit-size);
+  font-weight: 900;
+  line-height: 1.35;
+  text-align: left;
+  word-break: break-word;
+}
+
 /* ===== Card container ===== */
-.fvCard{
-  margin-top: 10px;
+.fvCard {
+  margin-top: 8px;
   border-radius: 22px;
-  border: 2px solid rgba(2,75,118,0.18);
-  background: rgba(255,255,255,0.78);
-  box-shadow: 0 14px 26px rgba(0,0,0,0.10);
+  border: 2px solid rgba(2, 75, 118, 0.18);
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 14px 26px rgba(0, 0, 0, 0.1);
   padding: 14px;
 }
 
-/* title (ใน TSX มีใช้ แต่ index.css ที่คุณแปะมาไม่มี) */
-.fvTitle{
+/* title */
+.fvTitle {
   font-weight: 900;
-  font-size: 18px;
-  color: rgba(27,43,74,0.92);
+  font-size: var(--faceverify-card-title-size);
+  color: rgba(27, 43, 74, 0.92);
   margin-bottom: 10px;
 }
 
 /* ===== Camera frame ===== */
-.fvFrame{
+.fvFrame {
   position: relative;
   width: 100%;
   aspect-ratio: 4 / 3;
   border-radius: 22px;
   overflow: hidden;
   background: #2b2b2b;
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
 }
 
 /* video/img fit */
 .fvVideo,
-.fvImg{
+.fvImg {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
 }
 
-/* top icons row (เผื่ออนาคต) */
-.fvTopIcons{
+/* top icons row */
+.fvTopIcons {
   position: absolute;
   top: 10px;
   left: 10px;
@@ -47,83 +87,117 @@
   display: flex;
   justify-content: space-between;
   z-index: 5;
-  color: rgba(255,255,255,0.85);
+  color: rgba(255, 255, 255, 0.85);
 }
 
-.fvIco{
+.fvIco {
   width: 34px;
   height: 34px;
   border-radius: 10px;
   display: grid;
   place-items: center;
-  background: rgba(0,0,0,0.25);
+  background: rgba(0, 0, 0, 0.25);
   backdrop-filter: blur(6px);
 }
 
 /* guide circle */
-.fvCircle{
+.fvCircle {
   position: absolute;
   inset: 0;
   margin: auto;
   width: 62%;
   aspect-ratio: 1 / 1;
   border-radius: 999px;
-  border: 8px solid rgba(255,255,255,0.35);
+  border: 8px solid rgba(255, 255, 255, 0.35);
   z-index: 4;
 }
 
 /* corner brackets */
-.fvCorner{
+.fvCorner {
   position: absolute;
   width: 58px;
   height: 58px;
-  border: 4px solid rgba(255,255,255,0.65);
+  border: 4px solid rgba(255, 255, 255, 0.65);
   border-radius: 16px;
   z-index: 4;
 }
 
-.tl{ top: 18px; left: 18px; border-right: 0; border-bottom: 0; }
-.tr{ top: 18px; right: 18px; border-left: 0; border-bottom: 0; }
-.bl{ bottom: 18px; left: 18px; border-right: 0; border-top: 0; }
-.br{ bottom: 18px; right: 18px; border-left: 0; border-top: 0; }
+.tl {
+  top: 18px;
+  left: 18px;
+  border-right: 0;
+  border-bottom: 0;
+}
+
+.tr {
+  top: 18px;
+  right: 18px;
+  border-left: 0;
+  border-bottom: 0;
+}
+
+.bl {
+  bottom: 18px;
+  left: 18px;
+  border-right: 0;
+  border-top: 0;
+}
+
+.br {
+  bottom: 18px;
+  right: 18px;
+  border-left: 0;
+  border-top: 0;
+}
 
 /* hide input & canvas */
-.fvFile{ position: absolute; inset: 0; opacity: 0; pointer-events: none; }
-.fvCanvas{ display: none; }
+.fvFile {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.fvCanvas {
+  display: none;
+}
 
 /* ===== Text & error ===== */
-.fvText{
+.fvText {
   margin-top: 12px;
   text-align: center;
   font-weight: 900;
-  color: rgba(27,43,74,0.85);
-  font-size: 18px;
+  color: rgba(27, 43, 74, 0.85);
+  font-size: var(--faceverify-text-size);
 }
 
-.fvError{
+.fvError {
   margin-top: 10px;
   font-weight: 800;
+  font-size: var(--faceverify-error-size);
   color: #b80000;
-  background: rgba(192,0,0,0.08);
-  border: 1px solid rgba(192,0,0,0.18);
+  background: rgba(192, 0, 0, 0.08);
+  border: 1px solid rgba(192, 0, 0, 0.18);
   padding: 10px 12px;
   border-radius: 12px;
+  line-height: 1.35;
 }
 
-/* location hint (ใน TSX มีใช้ แต่ index.css ที่คุณแปะมาไม่มี) */
-.fvLocHint{
+/* location hint */
+.fvLocHint {
   margin-top: 10px;
   font-weight: 800;
-  color: rgba(27,43,74,0.82);
-  background: rgba(2,75,118,0.06);
-  border: 1px solid rgba(2,75,118,0.14);
+  font-size: var(--faceverify-location-hint-size);
+  color: rgba(27, 43, 74, 0.82);
+  background: rgba(2, 75, 118, 0.06);
+  border: 1px solid rgba(2, 75, 118, 0.14);
   padding: 10px 12px;
   border-radius: 12px;
   line-height: 1.35;
 }
 
 /* ===== Primary / Secondary buttons ===== */
-.fvPrimary{
+.fvPrimary {
   margin-top: 12px;
   width: 100%;
   height: clamp(56px, 6.6vw, 62px);
@@ -133,7 +207,7 @@
 
   color: #fff;
   font-weight: 900;
-  font-size: 20px;
+  font-size: var(--faceverify-button-size);
 
   display: inline-flex;
   align-items: center;
@@ -141,25 +215,32 @@
   gap: 12px;
 
   background: linear-gradient(90deg, var(--brand), var(--brandDark));
-  box-shadow: 0 16px 26px rgba(0,0,0,0.12);
+  box-shadow: 0 16px 26px rgba(0, 0, 0, 0.12);
 }
 
-.fvPrimary:disabled{
+.fvPrimary:disabled {
   opacity: 0.7;
   cursor: not-allowed;
 }
 
-.fvPrimaryIcon{ font-size: 20px; }
+.fvPrimaryIcon {
+  font-size: var(--faceverify-button-icon-size);
+}
 
-.fvPrimaryGreen{
+.fvPrimaryGreen {
   background: linear-gradient(90deg, #1fbf5b, #149a44);
   border: 1px solid rgba(255, 255, 255, 0.18);
 }
 
-.fvPrimaryGreen:hover{ filter: brightness(1.05); }
-.fvPrimaryGreen:disabled{ opacity: 0.6; }
+.fvPrimaryGreen:hover {
+  filter: brightness(1.05);
+}
 
-.fvSecondary{
+.fvPrimaryGreen:disabled {
+  opacity: 0.6;
+}
+
+.fvSecondary {
   margin-top: 10px;
   width: 100%;
   height: clamp(56px, 6.6vw, 62px);
@@ -169,7 +250,7 @@
 
   color: #fff;
   font-weight: 900;
-  font-size: 20px;
+  font-size: var(--faceverify-button-size);
 
   display: inline-flex;
   align-items: center;
@@ -177,20 +258,20 @@
   gap: 10px;
 
   background: linear-gradient(90deg, var(--brand), var(--brandDark));
-  box-shadow: 0 16px 26px rgba(0,0,0,0.12);
+  box-shadow: 0 16px 26px rgba(0, 0, 0, 0.12);
 }
 
 /* ===== Bottom area ===== */
-.fvBottom{
+.fvBottom {
   margin-top: 12px;
   display: grid;
   gap: 10px;
-  border-top: 1px solid rgba(2,75,118,0.18);
+  border-top: 1px solid rgba(2, 75, 118, 0.18);
   padding-top: 12px;
 }
 
 /* back button class you pass into <BackButton className="..."/> */
-.fvBackBtn{
+.fvBackBtn {
   width: 100%;
   height: clamp(56px, 6.6vw, 62px);
   border-radius: 30px;
@@ -198,40 +279,51 @@
   background: #000;
   color: #fff;
   font-weight: 900;
-  font-size: clamp(16px, 2.1vw, 18px);
+  font-size: var(--faceverify-back-button-size);
   cursor: pointer;
-  box-shadow: 0 10px 16px rgba(0,0,0,0.22);
-  transition: transform 0.08s ease, opacity 0.15s ease;
+  box-shadow: 0 10px 16px rgba(0, 0, 0, 0.22);
+  transition:
+    transform 0.08s ease,
+    opacity 0.15s ease;
 }
 
-.fvBackBtn:hover{ opacity: 0.92; }
-.fvBackBtn:active{ transform: translateY(1px); }
+.fvBackBtn:hover {
+  opacity: 0.92;
+}
+
+.fvBackBtn:active {
+  transform: translateY(1px);
+}
 
 /* ===== Placeholder (ยังไม่มีภาพถ่าย) ===== */
-.fvEmpty{
+.fvEmpty {
   position: absolute;
   inset: 0;
   display: grid;
   place-items: center;
   text-align: center;
-  background: linear-gradient(180deg, rgba(245,248,252,0.95), rgba(235,240,246,0.95));
+  background: linear-gradient(
+    180deg,
+    rgba(245, 248, 252, 0.95),
+    rgba(235, 240, 246, 0.95)
+  );
 }
 
-.fvEmptyIcon{
+.fvEmptyIcon {
   width: 86px;
   height: 86px;
   border-radius: 22px;
   display: grid;
   place-items: center;
-  background: rgba(2,75,118,0.10);
-  border: 2px solid rgba(2,75,118,0.18);
-  color: rgba(2,75,118,0.75);
-  font-size: 34px;
+  background: rgba(2, 75, 118, 0.1);
+  border: 2px solid rgba(2, 75, 118, 0.18);
+  color: rgba(2, 75, 118, 0.75);
+  font-size: var(--faceverify-empty-icon-size);
   margin-bottom: 10px;
 }
 
-.fvEmptyText{
+.fvEmptyText {
   font-weight: 900;
-  font-size: 18px;
-  color: rgba(27,43,74,0.72);
+  font-size: var(--faceverify-empty-text-size);
+  color: rgba(27, 43, 74, 0.72);
 }

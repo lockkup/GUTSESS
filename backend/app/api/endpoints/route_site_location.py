@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from datetime import date
+
+from fastapi import APIRouter, Depends, Path, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.core import get_db
 from app.core.constants import DBConstants
 from app.schemas.route_site_location import (
+    RouteSiteLocationAction,
     RouteSiteLocationCreate,
     RouteSiteLocationResponse,
     RouteSiteLocationUpdate,
@@ -13,8 +16,6 @@ from app.schemas.route_site_location import (
 from app.services.route_site_location import RouteSiteLocationService
 
 router = APIRouter()
-
-ROUTE_SITE_LOCATION_NOT_FOUND_DETAIL = "Route site location not found"
 
 
 @router.post(
@@ -26,7 +27,10 @@ def create_route_site_location(
     payload: RouteSiteLocationCreate,
     db: Session = Depends(get_db),
 ) -> RouteSiteLocationResponse:
-    return RouteSiteLocationService.create_route_site_location(db, payload)
+    return RouteSiteLocationService.create_route_site_location(
+        db=db,
+        payload=payload,
+    )
 
 
 @router.get(
@@ -42,7 +46,12 @@ def get_route_site_locations(
         le=DBConstants.MAX_PAGE_LIMIT,
     ),
     routes_id: int | None = Query(default=None, gt=0),
-    site_location_id: int | None = Query(default=None, gt=0),
+    division_id: int | None = Query(default=None, gt=0),
+    location_id: int | None = Query(default=None, gt=0),
+    is_active: bool | None = Query(default=None),
+    include_deleted: bool = Query(default=False),
+    only_effective: bool = Query(default=False),
+    work_date: date | None = Query(default=None),
     db: Session = Depends(get_db),
 ) -> list[RouteSiteLocationResponse]:
     return RouteSiteLocationService.get_route_site_locations(
@@ -50,7 +59,12 @@ def get_route_site_locations(
         skip=skip,
         limit=limit,
         routes_id=routes_id,
-        site_location_id=site_location_id,
+        division_id=division_id,
+        location_id=location_id,
+        is_active=is_active,
+        include_deleted=include_deleted,
+        only_effective=only_effective,
+        work_date=work_date,
     )
 
 
@@ -59,20 +73,16 @@ def get_route_site_locations(
     response_model=RouteSiteLocationResponse,
     status_code=status.HTTP_200_OK,
 )
-def get_route_site_location_by_id(
+def get_route_site_location(
     route_site_location_id: int = Path(..., gt=0),
+    include_deleted: bool = Query(default=False),
     db: Session = Depends(get_db),
 ) -> RouteSiteLocationResponse:
-    route_site_location = RouteSiteLocationService.get_route_site_location_by_id(
+    return RouteSiteLocationService.get_route_site_location(
         db=db,
         route_site_location_id=route_site_location_id,
+        include_deleted=include_deleted,
     )
-    if route_site_location is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=ROUTE_SITE_LOCATION_NOT_FOUND_DETAIL,
-        )
-    return route_site_location
 
 
 @router.patch(
@@ -85,41 +95,60 @@ def update_route_site_location(
     route_site_location_id: int = Path(..., gt=0),
     db: Session = Depends(get_db),
 ) -> RouteSiteLocationResponse:
-    route_site_location = RouteSiteLocationService.update_route_site_location(
+    return RouteSiteLocationService.update_route_site_location(
         db=db,
         route_site_location_id=route_site_location_id,
         payload=payload,
     )
-    if route_site_location is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=ROUTE_SITE_LOCATION_NOT_FOUND_DETAIL,
-        )
-    return route_site_location
 
 
 @router.delete(
     "/{route_site_location_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_route_site_location(
+    payload: RouteSiteLocationAction,
+    route_site_location_id: int = Path(..., gt=0),
+    db: Session = Depends(get_db),
+) -> Response:
+    RouteSiteLocationService.delete_route_site_location(
+        db=db,
+        route_site_location_id=route_site_location_id,
+        updated_by=payload.updated_by,
+    )
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.patch(
+    "/{route_site_location_id}/deactivate",
     response_model=RouteSiteLocationResponse,
     status_code=status.HTTP_200_OK,
 )
-def delete_route_site_location(
+def deactivate_route_site_location(
+    payload: RouteSiteLocationAction,
     route_site_location_id: int = Path(..., gt=0),
-    updated_by: str = Query(
-        ...,
-        min_length=DBConstants.EMPLOYEE_CODE_LENGTH,
-        max_length=DBConstants.EMPLOYEE_CODE_LENGTH,
-    ),
     db: Session = Depends(get_db),
 ) -> RouteSiteLocationResponse:
-    route_site_location = RouteSiteLocationService.delete_route_site_location(
+    return RouteSiteLocationService.deactivate_route_site_location(
         db=db,
         route_site_location_id=route_site_location_id,
-        updated_by=updated_by,
+        updated_by=payload.updated_by,
     )
-    if route_site_location is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=ROUTE_SITE_LOCATION_NOT_FOUND_DETAIL,
-        )
-    return route_site_location
+
+
+@router.patch(
+    "/{route_site_location_id}/activate",
+    response_model=RouteSiteLocationResponse,
+    status_code=status.HTTP_200_OK,
+)
+def activate_route_site_location(
+    payload: RouteSiteLocationAction,
+    route_site_location_id: int = Path(..., gt=0),
+    db: Session = Depends(get_db),
+) -> RouteSiteLocationResponse:
+    return RouteSiteLocationService.activate_route_site_location(
+        db=db,
+        route_site_location_id=route_site_location_id,
+        updated_by=payload.updated_by,
+    )

@@ -1,3 +1,5 @@
+// src/types/timeRecord.ts
+
 export type TimeRecord = {
   time_record_id: number;
   employee_code: string;
@@ -32,7 +34,21 @@ export type TimeRecordCheckIn = {
   shift_id: number;
   work_date: string;
 
-  checkin_location_id?: number | null;
+  /**
+   * ใช้เฉพาะกรณีมาจาก "ตารางงานสายตรวจ"
+   * - attendance ปกติ: ไม่ต้องส่ง
+   * - checkpoint: ส่ง assignment_id เพื่อให้ backend ตรวจ GPS และผูก time_record_id กับ checkpoint_assignment
+   */
+  assignment_id?: number | null;
+
+  current_latitude: number;
+  current_longitude: number;
+  gps_accuracy?: number | null;
+
+  /**
+   * Backend จะใช้ current_latitude/current_longitude ตรวจพื้นที่
+   * และกำหนด checkin_location_id เอง
+   */
   checkin: string;
   checkin_lat?: number | null;
   checkin_lng?: number | null;
@@ -44,7 +60,21 @@ export type TimeRecordCheckIn = {
 };
 
 export type TimeRecordCheckOut = {
-  checkout_location_id?: number | null;
+  /**
+   * ใช้เฉพาะกรณีออกงานจาก "ตารางงานสายตรวจ"
+   * - attendance ปกติ: ไม่ต้องส่ง
+   * - checkpoint: ส่ง assignment_id เพื่อให้ backend ตรวจ GPS และหา checkpoint_assignment.time_record_id
+   */
+  assignment_id?: number | null;
+
+  current_latitude: number;
+  current_longitude: number;
+  gps_accuracy?: number | null;
+
+  /**
+   * Backend จะใช้ current_latitude/current_longitude ตรวจพื้นที่
+   * และกำหนด checkout_location_id เอง
+   */
   checkout: string;
   checkout_lat?: number | null;
   checkout_lng?: number | null;

@@ -7,11 +7,12 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field
 from app.core.constants import DBConstants
 
 
-PENDING_EMBEDDING_VALUE = "PENDING_EMBEDDING"
-
-
 class FaceProfileBase(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(
+        extra="forbid",
+        str_strip_whitespace=True,
+    )
+
     is_active: bool = Field(default=True)
 
 
@@ -21,6 +22,7 @@ class FaceProfileCreate(FaceProfileBase):
         min_length=DBConstants.EMPLOYEE_CODE_LENGTH,
         max_length=DBConstants.EMPLOYEE_CODE_LENGTH,
     )
+
     created_by: str = Field(
         ...,
         min_length=DBConstants.EMPLOYEE_CODE_LENGTH,
@@ -29,8 +31,26 @@ class FaceProfileCreate(FaceProfileBase):
 
 
 class FaceProfileUpdate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(
+        extra="forbid",
+        str_strip_whitespace=True,
+    )
+
     is_active: bool | None = None
+
+    updated_by: str = Field(
+        ...,
+        min_length=DBConstants.EMPLOYEE_CODE_LENGTH,
+        max_length=DBConstants.EMPLOYEE_CODE_LENGTH,
+    )
+
+
+class FaceProfileAction(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        str_strip_whitespace=True,
+    )
+
     updated_by: str = Field(
         ...,
         min_length=DBConstants.EMPLOYEE_CODE_LENGTH,
@@ -66,7 +86,10 @@ class FaceProfileListResponse(BaseModel):
     @property
     def has_embedding(self) -> bool:
         face_embedding = (self.face_embedding or "").strip()
-        return bool(face_embedding and face_embedding != PENDING_EMBEDDING_VALUE)
+        return bool(
+            face_embedding
+            and face_embedding != DBConstants.FACE_PENDING_EMBEDDING_VALUE
+        )
 
     @computed_field
     @property
@@ -79,11 +102,11 @@ class FaceProfileListResponse(BaseModel):
         if not face_embedding:
             return "pending"
 
-        if face_embedding == PENDING_EMBEDDING_VALUE:
+        if face_embedding == DBConstants.FACE_PENDING_EMBEDDING_VALUE:
             return "pending"
 
         return "ready"
 
 
 class FaceProfileResponse(FaceProfileListResponse):
-    face_embedding: str | None = Field(default=None, exclude=False)
+    pass

@@ -1,14 +1,35 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timedelta
+from math import asin, cos, isfinite, radians, sin, sqrt
+from typing import Any
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.core.constants import DBConstants
+from app.core.error_messages import (
+    CHECKIN_LOCATION_NOT_FOUND_DETAIL,
+    CHECKOUT_BEFORE_CHECKIN_DETAIL,
+    CHECKOUT_LOCATION_NOT_FOUND_DETAIL,
+    CREATED_BY_EMPLOYEE_NOT_FOUND_DETAIL,
+    EMPLOYEE_NOT_FOUND_DETAIL,
+    INVALID_CHECK_TIME_FORMAT_DETAIL,
+    INVALID_TIME_RECORD_REFERENCE_DETAIL,
+    INVALID_TIME_RECORD_UPDATE_DETAIL,
+    OPEN_TIME_RECORD_ALREADY_EXISTS_DETAIL,
+    OPEN_TIME_RECORD_NOT_FOUND_DETAIL,
+    SHIFT_NOT_FOUND_DETAIL,
+    TIME_RECORD_ALREADY_CHECKED_OUT_DETAIL,
+    TIME_RECORD_NOT_FOUND_DETAIL,
+    UPDATED_BY_EMPLOYEE_NOT_FOUND_DETAIL,
+)
+from app.models.checkpoint_assignment import CheckpointAssignment
+from app.models.checkpoint_schedule_item import CheckpointScheduleItem
 from app.models.employees import Employees
+from app.models.route_site_location import RouteSiteLocation
 from app.models.shift import Shift
 from app.models.site_location import SiteLocation
 from app.models.time_record import TimeRecord
@@ -21,101 +42,104 @@ from app.schemas.time_record import (
 
 class TimeRecordService:
     @staticmethod
-    def _get_employee(db: Session, employee_code: str) -> Employees | None:
+    def _is_deleted_or_inactive(record: Any) -> bool:
+        if bool(getattr(record, "mark_flag", False)):
+            return True
+
+        if getattr(record, "is_active", True) is False:
+            return True
+
+        return False
+
+    @staticmethod
+    def _raise_not_found(detail: str) -> None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=detail,
+        )
+
+    @staticmethod
+    def _get_employee(
+        db: Session,
+        employee_code: str,
+        for_update: bool = False,
+    ) -> Employees | None:
         stmt = select(Employees).where(Employees.employee_code == employee_code)
+
+        if for_update:
+            stmt = stmt.with_for_update()
+
         return db.scalar(stmt)
 
     @staticmethod
-    def _get_shift(db: Session, shift_id: int) -> Shift | None:
+    def _get_shift(
+        db: Session,
+        shift_id: int,
+    ) -> Shift | None:
         stmt = select(Shift).where(Shift.shift_id == shift_id)
         return db.scalar(stmt)
 
     @staticmethod
-    def _get_site_location(db: Session, location_id: int) -> SiteLocation | None:
+    def _get_site_location(
+        db: Session,
+        location_id: int,
+    ) -> SiteLocation | None:
         stmt = select(SiteLocation).where(SiteLocation.location_id == location_id)
         return db.scalar(stmt)
 
     @staticmethod
-    def _get_status_code(time_record: TimeRecord) -> str:
-        if time_record.checkin is None and time_record.checkout is None:
-            return "pending"
-        if time_record.checkin is not None and time_record.checkout is None:
-            return "in_progress"
-        return "completed"
-
-    @staticmethod
-    def _get_status_text(status_code: str) -> str:
-        status_map = {
-            "pending": "รอดำเนินการเข้าตรวจ",
-            "in_progress": "อยู่ระหว่างการเข้าตรวจ",
-            "completed": "ตรวจแล้ว",
-        }
-        return status_map.get(status_code, "ไม่ทราบสถานะ")
-
-    @staticmethod
-    def create_time_record(
+    def _ensure_employee_exists(
         db: Session,
-        payload: TimeRecordCheckIn,
-    ) -> TimeRecord:
-        employee = TimeRecordService._get_employee(db, payload.employee_code)
-        if employee is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Employee not found",
-            )
-
-        shift = TimeRecordService._get_shift(db, payload.shift_id)
-        if shift is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Shift not found",
-            )
-
-        if payload.checkin_location_id is not None:
-            site_location = TimeRecordService._get_site_location(
-                db,
-                payload.checkin_location_id,
-            )
-            if site_location is None:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Check-in location not found",
-                )
-
-        created_by_employee = TimeRecordService._get_employee(db, payload.created_by)
-        if created_by_employee is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Created by employee not found",
-            )
-
-        open_time_record = TimeRecordService.get_open_time_record_by_employee(
-            db,
-            payload.employee_code,
+        employee_code: str,
+        detail: str,
+        for_update: bool = False,
+    ) -> Employees:
+        employee = TimeRecordService._get_employee(
+            db=db,
+            employee_code=employee_code,
+            for_update=for_update,
         )
-        if open_time_record is not None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Open time record already exists for this employee",
-            )
 
-        time_record = TimeRecord(**payload.model_dump())
+        if employee is None or TimeRecordService._is_deleted_or_inactive(employee):
+            TimeRecordService._raise_not_found(detail)
 
-        try:
-            db.add(time_record)
-            db.commit()
-            db.refresh(time_record)
-        except IntegrityError as exc:
-            db.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid time record reference data",
-            ) from exc
-
-        return time_record
+        return employee
 
     @staticmethod
-    def get_time_record_by_id(
+    def _ensure_shift_exists(
+        db: Session,
+        shift_id: int,
+    ) -> Shift:
+        shift = TimeRecordService._get_shift(
+            db=db,
+            shift_id=shift_id,
+        )
+
+        if shift is None or TimeRecordService._is_deleted_or_inactive(shift):
+            TimeRecordService._raise_not_found(SHIFT_NOT_FOUND_DETAIL)
+
+        return shift
+
+    @staticmethod
+    def _ensure_site_location_exists(
+        db: Session,
+        location_id: int,
+        detail: str,
+    ) -> SiteLocation:
+        site_location = TimeRecordService._get_site_location(
+            db=db,
+            location_id=location_id,
+        )
+
+        if site_location is None or TimeRecordService._is_deleted_or_inactive(
+            site_location
+        ):
+            TimeRecordService._raise_not_found(detail)
+
+        return site_location
+
+    @staticmethod
+    def _get_time_record_by_id_raw(
         db: Session,
         time_record_id: int,
     ) -> TimeRecord | None:
@@ -123,17 +147,618 @@ class TimeRecordService:
         return db.scalar(stmt)
 
     @staticmethod
-    def get_open_time_record_by_employee(
+    def _is_time_record_linked_to_checkpoint(
+        db: Session,
+        time_record_id: int,
+    ) -> bool:
+        link_exists = (
+            select(CheckpointAssignment.assignment_id)
+            .where(CheckpointAssignment.time_record_id == time_record_id)
+            .exists()
+        )
+
+        return bool(db.scalar(select(link_exists)))
+
+    @staticmethod
+    def _get_open_attendance_time_record_by_employee_raw(
         db: Session,
         employee_code: str,
     ) -> TimeRecord | None:
+        checkpoint_time_record_exists = (
+            select(CheckpointAssignment.assignment_id)
+            .where(CheckpointAssignment.time_record_id == TimeRecord.time_record_id)
+            .exists()
+        )
+
         stmt = (
             select(TimeRecord)
             .where(TimeRecord.employee_code == employee_code)
             .where(TimeRecord.checkout.is_(None))
-            .order_by(TimeRecord.created_at.desc(), TimeRecord.time_record_id.desc())
+            .where(~checkpoint_time_record_exists)
+            .order_by(
+                TimeRecord.created_at.desc(),
+                TimeRecord.time_record_id.desc(),
+            )
         )
+
         return db.scalar(stmt)
+
+    @staticmethod
+    def _get_open_checkpoint_time_record_by_employee_raw(
+        db: Session,
+        employee_code: str,
+        assignment_id: int,
+    ) -> TimeRecord | None:
+        stmt = (
+            select(TimeRecord)
+            .join(
+                CheckpointAssignment,
+                CheckpointAssignment.time_record_id == TimeRecord.time_record_id,
+            )
+            .where(CheckpointAssignment.assignment_id == assignment_id)
+            .where(TimeRecord.employee_code == employee_code)
+            .where(TimeRecord.checkout.is_(None))
+            .order_by(
+                TimeRecord.created_at.desc(),
+                TimeRecord.time_record_id.desc(),
+            )
+        )
+
+        return db.scalar(stmt)
+
+    @staticmethod
+    def _get_open_time_record_by_employee_raw(
+        db: Session,
+        employee_code: str,
+    ) -> TimeRecord | None:
+        return TimeRecordService._get_open_attendance_time_record_by_employee_raw(
+            db=db,
+            employee_code=employee_code,
+        )
+
+    @staticmethod
+    def _is_datetime_value(value: str) -> bool:
+        cleaned_value = value.strip()
+        return (
+            len(cleaned_value) >= 10
+            and cleaned_value[4] == "-"
+            and cleaned_value[7] == "-"
+        )
+
+    @staticmethod
+    def _parse_check_time(
+        value: str,
+        work_date: date,
+    ) -> datetime:
+        cleaned_value = value.strip()
+
+        for time_format in DBConstants.CHECK_TIME_INPUT_FORMATS:
+            try:
+                parsed_value = datetime.strptime(cleaned_value, time_format)
+            except ValueError:
+                continue
+
+            if "%Y" in time_format:
+                return parsed_value
+
+            return datetime.combine(work_date, parsed_value.time())
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=INVALID_CHECK_TIME_FORMAT_DETAIL,
+        )
+
+    @staticmethod
+    def _validate_checkout_after_checkin(
+        time_record: TimeRecord,
+        checkout: str,
+        shift: Shift,
+    ) -> None:
+        if time_record.checkin is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=INVALID_TIME_RECORD_UPDATE_DETAIL,
+            )
+
+        checkin_at = TimeRecordService._parse_check_time(
+            value=time_record.checkin,
+            work_date=time_record.work_date,
+        )
+        checkout_at = TimeRecordService._parse_check_time(
+            value=checkout,
+            work_date=time_record.work_date,
+        )
+
+        crosses_midnight = bool(getattr(shift, "crosses_midnight", False))
+
+        if (
+            checkout_at < checkin_at
+            and crosses_midnight
+            and not TimeRecordService._is_datetime_value(checkout)
+        ):
+            checkout_at += timedelta(days=1)
+
+        if checkout_at < checkin_at:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=CHECKOUT_BEFORE_CHECKIN_DETAIL,
+            )
+
+    @staticmethod
+    def _distance_meters(
+        lat1: float,
+        lng1: float,
+        lat2: float,
+        lng2: float,
+    ) -> float:
+        earth_radius_meter = 6_371_000
+
+        d_lat = radians(lat2 - lat1)
+        d_lng = radians(lng2 - lng1)
+
+        a = (
+            sin(d_lat / 2) ** 2
+            + cos(radians(lat1))
+            * cos(radians(lat2))
+            * sin(d_lng / 2) ** 2
+        )
+
+        return 2 * earth_radius_meter * asin(sqrt(a))
+
+    @staticmethod
+    def _coerce_current_coordinates(
+        current_latitude: Any,
+        current_longitude: Any,
+    ) -> tuple[float, float]:
+        try:
+            current_lat = float(current_latitude)
+            current_lng = float(current_longitude)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="ข้อมูลพิกัดไม่ถูกต้อง",
+            ) from exc
+
+        if not all(isfinite(value) for value in [current_lat, current_lng]):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="ข้อมูลพิกัดไม่ถูกต้อง",
+            )
+
+        return current_lat, current_lng
+
+    @staticmethod
+    def _get_assignment_and_site_location(
+        db: Session,
+        assignment_id: int,
+        detail: str,
+    ) -> tuple[CheckpointAssignment, SiteLocation]:
+        stmt = (
+            select(
+                CheckpointAssignment,
+                CheckpointScheduleItem,
+                RouteSiteLocation,
+                SiteLocation,
+            )
+            .join(
+                CheckpointScheduleItem,
+                CheckpointAssignment.schedule_item_id
+                == CheckpointScheduleItem.schedule_item_id,
+            )
+            .join(
+                RouteSiteLocation,
+                CheckpointScheduleItem.route_site_location_id
+                == RouteSiteLocation.route_site_location_id,
+            )
+            .join(
+                SiteLocation,
+                RouteSiteLocation.location_id == SiteLocation.location_id,
+            )
+            .where(CheckpointAssignment.assignment_id == assignment_id)
+        )
+
+        row = db.execute(stmt).first()
+
+        if row is None:
+            TimeRecordService._raise_not_found(detail)
+
+        assignment, schedule_item, route_site_location, site_location = row
+
+        if (
+            TimeRecordService._is_deleted_or_inactive(assignment)
+            or TimeRecordService._is_deleted_or_inactive(schedule_item)
+            or TimeRecordService._is_deleted_or_inactive(route_site_location)
+            or TimeRecordService._is_deleted_or_inactive(site_location)
+        ):
+            TimeRecordService._raise_not_found(detail)
+
+        return assignment, site_location
+
+    @staticmethod
+    def _validate_assignment_location_gate(
+        db: Session,
+        assignment_id: int,
+        current_latitude: Any,
+        current_longitude: Any,
+        detail: str,
+    ) -> tuple[CheckpointAssignment, SiteLocation]:
+        assignment, site_location = TimeRecordService._get_assignment_and_site_location(
+            db=db,
+            assignment_id=assignment_id,
+            detail=detail,
+        )
+
+        if site_location.latitude is None or site_location.longitude is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="จุดรักษาการณ์นี้ยังไม่มีพิกัด latitude/longitude",
+            )
+
+        current_lat, current_lng = TimeRecordService._coerce_current_coordinates(
+            current_latitude=current_latitude,
+            current_longitude=current_longitude,
+        )
+
+        site_lat = float(site_location.latitude)
+        site_lng = float(site_location.longitude)
+
+        radius_meter = float(site_location.radius_meter or 0)
+        grace_meter = float(getattr(site_location, "grace_meter", 0) or 0)
+        allowed_radius = radius_meter + grace_meter
+
+        if not all(
+            isfinite(value)
+            for value in [
+                site_lat,
+                site_lng,
+                allowed_radius,
+            ]
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="ข้อมูลพิกัดไม่ถูกต้อง",
+            )
+
+        distance_meter = TimeRecordService._distance_meters(
+            lat1=current_lat,
+            lng1=current_lng,
+            lat2=site_lat,
+            lng2=site_lng,
+        )
+
+        if distance_meter > allowed_radius:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "คุณอยู่นอกพื้นที่จุดรักษาการณ์ "
+                    f"{site_location.location_name} "
+                    f"ระยะห่างประมาณ {round(distance_meter)} เมตร"
+                ),
+            )
+
+        return assignment, site_location
+
+    @staticmethod
+    def _validate_nearest_attendance_location_gate(
+        db: Session,
+        current_latitude: Any,
+        current_longitude: Any,
+        detail: str,
+    ) -> SiteLocation:
+        current_lat, current_lng = TimeRecordService._coerce_current_coordinates(
+            current_latitude=current_latitude,
+            current_longitude=current_longitude,
+        )
+
+        stmt = (
+            select(SiteLocation)
+            .where(SiteLocation.latitude.is_not(None))
+            .where(SiteLocation.longitude.is_not(None))
+        )
+
+        site_locations = list(db.scalars(stmt).all())
+
+        best_site_location: SiteLocation | None = None
+        best_distance_meter: float | None = None
+        best_allowed_radius: float = 0
+
+        for site_location in site_locations:
+            if TimeRecordService._is_deleted_or_inactive(site_location):
+                continue
+
+            site_lat = float(site_location.latitude)
+            site_lng = float(site_location.longitude)
+
+            radius_meter = float(site_location.radius_meter or 0)
+            grace_meter = float(getattr(site_location, "grace_meter", 0) or 0)
+            allowed_radius = radius_meter + grace_meter
+
+            if not all(
+                isfinite(value)
+                for value in [
+                    site_lat,
+                    site_lng,
+                    allowed_radius,
+                ]
+            ):
+                continue
+
+            distance_meter = TimeRecordService._distance_meters(
+                lat1=current_lat,
+                lng1=current_lng,
+                lat2=site_lat,
+                lng2=site_lng,
+            )
+
+            if best_distance_meter is None or distance_meter < best_distance_meter:
+                best_site_location = site_location
+                best_distance_meter = distance_meter
+                best_allowed_radius = allowed_radius
+
+        if best_site_location is None or best_distance_meter is None:
+            TimeRecordService._raise_not_found(detail)
+
+        if best_distance_meter > best_allowed_radius:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "คุณอยู่นอกพื้นที่ลงเวลา "
+                    f"จุดที่ใกล้ที่สุดคือ {best_site_location.location_name} "
+                    f"ระยะห่างประมาณ {round(best_distance_meter)} เมตร"
+                ),
+            )
+
+        return best_site_location
+
+    @staticmethod
+    def _get_status_code(time_record: TimeRecord) -> str:
+        if time_record.checkin is None and time_record.checkout is None:
+            return "pending"
+
+        if time_record.checkin is not None and time_record.checkout is None:
+            return "in_progress"
+
+        return "completed"
+
+    @staticmethod
+    def _get_status_text(status_code: str) -> str:
+        status_map = {
+            "pending": "รอดำเนินการลงเวลา",
+            "in_progress": "ลงเวลาเข้าแล้ว",
+            "completed": "ลงเวลาออกแล้ว",
+        }
+        return status_map.get(status_code, "ไม่ทราบสถานะ")
+
+    @staticmethod
+    def _apply_filters(
+        stmt: Any,
+        employee_code: str | None = None,
+        shift_id: int | None = None,
+        work_date: date | None = None,
+    ) -> Any:
+        if employee_code:
+            stmt = stmt.where(TimeRecord.employee_code == employee_code)
+
+        if shift_id is not None:
+            stmt = stmt.where(TimeRecord.shift_id == shift_id)
+
+        if work_date is not None:
+            stmt = stmt.where(TimeRecord.work_date == work_date)
+
+        return stmt
+
+    @staticmethod
+    def _apply_ordering_and_pagination(
+        stmt: Any,
+        skip: int,
+        limit: int,
+    ) -> Any:
+        return (
+            stmt.order_by(
+                TimeRecord.created_at.desc(),
+                TimeRecord.time_record_id.desc(),
+            )
+            .offset(skip)
+            .limit(limit)
+        )
+
+    @staticmethod
+    def _commit(
+        db: Session,
+        time_record: TimeRecord,
+        error_detail: str,
+    ) -> None:
+        try:
+            db.commit()
+            db.refresh(time_record)
+        except IntegrityError as exc:
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=error_detail,
+            ) from exc
+
+    @staticmethod
+    def create_time_record(
+        db: Session,
+        payload: TimeRecordCheckIn,
+    ) -> TimeRecord:
+        TimeRecordService._ensure_employee_exists(
+            db=db,
+            employee_code=payload.employee_code,
+            detail=EMPLOYEE_NOT_FOUND_DETAIL,
+            for_update=True,
+        )
+
+        TimeRecordService._ensure_shift_exists(
+            db=db,
+            shift_id=payload.shift_id,
+        )
+
+        TimeRecordService._ensure_employee_exists(
+            db=db,
+            employee_code=payload.created_by,
+            detail=CREATED_BY_EMPLOYEE_NOT_FOUND_DETAIL,
+        )
+
+        checkin_at = TimeRecordService._parse_check_time(
+            value=payload.checkin,
+            work_date=payload.work_date,
+        )
+
+        assignment_id = getattr(payload, "assignment_id", None)
+        assignment: CheckpointAssignment | None = None
+
+        if assignment_id is not None:
+            assignment, site_location = TimeRecordService._validate_assignment_location_gate(
+                db=db,
+                assignment_id=assignment_id,
+                current_latitude=payload.current_latitude,
+                current_longitude=payload.current_longitude,
+                detail=CHECKIN_LOCATION_NOT_FOUND_DETAIL,
+            )
+
+            open_time_record = (
+                TimeRecordService._get_open_checkpoint_time_record_by_employee_raw(
+                    db=db,
+                    employee_code=payload.employee_code,
+                    assignment_id=assignment_id,
+                )
+            )
+        else:
+            site_location = TimeRecordService._validate_nearest_attendance_location_gate(
+                db=db,
+                current_latitude=payload.current_latitude,
+                current_longitude=payload.current_longitude,
+                detail=CHECKIN_LOCATION_NOT_FOUND_DETAIL,
+            )
+
+            open_time_record = (
+                TimeRecordService._get_open_attendance_time_record_by_employee_raw(
+                    db=db,
+                    employee_code=payload.employee_code,
+                )
+            )
+
+        if open_time_record is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=OPEN_TIME_RECORD_ALREADY_EXISTS_DETAIL,
+            )
+
+        create_data = payload.model_dump(
+            exclude={
+                "assignment_id",
+                "current_latitude",
+                "current_longitude",
+                "gps_accuracy",
+            }
+        )
+
+        create_data["checkin_location_id"] = site_location.location_id
+        create_data["checkin_lat"] = payload.current_latitude
+        create_data["checkin_lng"] = payload.current_longitude
+
+        time_record = TimeRecord(**create_data)
+
+        db.add(time_record)
+        db.flush()
+
+        if assignment is not None:
+            assignment.time_record_id = time_record.time_record_id
+            assignment.assignment_status = "in_progress"
+            assignment.started_at = checkin_at
+            assignment.started_by = payload.created_by
+
+        TimeRecordService._commit(
+            db=db,
+            time_record=time_record,
+            error_detail=INVALID_TIME_RECORD_REFERENCE_DETAIL,
+        )
+
+        return time_record
+
+    @staticmethod
+    def get_time_record_by_id(
+        db: Session,
+        time_record_id: int,
+    ) -> TimeRecord:
+        time_record = TimeRecordService._get_time_record_by_id_raw(
+            db=db,
+            time_record_id=time_record_id,
+        )
+
+        if time_record is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=TIME_RECORD_NOT_FOUND_DETAIL,
+            )
+
+        return time_record
+
+    @staticmethod
+    def get_open_attendance_time_record_by_employee(
+        db: Session,
+        employee_code: str,
+    ) -> TimeRecord:
+        TimeRecordService._ensure_employee_exists(
+            db=db,
+            employee_code=employee_code,
+            detail=EMPLOYEE_NOT_FOUND_DETAIL,
+        )
+
+        time_record = (
+            TimeRecordService._get_open_attendance_time_record_by_employee_raw(
+                db=db,
+                employee_code=employee_code,
+            )
+        )
+
+        if time_record is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=OPEN_TIME_RECORD_NOT_FOUND_DETAIL,
+            )
+
+        return time_record
+
+    @staticmethod
+    def get_open_checkpoint_time_record_by_employee(
+        db: Session,
+        employee_code: str,
+        assignment_id: int,
+    ) -> TimeRecord:
+        TimeRecordService._ensure_employee_exists(
+            db=db,
+            employee_code=employee_code,
+            detail=EMPLOYEE_NOT_FOUND_DETAIL,
+        )
+
+        time_record = (
+            TimeRecordService._get_open_checkpoint_time_record_by_employee_raw(
+                db=db,
+                employee_code=employee_code,
+                assignment_id=assignment_id,
+            )
+        )
+
+        if time_record is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=OPEN_TIME_RECORD_NOT_FOUND_DETAIL,
+            )
+
+        return time_record
+
+    @staticmethod
+    def get_open_time_record_by_employee(
+        db: Session,
+        employee_code: str,
+    ) -> TimeRecord:
+        return TimeRecordService.get_open_attendance_time_record_by_employee(
+            db=db,
+            employee_code=employee_code,
+        )
 
     @staticmethod
     def get_time_records(
@@ -146,22 +771,16 @@ class TimeRecordService:
     ) -> list[TimeRecord]:
         stmt = select(TimeRecord)
 
-        if employee_code is not None and employee_code.strip():
-            stmt = stmt.where(TimeRecord.employee_code == employee_code.strip())
-
-        if shift_id is not None:
-            stmt = stmt.where(TimeRecord.shift_id == shift_id)
-
-        if work_date is not None:
-            stmt = stmt.where(TimeRecord.work_date == work_date)
-
-        stmt = (
-            stmt.order_by(
-                TimeRecord.created_at.desc(),
-                TimeRecord.time_record_id.desc(),
-            )
-            .offset(skip)
-            .limit(limit)
+        stmt = TimeRecordService._apply_filters(
+            stmt=stmt,
+            employee_code=employee_code,
+            shift_id=shift_id,
+            work_date=work_date,
+        )
+        stmt = TimeRecordService._apply_ordering_and_pagination(
+            stmt=stmt,
+            skip=skip,
+            limit=limit,
         )
 
         return list(db.scalars(stmt).all())
@@ -175,47 +794,52 @@ class TimeRecordService:
         shift_id: int | None = None,
         work_date: date | None = None,
     ) -> list[TimeRecordListItemResponse]:
+        CheckinLocation = aliased(SiteLocation)
+        CheckoutLocation = aliased(SiteLocation)
+
         stmt = (
-            select(TimeRecord, SiteLocation)
+            select(TimeRecord, CheckinLocation, CheckoutLocation)
             .outerjoin(
-                SiteLocation,
-                TimeRecord.checkin_location_id == SiteLocation.location_id,
+                CheckinLocation,
+                TimeRecord.checkin_location_id == CheckinLocation.location_id,
+            )
+            .outerjoin(
+                CheckoutLocation,
+                TimeRecord.checkout_location_id == CheckoutLocation.location_id,
             )
         )
 
-        if employee_code is not None and employee_code.strip():
-            stmt = stmt.where(TimeRecord.employee_code == employee_code.strip())
-
-        if shift_id is not None:
-            stmt = stmt.where(TimeRecord.shift_id == shift_id)
-
-        if work_date is not None:
-            stmt = stmt.where(TimeRecord.work_date == work_date)
-
-        stmt = (
-            stmt.order_by(
-                TimeRecord.created_at.desc(),
-                TimeRecord.time_record_id.desc(),
-            )
-            .offset(skip)
-            .limit(limit)
+        stmt = TimeRecordService._apply_filters(
+            stmt=stmt,
+            employee_code=employee_code,
+            shift_id=shift_id,
+            work_date=work_date,
+        )
+        stmt = TimeRecordService._apply_ordering_and_pagination(
+            stmt=stmt,
+            skip=skip,
+            limit=limit,
         )
 
         rows = db.execute(stmt).all()
 
         results: list[TimeRecordListItemResponse] = []
-        for time_record, site_location in rows:
+        for time_record, checkin_location, checkout_location in rows:
             status_code = TimeRecordService._get_status_code(time_record)
-            status_text = TimeRecordService._get_status_text(status_code)
+            display_location = checkin_location or checkout_location
 
             results.append(
                 TimeRecordListItemResponse(
                     time_record_id=time_record.time_record_id,
                     work_date=time_record.work_date,
-                    location_id=site_location.location_id if site_location else None,
-                    location_name=site_location.location_name if site_location else "-",
+                    location_id=(
+                        display_location.location_id if display_location else None
+                    ),
+                    location_name=(
+                        display_location.location_name if display_location else "-"
+                    ),
                     status_code=status_code,
-                    status_text=status_text,
+                    status_text=TimeRecordService._get_status_text(status_code),
                     checkin=time_record.checkin,
                     checkout=time_record.checkout,
                 )
@@ -228,64 +852,106 @@ class TimeRecordService:
         db: Session,
         time_record_id: int,
         payload: TimeRecordCheckOut,
-    ) -> TimeRecord | None:
-        time_record = TimeRecordService.get_time_record_by_id(db, time_record_id)
+    ) -> TimeRecord:
+        time_record = TimeRecordService._get_time_record_by_id_raw(
+            db=db,
+            time_record_id=time_record_id,
+        )
+
         if time_record is None:
-            return None
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=TIME_RECORD_NOT_FOUND_DETAIL,
+            )
 
         if time_record.checkout is not None:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Time record already checked out",
+                detail=TIME_RECORD_ALREADY_CHECKED_OUT_DETAIL,
             )
 
-        if payload.checkout_location_id is not None:
-            site_location = TimeRecordService._get_site_location(
-                db,
-                payload.checkout_location_id,
+        TimeRecordService._ensure_employee_exists(
+            db=db,
+            employee_code=payload.updated_by,
+            detail=UPDATED_BY_EMPLOYEE_NOT_FOUND_DETAIL,
+        )
+
+        shift = TimeRecordService._ensure_shift_exists(
+            db=db,
+            shift_id=time_record.shift_id,
+        )
+
+        TimeRecordService._validate_checkout_after_checkin(
+            time_record=time_record,
+            checkout=payload.checkout,
+            shift=shift,
+        )
+
+        assignment_id = getattr(payload, "assignment_id", None)
+        assignment: CheckpointAssignment | None = None
+
+        if assignment_id is not None:
+            assignment, site_location = TimeRecordService._validate_assignment_location_gate(
+                db=db,
+                assignment_id=assignment_id,
+                current_latitude=payload.current_latitude,
+                current_longitude=payload.current_longitude,
+                detail=CHECKOUT_LOCATION_NOT_FOUND_DETAIL,
             )
-            if site_location is None:
+
+            if assignment.time_record_id != time_record.time_record_id:
                 raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Check-out location not found",
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=INVALID_TIME_RECORD_UPDATE_DETAIL,
+                )
+        else:
+            if TimeRecordService._is_time_record_linked_to_checkpoint(
+                db=db,
+                time_record_id=time_record.time_record_id,
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=INVALID_TIME_RECORD_UPDATE_DETAIL,
                 )
 
-        if payload.updated_by is not None:
-            updated_by_employee = TimeRecordService._get_employee(
-                db,
-                payload.updated_by,
+            site_location = TimeRecordService._validate_nearest_attendance_location_gate(
+                db=db,
+                current_latitude=payload.current_latitude,
+                current_longitude=payload.current_longitude,
+                detail=CHECKOUT_LOCATION_NOT_FOUND_DETAIL,
             )
-            if updated_by_employee is None:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Updated by employee not found",
-                )
 
-        update_data = payload.model_dump(exclude_unset=True)
+        update_data = payload.model_dump(
+            exclude_unset=True,
+            exclude={
+                "assignment_id",
+                "current_latitude",
+                "current_longitude",
+                "gps_accuracy",
+            },
+        )
 
-        allowed_fields = {
-            "checkout_location_id",
-            "checkout",
-            "checkout_lat",
-            "checkout_lng",
-            "checkout_remark",
-            "images_checkout_1",
-            "images_checkout_2",
-            "updated_by",
-        }
+        update_data["checkout_location_id"] = site_location.location_id
+        update_data["checkout_lat"] = payload.current_latitude
+        update_data["checkout_lng"] = payload.current_longitude
 
         for field, value in update_data.items():
-            if field in allowed_fields:
-                setattr(time_record, field, value)
+            setattr(time_record, field, value)
 
-        try:
-            db.commit()
-            db.refresh(time_record)
-        except IntegrityError as exc:
-            db.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid time record update data",
-            ) from exc
+        if assignment is not None:
+            checkout_at = TimeRecordService._parse_check_time(
+                value=payload.checkout,
+                work_date=time_record.work_date,
+            )
+
+            assignment.assignment_status = "completed"
+            assignment.completed_at = checkout_at
+            assignment.completed_by = payload.updated_by
+
+        TimeRecordService._commit(
+            db=db,
+            time_record=time_record,
+            error_detail=INVALID_TIME_RECORD_UPDATE_DETAIL,
+        )
 
         return time_record

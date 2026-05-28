@@ -25,7 +25,7 @@ export default function Header({
 
       <div className={styles.subEn}>Employee Self Service</div>
       <div className={styles.subTh}>ระบบบริการตนเอง</div>
-      <div className={styles.subSmall}>สำหรับพนักงานสำนักงานและสายตรวจ</div>
+      <div className={styles.subSmall}>สำหรับสายตรวจ</div>
 
       {showUserCard && (
         <div className={styles.usercard} role="status" aria-label="ผู้ใช้งาน">

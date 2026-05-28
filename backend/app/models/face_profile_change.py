@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.constants import DBConstants
@@ -38,19 +38,12 @@ class FaceProfileChange(Base):
     )
 
     action: Mapped[str] = mapped_column(
-        Text,
+        String(DBConstants.FACE_PROFILE_CHANGE_ACTION_LENGTH),
         nullable=False,
     )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,
-        server_default=func.current_timestamp(),
-    )
-
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        nullable=False,
-        server_default=func.current_timestamp(),
-        onupdate=func.current_timestamp(),
+        server_default=text("CURRENT_TIMESTAMP"),
     )

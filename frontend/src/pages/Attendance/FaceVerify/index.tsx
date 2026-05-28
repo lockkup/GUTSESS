@@ -1,37 +1,45 @@
+// src/pages/Attendance/FaceVerify/index.tsx
+
 import { useEffect, useRef, useState } from "react";
 import * as faceapi from "face-api.js";
 
 import Header from "@/layout/Header";
 import BackButton from "@/components/BackButton";
-import OutOfAreaModal from "@/components/OutOfAreaModal";
 import CameraModal from "@/components/CameraModal";
 import SuccessModal from "@/components/SuccessModal";
 import FaceNotFoundModal from "@/components/FaceNotFoundModal";
 import CheckInOutModal from "@/components/CheckInOutModal";
 
-import { siteLocationService } from "@/services/siteLocation.service";
-import type { SiteLocation } from "@/types/siteLocation";
-
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCamera, faImage, faRotateLeft } from "@fortawesome/free-solid-svg-icons";
+import {
+  faCamera,
+  faImage,
+  faRotateLeft,
+} from "@fortawesome/free-solid-svg-icons";
 
 import styles from "./FaceVerify.module.css";
 
 type PunchType = "in" | "out";
 type Step = "capture" | "confirm";
+type ProcessStatus = "idle" | "checking" | "allowed" | "error";
 
-type LocationCoords = {
+export type LocationCoords = {
   latitude: number;
   longitude: number;
   accuracy: number;
-  siteLocationId?: number;
-  siteLocationName?: string;
-  distanceMeter?: number;
+
+  assignmentId?: number | null;
+  unitName?: string | null;
 };
 
 type Props = {
   empCode: string;
   displayName?: string;
+
+  assignmentId?: number | null;
+  unitName?: string | null;
+  passedLocation?: LocationCoords | null;
+
   punchType: PunchType;
   onBack: () => void;
   onVerifyFace: (embedding: number[]) => Promise<void>;
@@ -41,180 +49,10 @@ type Props = {
     embedding: number[],
     location: LocationCoords,
   ) => Promise<void>;
+
   onGoCheckInOut: () => void;
-  onViewHistory?: () => void;
+  onGoCheckpoint?: () => void;
 };
-
-type LocStatus =
-  | "idle"
-  | "checking"
-  | "allowed"
-  | "outside"
-  | "blocked"
-  | "unavailable"
-  | "error";
-
-type NearestSiteResult = {
-  site: SiteLocation;
-  dist: number;
-  allowedRadius: number;
-  ok: boolean;
-};
-
-type SiteLocationWithAnyId = SiteLocation & {
-  location_id?: number;
-  site_location_id?: number;
-};
-
-const GEO = {
-  desiredAccuracyM: 25,
-  maxAccuracyM: 200,
-  watchWindowMs: 12000,
-  hardTimeoutMs: 40000,
-};
-
-function getSiteId(site: SiteLocation): number | undefined {
-  const s = site as SiteLocationWithAnyId;
-  return s.location_id ?? s.site_location_id;
-}
-
-function toRad(v: number) {
-  return (v * Math.PI) / 180;
-}
-
-function distanceMeters(lat1: number, lng1: number, lat2: number, lng2: number) {
-  const R = 6371000;
-  const dLat = toRad(lat2 - lat1);
-  const dLng = toRad(lng2 - lng1);
-
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) *
-      Math.cos(toRad(lat2)) *
-      Math.sin(dLng / 2) ** 2;
-
-  return 2 * R * Math.asin(Math.sqrt(a));
-}
-
-function findNearestAllowedSite(
-  latitude: number,
-  longitude: number,
-  sites: SiteLocation[],
-): NearestSiteResult | null {
-  const candidates: NearestSiteResult[] = [];
-
-  for (const site of sites) {
-    const siteLat = Number(site.latitude);
-    const siteLng = Number(site.longitude);
-    const radius = Number(site.radius_meter ?? 0);
-    const grace = Number(site.grace_meter ?? 0);
-    const allowedRadius = radius + grace;
-
-    if (
-      !Number.isFinite(siteLat) ||
-      !Number.isFinite(siteLng) ||
-      !Number.isFinite(allowedRadius)
-    ) {
-      continue;
-    }
-
-    const dist = distanceMeters(latitude, longitude, siteLat, siteLng);
-
-    candidates.push({
-      site,
-      dist,
-      allowedRadius,
-      ok: dist <= allowedRadius,
-    });
-  }
-
-  candidates.sort((a, b) => a.dist - b.dist);
-
-  return candidates[0] ?? null;
-}
-
-function getBestPositionAsync(opts: {
-  desiredAccuracyM: number;
-  watchWindowMs: number;
-  hardTimeoutMs: number;
-}) {
-  const { desiredAccuracyM, watchWindowMs, hardTimeoutMs } = opts;
-
-  return new Promise<GeolocationPosition>(async (resolve, reject) => {
-    if (!navigator.geolocation) {
-      reject(new Error("unavailable"));
-      return;
-    }
-
-    try {
-      const perm = await (navigator as any).permissions?.query?.({
-        name: "geolocation",
-      });
-
-      if (perm?.state === "denied") {
-        reject({ code: 1 });
-        return;
-      }
-    } catch {
-      // ignore
-    }
-
-    let best: GeolocationPosition | null = null;
-    let done = false;
-
-    let watchId: number | null = null;
-    let tWindow: ReturnType<typeof setTimeout> | null = null;
-    let tHard: ReturnType<typeof setTimeout> | null = null;
-
-    const finish = (ok: boolean, payload?: unknown) => {
-      if (done) return;
-      done = true;
-
-      if (watchId != null) navigator.geolocation.clearWatch(watchId);
-      if (tWindow) clearTimeout(tWindow);
-      if (tHard) clearTimeout(tHard);
-
-      if (ok) {
-        resolve(payload as GeolocationPosition);
-      } else {
-        reject(payload);
-      }
-    };
-
-    tHard = setTimeout(() => {
-      if (best) finish(true, best);
-      else finish(false, new Error("timeout"));
-    }, hardTimeoutMs);
-
-    tWindow = setTimeout(() => {
-      if (best) finish(true, best);
-      else finish(false, new Error("timeout"));
-    }, watchWindowMs);
-
-    const onPos = (pos: GeolocationPosition) => {
-      const acc = pos.coords.accuracy ?? 999999;
-
-      if (!best || acc < (best.coords.accuracy ?? 999999)) {
-        best = pos;
-      }
-
-      if (acc <= desiredAccuracyM) {
-        finish(true, pos);
-      }
-    };
-
-    const onErr = (err: GeolocationPositionError) => {
-      if (best) finish(true, best);
-      else finish(false, err);
-    };
-
-    watchId = navigator.geolocation.watchPosition(onPos, onErr, {
-      enableHighAccuracy: true,
-      maximumAge: 0,
-      timeout: Math.min(12000, hardTimeoutMs),
-    });
-  });
-}
 
 function isPendingCheckinMessage(message: string) {
   return (
@@ -223,14 +61,26 @@ function isPendingCheckinMessage(message: string) {
   );
 }
 
+function isValidLocation(location?: LocationCoords | null) {
+  return (
+    Boolean(location) &&
+    Number.isFinite(location?.latitude) &&
+    Number.isFinite(location?.longitude)
+  );
+}
+
 export default function FaceVerify({
   empCode,
   displayName,
+  assignmentId = null,
+  unitName = null,
+  passedLocation = null,
   punchType,
   onBack,
   onVerifyFace,
   onConfirm,
   onGoCheckInOut,
+  onGoCheckpoint,
 }: Props) {
   const [step, setStep] = useState<Step>("capture");
   const [busy, setBusy] = useState(false);
@@ -239,20 +89,8 @@ export default function FaceVerify({
 
   const [camOpen, setCamOpen] = useState(false);
 
-  const [locStatus, setLocStatus] = useState<LocStatus>("idle");
-  const [locHint, setLocHint] = useState("");
-  const [outModalOpen, setOutModalOpen] = useState(false);
-
-  const [locFix, setLocFix] = useState<{
-    lat: number;
-    lng: number;
-    accuracy: number;
-    dist: number;
-    siteLocationId?: number;
-    siteLocationName?: string;
-    allowedRadius?: number;
-    ts: number;
-  } | null>(null);
+  const [processStatus, setProcessStatus] = useState<ProcessStatus>("idle");
+  const [processHint, setProcessHint] = useState("");
 
   const [successOpen, setSuccessOpen] = useState(false);
   const [faceNotFoundOpen, setFaceNotFoundOpen] = useState(false);
@@ -264,11 +102,11 @@ export default function FaceVerify({
   const [faceEmbedding, setFaceEmbedding] = useState<number[] | null>(null);
   const [faceVerified, setFaceVerified] = useState(false);
 
-  const [sites, setSites] = useState<SiteLocation[]>([]);
-  const [sitesLoaded, setSitesLoaded] = useState(false);
-
-  const locReqRef = useRef(0);
   const saveReqRef = useRef(0);
+
+  const hasSelectedAssignment = Boolean(assignmentId);
+  const hasPassedLocation = isValidLocation(passedLocation);
+  const isCheckpointMode = Boolean(assignmentId);
 
   useEffect(() => {
     let cancelled = false;
@@ -304,46 +142,14 @@ export default function FaceVerify({
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function loadSiteLocations() {
-      try {
-        const data = await siteLocationService.getActiveSiteLocations();
-
-        if (!cancelled) {
-          setSites(data);
-          setSitesLoaded(true);
-        }
-      } catch (error) {
-        console.error("loadSiteLocations error:", error);
-
-        if (!cancelled) {
-          setSites([]);
-          setSitesLoaded(false);
-          setErr("โหลดข้อมูลพื้นที่จากฐานข้อมูลไม่สำเร็จ");
-        }
-      }
-    }
-
-    void loadSiteLocations();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    locReqRef.current++;
     saveReqRef.current++;
 
     setPhoto("");
     setErr("");
     setStep("capture");
 
-    setLocStatus("idle");
-    setLocHint("");
-    setOutModalOpen(false);
-    setLocFix(null);
+    setProcessStatus("idle");
+    setProcessHint("");
 
     setCamOpen(false);
     setSuccessOpen(false);
@@ -355,137 +161,20 @@ export default function FaceVerify({
     setVerifyErrorOpen(false);
     setFaceVerifyFailed(false);
     setCheckInOutModalOpen(false);
-  }, [punchType]);
+  }, [punchType, assignmentId]);
 
-  async function checkLocationGate(): Promise<{
-    ok: boolean;
-    status: LocStatus;
-    location?: LocationCoords;
-  }> {
-    const reqId = ++locReqRef.current;
-
-    setLocStatus("checking");
-    setLocHint("");
-
-    try {
-      const pos = await getBestPositionAsync({
-        desiredAccuracyM: GEO.desiredAccuracyM,
-        watchWindowMs: GEO.watchWindowMs,
-        hardTimeoutMs: GEO.hardTimeoutMs,
-      });
-
-      if (reqId !== locReqRef.current) {
-        return { ok: false, status: "error" };
-      }
-
-      const { latitude, longitude, accuracy } = pos.coords;
-      const roundedAccuracy = Math.round(accuracy ?? 0);
-
-      if (!sitesLoaded) {
-        setLocStatus("error");
-        setLocHint("กำลังโหลดข้อมูลพื้นที่จากฐานข้อมูล กรุณาลองใหม่");
-        setOutModalOpen(true);
-        return { ok: false, status: "error" };
-      }
-
-      if (sites.length === 0) {
-        setLocStatus("error");
-        setLocHint("ไม่พบข้อมูลพื้นที่ในฐานข้อมูล กรุณาตรวจสอบตาราง site_locations");
-        setOutModalOpen(true);
-        return { ok: false, status: "error" };
-      }
-
-      const nearest = findNearestAllowedSite(latitude, longitude, sites);
-
-      if (!nearest) {
-        setLocStatus("error");
-        setLocHint("ไม่สามารถตรวจสอบพื้นที่จากฐานข้อมูลได้");
-        setOutModalOpen(true);
-        return { ok: false, status: "error" };
-      }
-
-      const siteId = getSiteId(nearest.site);
-
-      if (!siteId) {
-        setLocStatus("error");
-        setLocHint("พบพื้นที่ใกล้สุด แต่ไม่พบ location_id จากฐานข้อมูล");
-        setOutModalOpen(true);
-        return { ok: false, status: "error" };
-      }
-
-      const roundedDist = Math.round(nearest.dist);
-
-      const location: LocationCoords = {
-        latitude,
-        longitude,
-        accuracy: roundedAccuracy,
-        siteLocationId: siteId,
-        siteLocationName: nearest.site.location_name,
-        distanceMeter: roundedDist,
-      };
-
-      setLocFix({
-        lat: latitude,
-        lng: longitude,
-        accuracy: roundedAccuracy,
-        dist: roundedDist,
-        siteLocationId: siteId,
-        siteLocationName: nearest.site.location_name,
-        allowedRadius: Math.round(nearest.allowedRadius),
-        ts: Date.now(),
-      });
-
-      if ((accuracy ?? 999999) > GEO.maxAccuracyM) {
-        setLocStatus("error");
-        setLocHint(
-          "สัญญาณ GPS ยังไม่ดี กรุณาไปที่โล่งหรือเปิด Wi-Fi แล้วตรวจสอบตำแหน่งอีกครั้ง",
-        );
-        setOutModalOpen(true);
-        return { ok: false, status: "error" };
-      }
-
-      if (nearest.ok) {
-        setLocStatus("allowed");
-        setLocHint("");
-        setOutModalOpen(false);
-
-        return {
-          ok: true,
-          status: "allowed",
-          location,
-        };
-      }
-
-      setLocStatus("outside");
-      setLocHint("");
-      setOutModalOpen(true);
-      return { ok: false, status: "outside" };
-    } catch (e: any) {
-      if (reqId !== locReqRef.current) {
-        return { ok: false, status: "error" };
-      }
-
-      if (e?.code === 1) {
-        setLocStatus("blocked");
-        setLocHint(
-          "ไม่อนุญาตให้เข้าถึงตำแหน่ง กรุณาเปิด Location และอนุญาตสิทธิ์ตำแหน่ง",
-        );
-        setOutModalOpen(true);
-        return { ok: false, status: "blocked" };
-      }
-
-      if (String(e?.message).includes("unavailable")) {
-        setLocStatus("unavailable");
-        setLocHint("อุปกรณ์หรือเบราว์เซอร์ไม่รองรับการอ่านตำแหน่ง");
-        setOutModalOpen(true);
-        return { ok: false, status: "unavailable" };
-      }
-
-      setLocStatus("error");
-      setLocHint("อ่านตำแหน่งไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
-      setOutModalOpen(true);
-      return { ok: false, status: "error" };
+  function getConfirmedLocation(): LocationCoords | null {
+    if (!assignmentId || !hasPassedLocation || !passedLocation) {
+      return null;
     }
+
+    return {
+      latitude: passedLocation.latitude,
+      longitude: passedLocation.longitude,
+      accuracy: Math.round(passedLocation.accuracy ?? 0),
+      assignmentId,
+      unitName,
+    };
   }
 
   async function extractFaceEmbedding(dataUrl: string): Promise<number[] | null> {
@@ -539,6 +228,7 @@ export default function FaceVerify({
       await onConfirm(photoDataUrl, punchType, embeddingToSave, location);
 
       if (saveId !== saveReqRef.current) return;
+
       setSuccessOpen(true);
     } catch (error) {
       console.error("saveAndShowSuccess error:", error);
@@ -551,20 +241,23 @@ export default function FaceVerify({
           : "บันทึกเวลาไม่สำเร็จ กรุณาลองใหม่";
 
       if (isPendingCheckinMessage(message)) {
-        setLocStatus("idle");
-        setLocHint("");
+        setProcessStatus("idle");
+        setProcessHint("");
         setErr("");
         setCheckInOutModalOpen(true);
+
         return;
       }
 
+      setProcessStatus("error");
+      setProcessHint("");
       setErr(message);
     }
   }
 
   async function verifyFaceAndContinue(dataUrl: string, embedding: number[]) {
-    setLocStatus("checking");
-    setLocHint("กำลังตรวจสอบใบหน้ากับข้อมูลในระบบ...");
+    setProcessStatus("checking");
+    setProcessHint("กำลังตรวจสอบใบหน้ากับข้อมูลในระบบ...");
 
     try {
       await onVerifyFace(embedding);
@@ -572,20 +265,29 @@ export default function FaceVerify({
       setFaceVerified(true);
       setFaceVerifyFailed(false);
 
-      setLocHint("ยืนยันใบหน้าสำเร็จ กำลังตรวจสอบตำแหน่ง...");
-      const res = await checkLocationGate();
+      const confirmedLocation = getConfirmedLocation();
 
-      if (res.ok && res.location) {
-        await saveAndShowSuccess(dataUrl, embedding, res.location);
+      if (!confirmedLocation) {
+        setProcessStatus("error");
+        setProcessHint("");
+        setErr(
+          "ไม่พบข้อมูลพิกัดที่ผ่านการตรวจสอบ กรุณากลับไปเลือกจุดจากตารางงานสายตรวจก่อน",
+        );
+        return;
       }
+
+      setProcessStatus("allowed");
+      setProcessHint("ยืนยันใบหน้าสำเร็จ กำลังบันทึกข้อมูล...");
+
+      await saveAndShowSuccess(dataUrl, embedding, confirmedLocation);
     } catch (error) {
       console.error("verifyFaceAndContinue error:", error);
 
       setFaceVerified(false);
       setFaceVerifyFailed(true);
 
-      setLocStatus("idle");
-      setLocHint("");
+      setProcessStatus("idle");
+      setProcessHint("");
       setErr("");
       setVerifyErrorOpen(true);
     }
@@ -604,18 +306,18 @@ export default function FaceVerify({
     setFaceVerified(false);
 
     setErr("");
-    setLocHint("กำลังประมวลผลใบหน้า...");
-    setLocStatus("checking");
-    setLocFix(null);
-    setOutModalOpen(false);
+    setProcessHint("กำลังประมวลผลใบหน้า...");
+    setProcessStatus("checking");
 
     const embedding = await extractFaceEmbedding(dataUrl);
 
     if (!embedding) {
-      setLocStatus("idle");
-      setLocHint("");
+      setProcessStatus("idle");
+      setProcessHint("");
       setFaceEmbedding(null);
+      setFaceVerifyFailed(true);
       setFaceNotFoundOpen(true);
+
       return;
     }
 
@@ -631,8 +333,17 @@ export default function FaceVerify({
       return;
     }
 
-    if (!sitesLoaded || sites.length === 0) {
-      setErr("ยังไม่มีข้อมูลพื้นที่สำหรับตรวจสอบตำแหน่ง");
+    if (!assignmentId) {
+      setErr(
+        "ไม่พบ assignment_id ของจุดรักษาการณ์ กรุณาเลือกจุดจากตารางงานสายตรวจก่อน",
+      );
+      return;
+    }
+
+    if (!hasPassedLocation) {
+      setErr(
+        "ไม่พบข้อมูลพิกัดที่ผ่านการตรวจสอบ กรุณากลับไปเลือกจุดจากตารางงานสายตรวจก่อน",
+      );
       return;
     }
 
@@ -656,46 +367,34 @@ export default function FaceVerify({
     }
   }
 
-  async function recheckAndAutoConfirm() {
+  async function retrySaveWithPassedLocation() {
     if (!photo || !faceEmbedding || !faceVerified) {
       setErr("กรุณาถ่ายใหม่เพื่อยืนยันตัวตน");
       return;
     }
 
+    const confirmedLocation = getConfirmedLocation();
+
+    if (!confirmedLocation) {
+      setErr(
+        "ไม่พบข้อมูลพิกัดที่ผ่านการตรวจสอบ กรุณากลับไปเลือกจุดจากตารางงานสายตรวจก่อน",
+      );
+      return;
+    }
+
     setBusy(true);
     setErr("");
-
-    setLocFix(null);
-    setLocHint("");
-    setOutModalOpen(false);
-    setLocStatus("idle");
+    setProcessStatus("allowed");
+    setProcessHint("กำลังบันทึกข้อมูล...");
 
     try {
-      const res = await checkLocationGate();
-
-      if (res.ok && res.location) {
-        await saveAndShowSuccess(photo, faceEmbedding, res.location);
-      }
+      await saveAndShowSuccess(photo, faceEmbedding, confirmedLocation);
     } finally {
       setBusy(false);
     }
   }
 
-  function retrySaveWithLastLocation() {
-    if (!photo || !faceEmbedding || !locFix) return;
-
-    void saveAndShowSuccess(photo, faceEmbedding, {
-      latitude: locFix.lat,
-      longitude: locFix.lng,
-      accuracy: locFix.accuracy,
-      siteLocationId: locFix.siteLocationId,
-      siteLocationName: locFix.siteLocationName,
-      distanceMeter: locFix.dist,
-    });
-  }
-
   function retake() {
-    locReqRef.current++;
     saveReqRef.current++;
 
     setSuccessOpen(false);
@@ -708,10 +407,8 @@ export default function FaceVerify({
     setErr("");
     setStep("capture");
 
-    setLocStatus("idle");
-    setLocHint("");
-    setOutModalOpen(false);
-    setLocFix(null);
+    setProcessStatus("idle");
+    setProcessHint("");
 
     setCamOpen(false);
 
@@ -719,15 +416,31 @@ export default function FaceVerify({
     setFaceVerified(false);
   }
 
+  function handleSuccessOk() {
+    setSuccessOpen(false);
+
+    if (isCheckpointMode && onGoCheckpoint) {
+      onGoCheckpoint();
+      return;
+    }
+
+    onGoCheckInOut();
+  }
+
   const title = "กรุณาถ่ายภาพใบหน้าเพื่อยืนยันตัวตน";
 
   const canOpenCamera =
-    !busy && step === "capture" && modelsLoaded && sitesLoaded && sites.length > 0;
+    !busy &&
+    step === "capture" &&
+    modelsLoaded &&
+    hasSelectedAssignment &&
+    hasPassedLocation;
 
-  const shouldShowRecheckButton =
-    faceVerified &&
-    !outModalOpen &&
-    ["outside", "blocked", "unavailable", "error"].includes(locStatus);
+  const shouldShowRetrySaveButton =
+    faceVerified && processStatus === "error" && Boolean(err);
+
+  const shouldShowSavingButton =
+    faceVerified && processStatus === "allowed" && !err;
 
   const shouldShowRetakeButton = faceVerifyFailed && !verifyErrorOpen;
 
@@ -737,26 +450,32 @@ export default function FaceVerify({
         <section className="guts-home-card" aria-label="Face Verify">
           <Header empCode={empCode} displayName={displayName} />
 
-          <h2 className="guts-att-title">ลงเวลาเข้า-ออกงาน</h2>
+          <h2 className={styles.attTitle}>หน้าจอ - ลงเวลางานสายตรวจ</h2>
+
+          {unitName ? (
+            <div className={styles.unitNameText}>หน่วยงาน: {unitName}</div>
+          ) : null}
 
           <div className={`guts-fv-card ${styles.fvCard}`}>
             <div className={styles.fvTitle}>{title}</div>
 
+            {!assignmentId ? (
+              <div className={styles.fvError}>
+                ไม่พบจุดรักษาการณ์ที่เลือก
+                กรุณากลับไปเลือกจากตารางงานสายตรวจก่อน
+              </div>
+            ) : null}
+
+            {assignmentId && !hasPassedLocation ? (
+              <div className={styles.fvError}>
+                ไม่พบข้อมูลพิกัดที่ผ่านการตรวจสอบ
+                กรุณากลับไปเลือกจุดจากตารางงานสายตรวจก่อน
+              </div>
+            ) : null}
+
             {!modelsLoaded ? (
               <div className={styles.fvLocHint}>
                 กำลังโหลดระบบตรวจจับใบหน้า...
-              </div>
-            ) : null}
-
-            {modelsLoaded && !sitesLoaded ? (
-              <div className={styles.fvLocHint}>
-                กำลังโหลดข้อมูลพื้นที่จากฐานข้อมูล...
-              </div>
-            ) : null}
-
-            {modelsLoaded && sitesLoaded && sites.length === 0 ? (
-              <div className={styles.fvError}>
-                ไม่พบข้อมูลพื้นที่ในฐานข้อมูล กรุณาเพิ่มข้อมูลในตาราง site_locations
               </div>
             ) : null}
 
@@ -794,11 +513,12 @@ export default function FaceVerify({
             ) : null}
 
             {step === "confirm" &&
-            (locStatus === "checking" || (locStatus === "allowed" && busy)) ? (
+            (processStatus === "checking" ||
+              (processStatus === "allowed" && busy)) ? (
               <div className={styles.fvLocHint}>
-                {locStatus === "checking"
-                  ? locHint || "กำลังตรวจสอบข้อมูล..."
-                  : "กำลังบันทึก..."}
+                {processStatus === "checking"
+                  ? processHint || "กำลังตรวจสอบข้อมูล..."
+                  : processHint || "กำลังบันทึก..."}
               </div>
             ) : null}
 
@@ -817,46 +537,38 @@ export default function FaceVerify({
                   transition: "all 0.25s ease",
                 }}
               >
-                <FontAwesomeIcon icon={faCamera} className={styles.fvPrimaryIcon} />
+                <FontAwesomeIcon
+                  icon={faCamera}
+                  className={styles.fvPrimaryIcon}
+                />
                 {!modelsLoaded
                   ? "กำลังโหลด AI..."
-                  : !sitesLoaded
-                    ? "กำลังโหลดพื้นที่..."
-                    : sites.length === 0
-                      ? "ไม่พบข้อมูลพื้นที่"
+                  : !assignmentId
+                    ? "กรุณาเลือกจุดจากตาราง"
+                    : !hasPassedLocation
+                      ? "กรุณาตรวจพิกัดจากตารางก่อน"
                       : "ถ่ายภาพและยืนยัน"}
               </button>
             ) : (
               <>
-                {faceVerified ? (
-                  shouldShowRecheckButton ? (
-                    <button
-                      type="button"
-                      className={`guts-fv-primary ${styles.fvPrimary}`}
-                      onClick={() => void recheckAndAutoConfirm()}
-                      disabled={busy}
-                    >
-                      ตรวจสอบตำแหน่งอีกครั้ง
-                    </button>
-                  ) : locStatus === "allowed" && err ? (
-                    <button
-                      type="button"
-                      className={`guts-fv-primary ${styles.fvPrimary}`}
-                      onClick={retrySaveWithLastLocation}
-                      disabled={busy || !locFix}
-                    >
-                      ลองบันทึกอีกครั้ง
-                    </button>
-                  ) : locStatus === "allowed" ? (
-                    <button
-                      type="button"
-                      className={`guts-fv-primary ${styles.fvPrimary}`}
-                      disabled
-                      style={{ opacity: 0.7, cursor: "not-allowed" }}
-                    >
-                      รอระบบบันทึก...
-                    </button>
-                  ) : null
+                {shouldShowRetrySaveButton ? (
+                  <button
+                    type="button"
+                    className={`guts-fv-primary ${styles.fvPrimary}`}
+                    onClick={() => void retrySaveWithPassedLocation()}
+                    disabled={busy}
+                  >
+                    ลองบันทึกอีกครั้ง
+                  </button>
+                ) : shouldShowSavingButton ? (
+                  <button
+                    type="button"
+                    className={`guts-fv-primary ${styles.fvPrimary}`}
+                    disabled
+                    style={{ opacity: 0.7, cursor: "not-allowed" }}
+                  >
+                    รอระบบบันทึก...
+                  </button>
                 ) : null}
 
                 {shouldShowRetakeButton ? (
@@ -893,8 +605,17 @@ export default function FaceVerify({
             return;
           }
 
-          if (!sitesLoaded || sites.length === 0) {
-            setErr("ยังไม่มีข้อมูลพื้นที่สำหรับตรวจสอบตำแหน่ง");
+          if (!assignmentId) {
+            setErr(
+              "ไม่พบ assignment_id ของจุดรักษาการณ์ กรุณาเลือกจุดจากตารางงานสายตรวจก่อน",
+            );
+            return;
+          }
+
+          if (!hasPassedLocation) {
+            setErr(
+              "ไม่พบข้อมูลพิกัดที่ผ่านการตรวจสอบ กรุณากลับไปเลือกจุดจากตารางงานสายตรวจก่อน",
+            );
             return;
           }
 
@@ -907,12 +628,6 @@ export default function FaceVerify({
             setBusy(false);
           }
         }}
-      />
-
-      <OutOfAreaModal
-        open={outModalOpen}
-        locHint={locHint}
-        onClose={() => setOutModalOpen(false)}
       />
 
       <FaceNotFoundModal
@@ -943,10 +658,7 @@ export default function FaceVerify({
             : "บันทึกเวลาออกงานเรียบร้อย"
         }
         okText="ตกลง"
-        onOk={() => {
-          setSuccessOpen(false);
-          onGoCheckInOut();
-        }}
+        onOk={handleSuccessOk}
       />
     </main>
   );

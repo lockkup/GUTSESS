@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import DECIMAL, Date, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import DECIMAL, Date, DateTime, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.dialects.mysql import LONGTEXT
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -16,6 +16,36 @@ IMAGE_TEXT_TYPE = Text().with_variant(LONGTEXT(), "mysql")
 
 class TimeRecord(Base):
     __tablename__ = "time_record"
+
+    __table_args__ = (
+        Index(
+            "ix_time_record_employee_open_lookup",
+            "employee_code",
+            "checkout",
+            "work_date",
+        ),
+        Index(
+            "ix_time_record_employee_work_date",
+            "employee_code",
+            "work_date",
+            "time_record_id",
+        ),
+        Index(
+            "ix_time_record_shift_work_date",
+            "shift_id",
+            "work_date",
+        ),
+        Index(
+            "ix_time_record_checkin_location_work_date",
+            "checkin_location_id",
+            "work_date",
+        ),
+        Index(
+            "ix_time_record_checkout_location_work_date",
+            "checkout_location_id",
+            "work_date",
+        ),
+    )
 
     time_record_id: Mapped[int] = mapped_column(
         Integer,
@@ -47,12 +77,14 @@ class TimeRecord(Base):
         Integer,
         ForeignKey("site_location.location_id"),
         nullable=True,
+        index=True,
     )
 
     checkout_location_id: Mapped[int | None] = mapped_column(
         Integer,
         ForeignKey("site_location.location_id"),
         nullable=True,
+        index=True,
     )
 
     checkin: Mapped[str | None] = mapped_column(
@@ -118,24 +150,25 @@ class TimeRecord(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,
-        server_default=func.current_timestamp(),
+        server_default=text("CURRENT_TIMESTAMP"),
     )
 
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,
-        server_default=func.current_timestamp(),
-        onupdate=func.current_timestamp(),
+        server_default=text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"),
     )
 
     created_by: Mapped[str] = mapped_column(
         String(DBConstants.EMPLOYEE_CODE_LENGTH),
         ForeignKey("employees.employee_code"),
         nullable=False,
+        index=True,
     )
 
     updated_by: Mapped[str | None] = mapped_column(
         String(DBConstants.EMPLOYEE_CODE_LENGTH),
         ForeignKey("employees.employee_code"),
         nullable=True,
+        index=True,
     )

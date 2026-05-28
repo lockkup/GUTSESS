@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.constants import DBConstants
@@ -24,6 +24,7 @@ class SiteLocationChange(Base):
         nullable=False,
         index=True,
     )
+
     location_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("site_location.location_id"),
@@ -35,16 +36,14 @@ class SiteLocationChange(Base):
         String(DBConstants.USER_NAME_LENGTH),
         nullable=False,
     )
-    action: Mapped[str] = mapped_column(Text, nullable=False)
+
+    action: Mapped[str] = mapped_column(
+        String(DBConstants.SITE_LOCATION_CHANGE_ACTION_LENGTH),
+        nullable=False,
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,
-        server_default=func.current_timestamp(),
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        nullable=False,
-        server_default=func.current_timestamp(),
-        onupdate=func.current_timestamp(),
+        server_default=text("CURRENT_TIMESTAMP"),
     )

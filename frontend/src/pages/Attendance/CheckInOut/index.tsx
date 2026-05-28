@@ -1,3 +1,5 @@
+// src/pages/Attendance/CheckInOut/CheckInOut.tsx
+
 import { useEffect, useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -13,17 +15,41 @@ import { timeRecordService } from "@/services/timeRecord.service";
 
 import styles from "./CheckInOut.module.css";
 
+export type CheckInOutMode = "attendance" | "checkpoint";
+
+export type PassedLocation = {
+  latitude: number;
+  longitude: number;
+  accuracy: number;
+};
+
+export type CheckInOutPayload = {
+  mode: CheckInOutMode;
+  assignmentId?: number | null;
+  unitName?: string | null;
+  passedLocation?: PassedLocation | null;
+};
+
 type Props = {
   empCode: string;
   displayName?: string;
+
+  /**
+   * attendance = ลงเวลาเข้า-ออกงานปกติ
+   * checkpoint = ลงเวลาจากตารางงานสายตรวจ
+   */
+  mode?: CheckInOutMode;
+
+  assignmentId?: number | null;
+  unitName?: string | null;
+  passedLocation?: PassedLocation | null;
 
   lastInAt?: string | null;
   lastOutAt?: string | null;
 
   onBack: () => void;
-  onCheckIn: () => void;
-  onCheckOut: () => void;
-  onViewHistory: () => void;
+  onCheckIn: (payload: CheckInOutPayload) => void;
+  onCheckOut: (payload: CheckInOutPayload) => void;
 };
 
 function fmtThaiDate(d: Date) {
@@ -44,31 +70,55 @@ function fmtTimeHHMM(d: Date) {
 
 function safeDate(iso?: string | null) {
   if (!iso) return null;
+
   const d = new Date(iso);
+
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
 export default function CheckInOut({
   empCode,
   displayName,
+  mode = "attendance",
+  assignmentId = null,
+  unitName = null,
+  passedLocation = null,
   lastInAt,
   lastOutAt,
   onBack,
   onCheckIn,
   onCheckOut,
-  onViewHistory,
 }: Props) {
   const [now, setNow] = useState(() => new Date());
   const [busy, setBusy] = useState(false);
   const [checkInOutModalOpen, setCheckInOutModalOpen] = useState(false);
 
+  const isCheckpointMode = mode === "checkpoint";
+
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
+
     return () => clearInterval(t);
   }, []);
 
   const lastIn = useMemo(() => safeDate(lastInAt), [lastInAt]);
   const lastOut = useMemo(() => safeDate(lastOutAt), [lastOutAt]);
+
+  const hasCheckedIn = Boolean(lastIn);
+  const hasCheckedOut = Boolean(lastOut);
+
+  const canCheckIn = !busy && !hasCheckedIn;
+  const canCheckOut = !busy && hasCheckedIn && !hasCheckedOut;
+
+  const checkInOutPayload = useMemo<CheckInOutPayload>(
+    () => ({
+      mode,
+      assignmentId,
+      unitName,
+      passedLocation,
+    }),
+    [mode, assignmentId, unitName, passedLocation],
+  );
 
   const nowDate = fmtThaiDate(now);
   const nowTime = fmtTimeHHMM(now);
@@ -76,23 +126,81 @@ export default function CheckInOut({
   async function handleCheckInClick() {
     if (busy) return;
 
+    if (!canCheckIn) {
+      setCheckInOutModalOpen(true);
+      return;
+    }
+
+    if (isCheckpointMode && !assignmentId) {
+      alert("ไม่พบข้อมูลจุดงานสายตรวจ กรุณากลับไปเลือกจุดจากตารางงานสายตรวจก่อน");
+      return;
+    }
+
+    if (isCheckpointMode && !passedLocation) {
+      alert("ไม่พบข้อมูลพิกัดที่ผ่านการตรวจสอบ กรุณากลับไปเลือกจุดจากตารางงานสายตรวจก่อน");
+      return;
+    }
+
     setBusy(true);
+
     try {
+      if (isCheckpointMode) {
+        onCheckIn(checkInOutPayload);
+        return;
+      }
+
+      /*
+       * โหมด attendance:
+       * ตรวจเฉพาะ open time_record ของการลงเวลาเข้า-ออกงานปกติ
+       * backend จะแยกออกจากสายตรวจด้วย checkpoint_assignment.time_record_id
+       */
       const openRecord =
-        await timeRecordService.getOpenTimeRecordByEmployeeCode(empCode);
+        await timeRecordService.getOpenAttendanceTimeRecordByEmployeeCode(
+          empCode,
+        );
 
       if (openRecord) {
         setCheckInOutModalOpen(true);
         return;
       }
 
-      onCheckIn();
+      onCheckIn(checkInOutPayload);
     } catch (error) {
       console.error("handleCheckInClick error:", error);
-      onCheckIn();
+      alert(
+        error instanceof Error
+          ? error.message
+          : "ตรวจสอบข้อมูลการเข้างานไม่สำเร็จ กรุณาลองใหม่",
+      );
     } finally {
       setBusy(false);
     }
+  }
+
+  function handleCheckOutClick() {
+    if (busy) return;
+
+    if (isCheckpointMode && !assignmentId) {
+      alert("ไม่พบข้อมูลจุดงานสายตรวจ กรุณากลับไปเลือกจุดจากตารางงานสายตรวจก่อน");
+      return;
+    }
+
+    if (isCheckpointMode && !passedLocation) {
+      alert("ไม่พบข้อมูลพิกัดที่ผ่านการตรวจสอบ กรุณากลับไปเลือกจุดจากตารางงานสายตรวจก่อน");
+      return;
+    }
+
+    if (!hasCheckedIn) {
+      alert("ไม่พบข้อมูลเข้างาน กรุณาเข้างานก่อนออกงาน");
+      return;
+    }
+
+    if (hasCheckedOut) {
+      alert("รายการนี้ออกงานแล้ว");
+      return;
+    }
+
+    onCheckOut(checkInOutPayload);
   }
 
   return (
@@ -101,7 +209,11 @@ export default function CheckInOut({
         <section className="guts-home-card" aria-label="CheckInOut">
           <Header empCode={empCode} displayName={displayName} />
 
-          <h2 className={styles.attTitle}>ลงเวลาเข้า-ออกงาน</h2>
+          <h2 className={styles.attTitle}>หน้าจอ - ลงเวลาเข้า-ออกงาน</h2>
+
+          {isCheckpointMode && unitName ? (
+            <div className={styles.unitNameText}>หน่วยงาน: {unitName}</div>
+          ) : null}
 
           <div
             className={styles.summaryCard}
@@ -110,28 +222,40 @@ export default function CheckInOut({
           >
             <div className={styles.col}>
               <div className={styles.colHead}>
-                <FontAwesomeIcon icon={faPersonWalking} className={styles.walk} />
+                <FontAwesomeIcon
+                  icon={faPersonWalking}
+                  className={styles.walk}
+                />
                 <span>เข้างาน</span>
               </div>
 
               <div className={`${styles.time} ${styles.timeIn}`}>
                 {lastIn ? fmtTimeHHMM(lastIn) : "--:--"}
               </div>
-              <div className={styles.date}>{lastIn ? fmtThaiDate(lastIn) : "—"}</div>
+
+              <div className={styles.date}>
+                {lastIn ? fmtThaiDate(lastIn) : "—"}
+              </div>
             </div>
 
             <div className={styles.divider} aria-hidden="true" />
 
             <div className={styles.col}>
               <div className={styles.colHead}>
-                <FontAwesomeIcon icon={faPersonWalking} className={styles.walk} />
+                <FontAwesomeIcon
+                  icon={faPersonWalking}
+                  className={styles.walk}
+                />
                 <span>ออกงาน</span>
               </div>
 
               <div className={`${styles.time} ${styles.timeOut}`}>
                 {lastOut ? fmtTimeHHMM(lastOut) : "--:--"}
               </div>
-              <div className={styles.date}>{lastOut ? fmtThaiDate(lastOut) : "—"}</div>
+
+              <div className={styles.date}>
+                {lastOut ? fmtThaiDate(lastOut) : "—"}
+              </div>
             </div>
           </div>
 
@@ -140,10 +264,13 @@ export default function CheckInOut({
               type="button"
               className={`${styles.btn} ${styles.btnIn}`}
               onClick={() => void handleCheckInClick()}
-              disabled={busy}
+              disabled={!canCheckIn}
             >
               <span className={styles.btnText}>
-                <span className={styles.btnSub}>กดเข้างาน</span>
+                <span className={styles.btnSub}>
+                  {busy ? "รอระบบตรวจสอบ..." : "กดเข้างาน"}
+                </span>
+
                 <span className={styles.btnSmall} aria-hidden="true">
                   <FontAwesomeIcon icon={faRightToBracket} />
                 </span>
@@ -158,10 +285,19 @@ export default function CheckInOut({
             <button
               type="button"
               className={`${styles.btn} ${styles.btnOut}`}
-              onClick={onCheckOut}
+              onClick={handleCheckOutClick}
+              disabled={!canCheckOut}
+              title={
+                !hasCheckedIn
+                  ? "กรุณาเข้างานก่อนออกงาน"
+                  : hasCheckedOut
+                    ? "รายการนี้ออกงานแล้ว"
+                    : "กดออกงาน"
+              }
             >
               <span className={styles.btnText}>
                 <span className={styles.btnSub}>กดออกงาน</span>
+
                 <span className={styles.btnSmall} aria-hidden="true">
                   <FontAwesomeIcon icon={faRightFromBracket} />
                 </span>
@@ -171,14 +307,6 @@ export default function CheckInOut({
             <div className="guts-fv-bottom">
               <BackButton onClick={onBack} className="guts-fv-backBtn" />
             </div>
-
-            <button
-              type="button"
-              className={styles.history}
-              onClick={onViewHistory}
-            >
-              ดูประวัติการลงเวลางาน (ย้อนหลัง 1 เดือน)
-            </button>
           </div>
         </section>
       </div>

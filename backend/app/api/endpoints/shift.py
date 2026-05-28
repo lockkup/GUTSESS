@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, Path, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.core import get_db
 from app.core.constants import DBConstants
-from app.schemas.shift import ShiftCreate, ShiftResponse, ShiftUpdate
+from app.schemas.shift import ShiftAction, ShiftCreate, ShiftResponse, ShiftUpdate
 from app.services.shift import ShiftService
 
 router = APIRouter()
-
-SHIFT_NOT_FOUND_DETAIL = "Shift not found"
 
 
 @router.post(
@@ -22,7 +20,10 @@ def create_shift(
     payload: ShiftCreate,
     db: Session = Depends(get_db),
 ) -> ShiftResponse:
-    return ShiftService.create_shift(db, payload)
+    return ShiftService.create_shift(
+        db=db,
+        payload=payload,
+    )
 
 
 @router.get(
@@ -60,17 +61,11 @@ def get_shift_by_id(
     include_deleted: bool = Query(default=False),
     db: Session = Depends(get_db),
 ) -> ShiftResponse:
-    shift = ShiftService.get_shift_by_id(
+    return ShiftService.get_shift_by_id(
         db=db,
         shift_id=shift_id,
         include_deleted=include_deleted,
     )
-    if shift is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=SHIFT_NOT_FOUND_DETAIL,
-        )
-    return shift
 
 
 @router.patch(
@@ -83,17 +78,29 @@ def update_shift(
     shift_id: int = Path(..., gt=0),
     db: Session = Depends(get_db),
 ) -> ShiftResponse:
-    shift = ShiftService.update_shift(
+    return ShiftService.update_shift(
         db=db,
         shift_id=shift_id,
         payload=payload,
     )
-    if shift is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=SHIFT_NOT_FOUND_DETAIL,
-        )
-    return shift
+
+
+@router.delete(
+    "/{shift_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_shift(
+    payload: ShiftAction,
+    shift_id: int = Path(..., gt=0),
+    db: Session = Depends(get_db),
+) -> Response:
+    ShiftService.delete_shift(
+        db=db,
+        shift_id=shift_id,
+        updated_by=payload.updated_by,
+    )
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.patch(
@@ -102,25 +109,15 @@ def update_shift(
     status_code=status.HTTP_200_OK,
 )
 def deactivate_shift(
+    payload: ShiftAction,
     shift_id: int = Path(..., gt=0),
-    updated_by: str = Query(
-        ...,
-        min_length=DBConstants.EMPLOYEE_CODE_LENGTH,
-        max_length=DBConstants.EMPLOYEE_CODE_LENGTH,
-    ),
     db: Session = Depends(get_db),
 ) -> ShiftResponse:
-    shift = ShiftService.deactivate_shift(
+    return ShiftService.deactivate_shift(
         db=db,
         shift_id=shift_id,
-        updated_by=updated_by,
+        updated_by=payload.updated_by,
     )
-    if shift is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=SHIFT_NOT_FOUND_DETAIL,
-        )
-    return shift
 
 
 @router.patch(
@@ -129,49 +126,12 @@ def deactivate_shift(
     status_code=status.HTTP_200_OK,
 )
 def activate_shift(
+    payload: ShiftAction,
     shift_id: int = Path(..., gt=0),
-    updated_by: str = Query(
-        ...,
-        min_length=DBConstants.EMPLOYEE_CODE_LENGTH,
-        max_length=DBConstants.EMPLOYEE_CODE_LENGTH,
-    ),
     db: Session = Depends(get_db),
 ) -> ShiftResponse:
-    shift = ShiftService.activate_shift(
+    return ShiftService.activate_shift(
         db=db,
         shift_id=shift_id,
-        updated_by=updated_by,
+        updated_by=payload.updated_by,
     )
-    if shift is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=SHIFT_NOT_FOUND_DETAIL,
-        )
-    return shift
-
-
-@router.delete(
-    "/{shift_id}",
-    response_model=ShiftResponse,
-    status_code=status.HTTP_200_OK,
-)
-def delete_shift(
-    shift_id: int = Path(..., gt=0),
-    updated_by: str = Query(
-        ...,
-        min_length=DBConstants.EMPLOYEE_CODE_LENGTH,
-        max_length=DBConstants.EMPLOYEE_CODE_LENGTH,
-    ),
-    db: Session = Depends(get_db),
-) -> ShiftResponse:
-    shift = ShiftService.delete_shift(
-        db=db,
-        shift_id=shift_id,
-        updated_by=updated_by,
-    )
-    if shift is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=SHIFT_NOT_FOUND_DETAIL,
-        )
-    return shift

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from datetime import date
+
+from fastapi import APIRouter, Depends, Path, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.core import get_db
 from app.core.constants import DBConstants
 from app.schemas.site_location import (
+    SiteLocationAction,
     SiteLocationCreate,
     SiteLocationResponse,
     SiteLocationUpdate,
@@ -13,8 +16,6 @@ from app.schemas.site_location import (
 from app.services.site_location import SiteLocationService
 
 router = APIRouter()
-
-NOT_FOUND_DETAIL = "Site location not found"
 
 
 @router.post(
@@ -26,7 +27,10 @@ def create_site_location(
     payload: SiteLocationCreate,
     db: Session = Depends(get_db),
 ) -> SiteLocationResponse:
-    return SiteLocationService.create_site_location(db, payload)
+    return SiteLocationService.create_site_location(
+        db=db,
+        payload=payload,
+    )
 
 
 @router.get(
@@ -42,11 +46,22 @@ def get_site_locations(
         le=DBConstants.MAX_PAGE_LIMIT,
     ),
     is_active: bool | None = Query(default=None),
+    contract_code: str | None = Query(
+        default=None,
+        min_length=1,
+        max_length=DBConstants.CONTRACT_CODE_LENGTH,
+    ),
     location_name: str | None = Query(
         default=None,
         min_length=1,
         max_length=DBConstants.LOCATION_NAME_LENGTH,
     ),
+    by_contract: int | None = Query(
+        default=None,
+        ge=1,
+    ),
+    effective_from: date | None = Query(default=None),
+    effective_to: date | None = Query(default=None),
     include_deleted: bool = Query(default=False),
     db: Session = Depends(get_db),
 ) -> list[SiteLocationResponse]:
@@ -55,7 +70,11 @@ def get_site_locations(
         skip=skip,
         limit=limit,
         is_active=is_active,
+        contract_code=contract_code,
         location_name=location_name,
+        by_contract=by_contract,
+        effective_from=effective_from,
+        effective_to=effective_to,
         include_deleted=include_deleted,
     )
 
@@ -70,17 +89,11 @@ def get_site_location_by_id(
     include_deleted: bool = Query(default=False),
     db: Session = Depends(get_db),
 ) -> SiteLocationResponse:
-    site_location = SiteLocationService.get_site_location_by_id(
+    return SiteLocationService.get_site_location_by_id(
         db=db,
         location_id=location_id,
         include_deleted=include_deleted,
     )
-    if site_location is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=NOT_FOUND_DETAIL,
-        )
-    return site_location
 
 
 @router.patch(
@@ -93,17 +106,11 @@ def update_site_location(
     location_id: int = Path(..., gt=0),
     db: Session = Depends(get_db),
 ) -> SiteLocationResponse:
-    site_location = SiteLocationService.update_site_location(
+    return SiteLocationService.update_site_location(
         db=db,
         location_id=location_id,
         payload=payload,
     )
-    if site_location is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=NOT_FOUND_DETAIL,
-        )
-    return site_location
 
 
 @router.patch(
@@ -112,25 +119,15 @@ def update_site_location(
     status_code=status.HTTP_200_OK,
 )
 def deactivate_site_location(
+    payload: SiteLocationAction,
     location_id: int = Path(..., gt=0),
-    updated_by: str = Query(
-        ...,
-        min_length=DBConstants.EMPLOYEE_CODE_LENGTH,
-        max_length=DBConstants.EMPLOYEE_CODE_LENGTH,
-    ),
     db: Session = Depends(get_db),
 ) -> SiteLocationResponse:
-    site_location = SiteLocationService.deactivate_site_location(
+    return SiteLocationService.deactivate_site_location(
         db=db,
         location_id=location_id,
-        updated_by=updated_by,
+        updated_by=payload.updated_by,
     )
-    if site_location is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=NOT_FOUND_DETAIL,
-        )
-    return site_location
 
 
 @router.patch(
@@ -139,49 +136,30 @@ def deactivate_site_location(
     status_code=status.HTTP_200_OK,
 )
 def activate_site_location(
+    payload: SiteLocationAction,
     location_id: int = Path(..., gt=0),
-    updated_by: str = Query(
-        ...,
-        min_length=DBConstants.EMPLOYEE_CODE_LENGTH,
-        max_length=DBConstants.EMPLOYEE_CODE_LENGTH,
-    ),
     db: Session = Depends(get_db),
 ) -> SiteLocationResponse:
-    site_location = SiteLocationService.activate_site_location(
+    return SiteLocationService.activate_site_location(
         db=db,
         location_id=location_id,
-        updated_by=updated_by,
+        updated_by=payload.updated_by,
     )
-    if site_location is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=NOT_FOUND_DETAIL,
-        )
-    return site_location
 
 
 @router.delete(
     "/{location_id}",
-    response_model=SiteLocationResponse,
-    status_code=status.HTTP_200_OK,
+    status_code=status.HTTP_204_NO_CONTENT,
 )
 def delete_site_location(
+    payload: SiteLocationAction,
     location_id: int = Path(..., gt=0),
-    updated_by: str = Query(
-        ...,
-        min_length=DBConstants.EMPLOYEE_CODE_LENGTH,
-        max_length=DBConstants.EMPLOYEE_CODE_LENGTH,
-    ),
     db: Session = Depends(get_db),
-) -> SiteLocationResponse:
-    site_location = SiteLocationService.delete_site_location(
+) -> Response:
+    SiteLocationService.delete_site_location(
         db=db,
         location_id=location_id,
-        updated_by=updated_by,
+        updated_by=payload.updated_by,
     )
-    if site_location is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=NOT_FOUND_DETAIL,
-        )
-    return site_location
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

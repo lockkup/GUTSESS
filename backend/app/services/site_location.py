@@ -1,59 +1,130 @@
 from __future__ import annotations
 
+from datetime import date
+from typing import Any
+
 from fastapi import HTTPException, status
-from fastapi.encoders import jsonable_encoder
-from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import exists, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.constants import DBConstants
+from app.core.error_messages import (
+    CONTRACT_CODE_ALREADY_EXISTS_DETAIL,
+    EMPLOYEE_NOT_FOUND_DETAIL,
+    INVALID_EFFECTIVE_DATE_DETAIL,
+    INVALID_REFERENCE_DETAIL,
+    SITE_LOCATION_NOT_FOUND_DETAIL,
+)
 from app.models.employees import Employees
 from app.models.site_location import SiteLocation
 from app.schemas.site_location import (
-    SiteLocationBase,
     SiteLocationCreate,
     SiteLocationUpdate,
 )
 
-SITE_LOCATION_NOT_FOUND_DETAIL = "Site location not found"
-EMPLOYEE_NOT_FOUND_DETAIL = "Employee not found"
-INVALID_REFERENCE_DETAIL = "Invalid reference data"
-
 
 class SiteLocationService:
     @staticmethod
-    def _commit_and_refresh(db: Session, instance: SiteLocation) -> None:
-        """Helper method สำหรับจัดการ commit, refresh และ rollback"""
+    def _commit(
+        db: Session,
+        site_location: SiteLocation | None = None,
+    ) -> None:
         try:
             db.commit()
-            db.refresh(instance)
-        except IntegrityError as e:
+
+            if site_location is not None:
+                db.refresh(site_location)
+
+        except IntegrityError as exc:
             db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=INVALID_REFERENCE_DETAIL,
-            ) from e
+            ) from exc
 
     @staticmethod
-    def _get_employee_by_code(
+    def _ensure_exists(
         db: Session,
-        employee_code: str,
-    ) -> Employees | None:
-        stmt = select(Employees).where(Employees.employee_code == employee_code)
-        return db.scalar(stmt)
+        column: Any,
+        value: Any,
+        error_detail: str,
+    ) -> None:
+        stmt = select(exists().where(column == value))
+
+        if not db.scalar(stmt):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=error_detail,
+            )
 
     @staticmethod
-    def _validate_employee_reference(
+    def _validate_employee_exists(
         db: Session,
         employee_code: str,
     ) -> None:
-        employee = SiteLocationService._get_employee_by_code(db, employee_code)
-        if employee is None:
+        SiteLocationService._ensure_exists(
+            db=db,
+            column=Employees.employee_code,
+            value=employee_code,
+            error_detail=EMPLOYEE_NOT_FOUND_DETAIL,
+        )
+
+    @staticmethod
+    def _validate_effective_dates(
+        effective_from: date,
+        effective_to: date | None,
+    ) -> None:
+        if effective_to is not None and effective_to < effective_from:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=INVALID_EFFECTIVE_DATE_DETAIL,
+            )
+
+    @staticmethod
+    def _ensure_contract_code_unique(
+        db: Session,
+        contract_code: str,
+        exclude_location_id: int | None = None,
+    ) -> None:
+        conditions = [
+            SiteLocation.contract_code == contract_code,
+            SiteLocation.mark_flag.is_(False),
+        ]
+
+        if exclude_location_id is not None:
+            conditions.append(SiteLocation.location_id != exclude_location_id)
+
+        stmt = select(exists().where(*conditions))
+
+        if db.scalar(stmt):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=CONTRACT_CODE_ALREADY_EXISTS_DETAIL,
+            )
+
+    @staticmethod
+    def _get_existing_site_location(
+        db: Session,
+        location_id: int,
+        include_deleted: bool = False,
+    ) -> SiteLocation:
+        stmt = select(SiteLocation).where(
+            SiteLocation.location_id == location_id,
+        )
+
+        if not include_deleted:
+            stmt = stmt.where(SiteLocation.mark_flag.is_(False))
+
+        site_location = db.scalar(stmt)
+
+        if site_location is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=EMPLOYEE_NOT_FOUND_DETAIL,
+                detail=SITE_LOCATION_NOT_FOUND_DETAIL,
             )
+
+        return site_location
 
     @staticmethod
     def create_site_location(
@@ -62,21 +133,32 @@ class SiteLocationService:
     ) -> SiteLocation:
         data = payload.model_dump()
 
-        data["location_name"] = data["location_name"].strip()
-        data["created_by"] = data["created_by"].strip()
+        SiteLocationService._validate_employee_exists(
+            db=db,
+            employee_code=data["created_by"],
+        )
 
-        if data.get("location_detail") is not None:
-            data["location_detail"] = data["location_detail"].strip()
+        SiteLocationService._ensure_contract_code_unique(
+            db=db,
+            contract_code=data["contract_code"],
+        )
 
-        SiteLocationService._validate_employee_reference(db, data["created_by"])
+        SiteLocationService._validate_effective_dates(
+            effective_from=data["effective_from"],
+            effective_to=data["effective_to"],
+        )
 
-        site_location = SiteLocation(**data)
-
-        if site_location.mark_flag is None:
-            site_location.mark_flag = False
+        site_location = SiteLocation(
+            **data,
+            mark_flag=False,
+        )
 
         db.add(site_location)
-        SiteLocationService._commit_and_refresh(db, site_location)
+
+        SiteLocationService._commit(
+            db=db,
+            site_location=site_location,
+        )
 
         return site_location
 
@@ -85,13 +167,12 @@ class SiteLocationService:
         db: Session,
         location_id: int,
         include_deleted: bool = False,
-    ) -> SiteLocation | None:
-        stmt = select(SiteLocation).where(SiteLocation.location_id == location_id)
-
-        if not include_deleted:
-            stmt = stmt.where(SiteLocation.mark_flag.is_(False))
-
-        return db.scalar(stmt)
+    ) -> SiteLocation:
+        return SiteLocationService._get_existing_site_location(
+            db=db,
+            location_id=location_id,
+            include_deleted=include_deleted,
+        )
 
     @staticmethod
     def get_site_locations(
@@ -99,22 +180,61 @@ class SiteLocationService:
         skip: int = DBConstants.DEFAULT_PAGE_SKIP,
         limit: int = DBConstants.DEFAULT_PAGE_LIMIT,
         is_active: bool | None = None,
+        contract_code: str | None = None,
         location_name: str | None = None,
+        by_contract: int | None = None,
+        effective_from: date | None = None,
+        effective_to: date | None = None,
         include_deleted: bool = False,
     ) -> list[SiteLocation]:
+        if effective_from is not None and effective_to is not None:
+            SiteLocationService._validate_effective_dates(
+                effective_from=effective_from,
+                effective_to=effective_to,
+            )
+
         stmt = select(SiteLocation)
 
         if not include_deleted:
             stmt = stmt.where(SiteLocation.mark_flag.is_(False))
 
         if is_active is not None:
-            stmt = stmt.where(SiteLocation.is_active == is_active)
+            stmt = stmt.where(SiteLocation.is_active.is_(is_active))
 
-        clean_location_name = location_name.strip() if location_name is not None else None
+        clean_contract_code = (
+            contract_code.strip() if contract_code is not None else None
+        )
+        if clean_contract_code:
+            stmt = stmt.where(SiteLocation.contract_code == clean_contract_code)
+
+        clean_location_name = (
+            location_name.strip() if location_name is not None else None
+        )
         if clean_location_name:
             stmt = stmt.where(SiteLocation.location_name.contains(clean_location_name))
 
-        stmt = stmt.order_by(SiteLocation.location_id.asc()).offset(skip).limit(limit)
+        if by_contract is not None:
+            stmt = stmt.where(SiteLocation.by_contract == by_contract)
+
+        if effective_from is not None:
+            stmt = stmt.where(
+                or_(
+                    SiteLocation.effective_to.is_(None),
+                    SiteLocation.effective_to >= effective_from,
+                )
+            )
+
+        if effective_to is not None:
+            stmt = stmt.where(SiteLocation.effective_from <= effective_to)
+
+        stmt = (
+            stmt.order_by(
+                SiteLocation.location_id.asc(),
+            )
+            .offset(skip)
+            .limit(limit)
+        )
+
         return list(db.scalars(stmt).all())
 
     @staticmethod
@@ -122,49 +242,55 @@ class SiteLocationService:
         db: Session,
         location_id: int,
         payload: SiteLocationUpdate,
-    ) -> SiteLocation | None:
-        site_location = SiteLocationService.get_site_location_by_id(
+    ) -> SiteLocation:
+        site_location = SiteLocationService._get_existing_site_location(
             db=db,
             location_id=location_id,
             include_deleted=False,
         )
-        if site_location is None:
-            return None
 
         update_data = payload.model_dump(exclude_unset=True)
+        updated_by = update_data.pop("updated_by")
 
-        if "location_name" in update_data and update_data["location_name"] is not None:
-            update_data["location_name"] = update_data["location_name"].strip()
+        SiteLocationService._validate_employee_exists(
+            db=db,
+            employee_code=updated_by,
+        )
 
-        if "location_detail" in update_data and update_data["location_detail"] is not None:
-            update_data["location_detail"] = update_data["location_detail"].strip()
+        new_contract_code = update_data.get(
+            "contract_code",
+            site_location.contract_code,
+        )
+        new_effective_from = update_data.get(
+            "effective_from",
+            site_location.effective_from,
+        )
+        new_effective_to = update_data.get(
+            "effective_to",
+            site_location.effective_to,
+        )
 
-        if "updated_by" in update_data and update_data["updated_by"] is not None:
-            update_data["updated_by"] = update_data["updated_by"].strip()
-            SiteLocationService._validate_employee_reference(db, update_data["updated_by"])
+        if new_contract_code != site_location.contract_code:
+            SiteLocationService._ensure_contract_code_unique(
+                db=db,
+                contract_code=new_contract_code,
+                exclude_location_id=location_id,
+            )
 
-        validation_data = {
-            "location_name": update_data.get("location_name", site_location.location_name),
-            "latitude": update_data.get("latitude", site_location.latitude),
-            "longitude": update_data.get("longitude", site_location.longitude),
-            "radius_meter": update_data.get("radius_meter", site_location.radius_meter),
-            "grace_meter": update_data.get("grace_meter", site_location.grace_meter),
-            "location_detail": update_data.get("location_detail", site_location.location_detail),
-            "is_active": update_data.get("is_active", site_location.is_active),
-        }
-
-        try:
-            SiteLocationBase(**validation_data)
-        except ValidationError as e:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=jsonable_encoder(e.errors()),
-            ) from e
+        SiteLocationService._validate_effective_dates(
+            effective_from=new_effective_from,
+            effective_to=new_effective_to,
+        )
 
         for field, value in update_data.items():
             setattr(site_location, field, value)
 
-        SiteLocationService._commit_and_refresh(db, site_location)
+        site_location.updated_by = updated_by
+
+        SiteLocationService._commit(
+            db=db,
+            site_location=site_location,
+        )
 
         return site_location
 
@@ -173,22 +299,25 @@ class SiteLocationService:
         db: Session,
         location_id: int,
         updated_by: str,
-    ) -> SiteLocation | None:
-        site_location = SiteLocationService.get_site_location_by_id(
+    ) -> SiteLocation:
+        SiteLocationService._validate_employee_exists(
+            db=db,
+            employee_code=updated_by,
+        )
+
+        site_location = SiteLocationService._get_existing_site_location(
             db=db,
             location_id=location_id,
             include_deleted=False,
         )
-        if site_location is None:
-            return None
-
-        updated_by = updated_by.strip()
-        SiteLocationService._validate_employee_reference(db, updated_by)
 
         site_location.is_active = False
         site_location.updated_by = updated_by
 
-        SiteLocationService._commit_and_refresh(db, site_location)
+        SiteLocationService._commit(
+            db=db,
+            site_location=site_location,
+        )
 
         return site_location
 
@@ -197,22 +326,25 @@ class SiteLocationService:
         db: Session,
         location_id: int,
         updated_by: str,
-    ) -> SiteLocation | None:
-        site_location = SiteLocationService.get_site_location_by_id(
+    ) -> SiteLocation:
+        SiteLocationService._validate_employee_exists(
+            db=db,
+            employee_code=updated_by,
+        )
+
+        site_location = SiteLocationService._get_existing_site_location(
             db=db,
             location_id=location_id,
             include_deleted=False,
         )
-        if site_location is None:
-            return None
-
-        updated_by = updated_by.strip()
-        SiteLocationService._validate_employee_reference(db, updated_by)
 
         site_location.is_active = True
         site_location.updated_by = updated_by
 
-        SiteLocationService._commit_and_refresh(db, site_location)
+        SiteLocationService._commit(
+            db=db,
+            site_location=site_location,
+        )
 
         return site_location
 
@@ -221,22 +353,20 @@ class SiteLocationService:
         db: Session,
         location_id: int,
         updated_by: str,
-    ) -> SiteLocation | None:
-        site_location = SiteLocationService.get_site_location_by_id(
+    ) -> None:
+        SiteLocationService._validate_employee_exists(
+            db=db,
+            employee_code=updated_by,
+        )
+
+        site_location = SiteLocationService._get_existing_site_location(
             db=db,
             location_id=location_id,
             include_deleted=False,
         )
-        if site_location is None:
-            return None
-
-        updated_by = updated_by.strip()
-        SiteLocationService._validate_employee_reference(db, updated_by)
 
         site_location.mark_flag = True
         site_location.is_active = False
         site_location.updated_by = updated_by
 
-        SiteLocationService._commit_and_refresh(db, site_location)
-
-        return site_location
+        SiteLocationService._commit(db=db)

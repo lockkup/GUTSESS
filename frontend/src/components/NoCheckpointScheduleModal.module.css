@@ -1,0 +1,242 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  padding: 18px;
+  background: rgba(15, 23, 42, 0.42);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal {
+  width: 100%;
+  max-width: 340px;
+  position: relative;
+  padding: 28px 20px 20px;
+  border-radius: 24px;
+  border: 1px solid rgba(215, 230, 247, 0.95);
+  background:
+    radial-gradient(
+      circle at 50% 18%,
+      rgba(207, 229, 255, 0.68) 0 58px,
+      transparent 59px
+    ),
+    linear-gradient(180deg, #fbfdff 0%, #f7fbff 100%);
+  box-shadow:
+    0 24px 48px rgba(15, 23, 42, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.96);
+  text-align: center;
+}
+
+.closeBtn {
+  width: 34px;
+  height: 34px;
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  border: 0;
+  border-radius: 999px;
+  background: #edf4fb;
+  color: #41627f;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.closeBtn:active {
+  transform: translateY(1px);
+}
+
+.iconWrap {
+  width: 126px;
+  height: 112px;
+  margin: 8px auto 16px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.iconWrap::before,
+.iconWrap::after {
+  content: "";
+  position: absolute;
+  border-radius: 999px;
+  background: rgba(211, 230, 250, 0.7);
+}
+
+.iconWrap::before {
+  width: 72px;
+  height: 34px;
+  left: 0;
+  bottom: 12px;
+}
+
+.iconWrap::after {
+  width: 82px;
+  height: 38px;
+  right: 0;
+  bottom: 8px;
+}
+
+.iconCircle {
+  width: 104px;
+  height: 104px;
+  position: relative;
+  z-index: 1;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #eaf4ff 0%, #dcecff 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.clipboardIcon {
+  color: #4d8bca;
+  filter: drop-shadow(0 6px 8px rgba(25, 68, 125, 0.14));
+}
+
+.searchBadge {
+  width: 46px;
+  height: 46px;
+  position: absolute;
+  right: 7px;
+  bottom: 4px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #194d8f 0%, #123b74 100%);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 14px rgba(23, 63, 122, 0.22);
+}
+
+.closeBadge {
+  width: 30px;
+  height: 30px;
+  position: absolute;
+  left: 16px;
+  bottom: 10px;
+  border-radius: 999px;
+  background: #5f96ce;
+  color: #ffffff;
+  font-size: 24px;
+  font-weight: 900;
+  line-height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 5px 10px rgba(23, 63, 122, 0.16);
+}
+
+.title {
+  margin: 0;
+  color: #173f7a;
+  font-size: 23px;
+  font-weight: 900;
+  line-height: 1.28;
+  letter-spacing: 0.1px;
+}
+
+.shiftPill {
+  width: fit-content;
+  max-width: 100%;
+  margin: 12px auto 0;
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: #eef6ff;
+  color: #173f7a;
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.divider {
+  width: 88%;
+  max-width: 260px;
+  height: 1px;
+  margin: 20px auto 18px;
+  border-top: 2px dashed #cfe0f2;
+}
+
+.hint {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  color: #5b8ccc;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.hintIcon {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  color: #4f84c4;
+}
+
+.okBtn {
+  width: 100%;
+  min-height: 48px;
+  margin-top: 22px;
+  border: 0;
+  border-radius: 999px;
+  background: #000000;
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: 0 12px 20px rgba(0, 0, 0, 0.22);
+}
+
+.okBtn:active {
+  transform: translateY(1px);
+}
+
+@media (max-width: 380px) {
+  .modal {
+    max-width: 318px;
+    padding: 26px 18px 18px;
+  }
+
+  .title {
+    font-size: 21px;
+  }
+
+  .iconWrap {
+    width: 112px;
+    height: 100px;
+    margin-bottom: 14px;
+  }
+
+  .iconCircle {
+    width: 92px;
+    height: 92px;
+  }
+
+  .clipboardIcon {
+    width: 54px;
+    height: 54px;
+  }
+
+  .searchBadge {
+    width: 40px;
+    height: 40px;
+  }
+
+  .closeBadge {
+    width: 27px;
+    height: 27px;
+    font-size: 22px;
+  }
+
+  .hint {
+    font-size: 13px;
+  }
+}

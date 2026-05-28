@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, Path, Query, status
 from sqlalchemy.orm import Session
 
 from app.core import get_db
@@ -9,8 +9,6 @@ from app.schemas.audit_log import AuditLogCreate, AuditLogResponse
 from app.services.audit_log import AuditLogService
 
 router = APIRouter()
-
-AUDIT_LOG_NOT_FOUND_DETAIL = "Audit log not found"
 
 
 @router.post(
@@ -22,7 +20,10 @@ def create_audit_log(
     payload: AuditLogCreate,
     db: Session = Depends(get_db),
 ) -> AuditLogResponse:
-    return AuditLogService.create_audit_log(db, payload)
+    return AuditLogService.create_audit_log(
+        db=db,
+        payload=payload,
+    )
 
 
 @router.get(
@@ -34,16 +35,10 @@ def get_audit_log_by_id(
     log_id: int = Path(..., gt=0),
     db: Session = Depends(get_db),
 ) -> AuditLogResponse:
-    audit_log = AuditLogService.get_audit_log_by_id(
+    return AuditLogService.get_audit_log_by_id(
         db=db,
         log_id=log_id,
     )
-    if audit_log is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=AUDIT_LOG_NOT_FOUND_DETAIL,
-        )
-    return audit_log
 
 
 @router.get(
@@ -59,12 +54,12 @@ def get_audit_logs(
         le=DBConstants.MAX_PAGE_LIMIT,
     ),
     employee_code: str | None = Query(
-        None,
+        default=None,
         min_length=DBConstants.EMPLOYEE_CODE_LENGTH,
         max_length=DBConstants.EMPLOYEE_CODE_LENGTH,
     ),
     user_name: str | None = Query(
-        None,
+        default=None,
         min_length=1,
         max_length=DBConstants.USER_NAME_LENGTH,
     ),

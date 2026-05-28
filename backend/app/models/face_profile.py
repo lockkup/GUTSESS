@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func, text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.dialects.mysql import LONGTEXT
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -19,6 +19,14 @@ FACE_EMBEDDING_TYPE = Text().with_variant(LONGTEXT(), "mysql")
 
 class FaceProfile(Base):
     __tablename__ = "face_profiles"
+    __table_args__ = (
+        Index(
+            "ix_face_profiles_employee_active_not_deleted",
+            "employee_code",
+            "is_active",
+            "mark_flag",
+        ),
+    )
 
     face_profile_id: Mapped[int] = mapped_column(
         Integer,
@@ -60,14 +68,13 @@ class FaceProfile(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,
-        server_default=func.current_timestamp(),
+        server_default=text("CURRENT_TIMESTAMP"),
     )
 
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,
-        server_default=func.current_timestamp(),
-        onupdate=func.current_timestamp(),
+        server_default=text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"),
     )
 
     created_by: Mapped[str] = mapped_column(

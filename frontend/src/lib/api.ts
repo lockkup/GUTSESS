@@ -1,8 +1,11 @@
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 
-type QueryParams = Record<string, string | number | boolean | undefined | null>;
+export type QueryParams = Record<
+  string,
+  string | number | boolean | undefined | null
+>;
 
-type RequestOptions = Omit<RequestInit, "body"> & {
+export type RequestOptions = Omit<RequestInit, "body"> & {
   params?: QueryParams;
   body?: unknown;
 };
@@ -30,17 +33,23 @@ function buildUrl(path: string, params?: QueryParams) {
 }
 
 function toErrorMessage(detail: unknown): string {
-  if (typeof detail === "string") return detail;
+  if (typeof detail === "string") {
+    return detail;
+  }
 
   if (Array.isArray(detail)) {
     return detail
       .map((item) => {
-        if (typeof item === "string") return item;
+        if (typeof item === "string") {
+          return item;
+        }
 
         if (item && typeof item === "object") {
           const obj = item as { loc?: unknown; msg?: unknown };
           const loc = Array.isArray(obj.loc) ? obj.loc.join(" > ") : "";
-          const msg = typeof obj.msg === "string" ? obj.msg : JSON.stringify(item);
+          const msg =
+            typeof obj.msg === "string" ? obj.msg : JSON.stringify(item);
+
           return loc ? `${loc}: ${msg}` : msg;
         }
 
@@ -74,7 +83,10 @@ async function parseResponseBody(response: Response): Promise<unknown> {
   }
 }
 
-async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+async function request<T>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<T> {
   const { params, headers, body, ...rest } = options;
 
   const url = buildUrl(path, params);
@@ -124,7 +136,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
   if (typeof responseData === "string" && responseData.trim().startsWith("<")) {
     throw new Error(
-      "API returned HTML instead of JSON. ตรวจสอบ backend, tunnel หรือ VITE_API_BASE_URL"
+      "API returned HTML instead of JSON. ตรวจสอบ backend, tunnel หรือ VITE_API_BASE_URL",
     );
   }
 
@@ -134,7 +146,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
         typeof responseData === "object" &&
         "detail" in (responseData as Record<string, unknown>)
         ? (responseData as Record<string, unknown>).detail
-        : responseData
+        : responseData,
     );
 
     throw new Error(errorMessage || `HTTP ${response.status}`);
@@ -145,7 +157,10 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
 const api = {
   get: <T>(path: string, params?: QueryParams) =>
-    request<T>(path, { method: "GET", params }),
+    request<T>(path, {
+      method: "GET",
+      params,
+    }),
 
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, {

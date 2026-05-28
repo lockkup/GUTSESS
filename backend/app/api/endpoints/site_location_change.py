@@ -1,53 +1,14 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, Path, Query, status
 from sqlalchemy.orm import Session
 
 from app.core import get_db
 from app.core.constants import DBConstants
-from app.schemas.site_location_change import (
-    SiteLocationChangeCreate,
-    SiteLocationChangeResponse,
-    SiteLocationChangeUpdate,
-)
+from app.schemas.site_location_change import SiteLocationChangeResponse
 from app.services.site_location_change import SiteLocationChangeService
 
 router = APIRouter()
-
-SITE_LOCATION_CHANGE_NOT_FOUND_DETAIL = "Site location change not found"
-
-
-@router.post(
-    "/",
-    response_model=SiteLocationChangeResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-def create_site_location_change(
-    payload: SiteLocationChangeCreate,
-    db: Session = Depends(get_db),
-) -> SiteLocationChangeResponse:
-    return SiteLocationChangeService.create_site_location_change(db, payload)
-
-
-@router.get(
-    "/{location_log_id}",
-    response_model=SiteLocationChangeResponse,
-    status_code=status.HTTP_200_OK,
-)
-def get_site_location_change_by_id(
-    location_log_id: int = Path(..., gt=0),
-    db: Session = Depends(get_db),
-) -> SiteLocationChangeResponse:
-    site_location_change = SiteLocationChangeService.get_site_location_change_by_id(
-        db,
-        location_log_id,
-    )
-    if site_location_change is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=SITE_LOCATION_CHANGE_NOT_FOUND_DETAIL,
-        )
-    return site_location_change
 
 
 @router.get(
@@ -63,11 +24,11 @@ def get_site_location_changes(
         le=DBConstants.MAX_PAGE_LIMIT,
     ),
     employee_code: str | None = Query(
-        None,
+        default=None,
         min_length=DBConstants.EMPLOYEE_CODE_LENGTH,
         max_length=DBConstants.EMPLOYEE_CODE_LENGTH,
     ),
-    location_id: int | None = Query(None, gt=0),
+    location_id: int | None = Query(default=None, gt=0),
     db: Session = Depends(get_db),
 ) -> list[SiteLocationChangeResponse]:
     return SiteLocationChangeService.get_site_location_changes(
@@ -79,24 +40,16 @@ def get_site_location_changes(
     )
 
 
-@router.patch(
+@router.get(
     "/{location_log_id}",
     response_model=SiteLocationChangeResponse,
     status_code=status.HTTP_200_OK,
 )
-def update_site_location_change(
-    payload: SiteLocationChangeUpdate,
+def get_site_location_change_by_id(
     location_log_id: int = Path(..., gt=0),
     db: Session = Depends(get_db),
 ) -> SiteLocationChangeResponse:
-    site_location_change = SiteLocationChangeService.update_site_location_change(
-        db,
-        location_log_id,
-        payload,
+    return SiteLocationChangeService.get_site_location_change_by_id(
+        db=db,
+        location_log_id=location_log_id,
     )
-    if site_location_change is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=SITE_LOCATION_CHANGE_NOT_FOUND_DETAIL,
-        )
-    return site_location_change

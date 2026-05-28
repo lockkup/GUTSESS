@@ -2,7 +2,16 @@ from __future__ import annotations
 
 from datetime import date, datetime, time
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Time, text
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Time,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.constants import DBConstants

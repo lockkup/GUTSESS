@@ -3,20 +3,19 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from sqlalchemy.orm import Session
 
+from app.core import get_db
 from app.core.constants import DBConstants
-from app.core.database import get_db
-from app.schemas.route import RouteResponse
+from app.core.error_messages import ROUTE_NOT_FOUND_DETAIL
+from app.schemas.route import RouteDetailResponse, RouteResponse
 from app.services.route import RouteService
 
 router = APIRouter()
-
-ROUTE_NOT_FOUND_DETAIL = "Route not found"
 
 
 @router.get(
     "/",
     response_model=list[RouteResponse],
-    summary="Get Routes",
+    status_code=status.HTTP_200_OK,
 )
 def get_routes(
     skip: int = Query(DBConstants.DEFAULT_PAGE_SKIP, ge=0),
@@ -25,21 +24,30 @@ def get_routes(
         ge=1,
         le=DBConstants.MAX_PAGE_LIMIT,
     ),
+    is_active: bool | None = Query(default=None),
     db: Session = Depends(get_db),
 ) -> list[RouteResponse]:
-    return RouteService.get_routes(db=db, skip=skip, limit=limit)
+    return RouteService.get_routes(
+        db=db,
+        skip=skip,
+        limit=limit,
+        is_active=is_active,
+    )
 
 
 @router.get(
     "/{route_id}",
-    response_model=RouteResponse,
-    summary="Get Route By Id",
+    response_model=RouteDetailResponse,
+    status_code=status.HTTP_200_OK,
 )
 def get_route_by_id(
     route_id: int = Path(..., gt=0),
     db: Session = Depends(get_db),
-) -> RouteResponse:
-    route = RouteService.get_route_by_id(db=db, route_id=route_id)
+) -> RouteDetailResponse:
+    route = RouteService.get_route_by_id(
+        db=db,
+        route_id=route_id,
+    )
 
     if route is None:
         raise HTTPException(

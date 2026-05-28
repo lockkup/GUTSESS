@@ -1,57 +1,77 @@
 from __future__ import annotations
 
+from datetime import date, datetime
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.constants import DBConstants
 
 
-class EmployeesBase(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+class EmployeesResponse(BaseModel):
+    model_config = ConfigDict(
+        from_attributes=True,
+        extra="forbid",
+        str_strip_whitespace=True,
+    )
 
     employee_code: str = Field(
         ...,
         min_length=DBConstants.EMPLOYEE_CODE_LENGTH,
         max_length=DBConstants.EMPLOYEE_CODE_LENGTH,
-        examples=["632070"],
     )
+
+    role_id: int
+    name_prefix_id: int
+
     first_name: str = Field(
         ...,
         max_length=DBConstants.FIRST_NAME_LENGTH,
-        examples=["สุพจน์"],
     )
     last_name: str = Field(
         ...,
         max_length=DBConstants.LAST_NAME_LENGTH,
-        examples=["หอมดอก"],
-    )
-    is_active: bool = Field(
-        default=True,
-        examples=[True],
     )
 
+    profile_image_path: str | None = None
+    profile_image_updated_at: datetime | None = None
 
-class EmployeesCreate(EmployeesBase):
-    pass
+    birth_date: date
 
-
-class EmployeesUpdate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    first_name: str | None = Field(
+    email: str | None = Field(
         default=None,
-        max_length=DBConstants.FIRST_NAME_LENGTH,
-        examples=["สุพจน์"],
+        max_length=DBConstants.EMAIL_LENGTH,
     )
-    last_name: str | None = Field(
+    phone_number: str | None = Field(
         default=None,
-        max_length=DBConstants.LAST_NAME_LENGTH,
-        examples=["หอมดอก"],
-    )
-    is_active: bool | None = Field(
-        default=None,
-        examples=[True],
+        max_length=DBConstants.PHONE_NUMBER_LENGTH,
     )
 
+    address_id: int | None = None
 
-class EmployeesResponse(EmployeesBase):
-    model_config = ConfigDict(from_attributes=True)
+    field_id: int
+    department_id: int
+    division_id: int
+    position_id: int
+
+    routes_id: int | None = None
+
+    shift_id: int
+
+    start_date: date | None = None
+    leave_date: date | None = None
+
+    is_active: bool
+
+    created_at: datetime
+    updated_at: datetime
+
+    created_by: str = Field(
+        ...,
+        min_length=DBConstants.EMPLOYEE_CODE_LENGTH,
+        max_length=DBConstants.EMPLOYEE_CODE_LENGTH,
+    )
+    updated_by: str | None = Field(
+        default=None,
+        min_length=DBConstants.EMPLOYEE_CODE_LENGTH,
+        max_length=DBConstants.EMPLOYEE_CODE_LENGTH,
+    )

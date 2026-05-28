@@ -1,40 +1,24 @@
 from __future__ import annotations
 
+from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.constants import DBConstants
+from app.core.error_messages import EMPLOYEE_NOT_FOUND_DETAIL
 from app.models.employees import Employees
-from app.schemas.employees import EmployeesCreate
 
 
 class EmployeesService:
     @staticmethod
-    def create_employees(db: Session, payload: EmployeesCreate) -> Employees:
-        existing = db.get(Employees, payload.employee_code)
-        if existing:
-            raise ValueError(f"Employees '{payload.employee_code}' already exists")
-
-        employees = Employees(
-            employee_code=payload.employee_code,
-            first_name=payload.first_name,
-            last_name=payload.last_name,
-            is_active=payload.is_active,
-        )
-
-        db.add(employees)
-        db.commit()
-        db.refresh(employees)
-
-        return employees
-
-    @staticmethod
     def get_employees(
         db: Session,
-        skip: int = 0,
-        limit: int = 100,
+        skip: int = DBConstants.DEFAULT_PAGE_SKIP,
+        limit: int = DBConstants.DEFAULT_PAGE_LIMIT,
     ) -> list[Employees]:
         stmt = (
             select(Employees)
+            .where(Employees.is_active.is_(True))
             .order_by(Employees.employee_code.asc())
             .offset(skip)
             .limit(limit)
@@ -46,16 +30,21 @@ class EmployeesService:
     def get_employee_by_code(
         db: Session,
         employee_code: str,
-    ) -> Employees | None:
-        return db.get(Employees, employee_code)
-
-    # เผื่อไฟล์อื่นเคยเรียกชื่อเดิมไว้ จะได้ไม่พัง
-    @staticmethod
-    def get_employees_by_code(
-        db: Session,
-        employee_code: str,
-    ) -> Employees | None:
-        return EmployeesService.get_employee_by_code(
-            db=db,
-            employee_code=employee_code,
+    ) -> Employees:
+        stmt = (
+            select(Employees)
+            .where(
+                Employees.employee_code == employee_code,
+                Employees.is_active.is_(True),
+            )
         )
+
+        employee = db.scalar(stmt)
+
+        if employee is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=EMPLOYEE_NOT_FOUND_DETAIL,
+            )
+
+        return employee

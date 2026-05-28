@@ -16,10 +16,10 @@
 }
 
 /* --- title --- */
-.title{
+.title {
   margin: 14px 0 10px;
   font-weight: 900;
-  color: rgba(27,43,74,0.92);
+  color: rgba(27, 43, 74, 0.92);
   font-size: 26px;
   letter-spacing: 0.2px;
 }
@@ -84,7 +84,7 @@
 }
 
 /* hover/active */
-.menuBtn:hover .menuBox {
+.menuBtn:not(:disabled):hover .menuBox {
   transform: translateY(-2px);
   border-color: rgba(2, 75, 118, 0.22);
   box-shadow:
@@ -92,7 +92,7 @@
     0 2px 0 rgba(255, 255, 255, 0.65) inset;
 }
 
-.menuBtn:active .menuBox {
+.menuBtn:not(:disabled):active .menuBox {
   transform: translateY(0px) scale(0.99);
 }
 
@@ -162,13 +162,7 @@
   font-size: 18px;
 }
 
-/* กันจอเล็กมาก */
-@media (max-width: 360px) {
-  .menuStack {
-    grid-template-columns: 1fr;
-  }
-}
-
+/* disabled */
 .menuBtn:disabled {
   cursor: not-allowed;
   opacity: 0.55;
@@ -176,7 +170,8 @@
 
 .menuBtn:disabled .menuBox {
   background: #f3f4f6;
-  color: #9ca3af;
+  box-shadow: none;
+  border-color: rgba(156, 163, 175, 0.35);
 }
 
 .menuBtn:disabled .iconWrap {
@@ -186,4 +181,24 @@
 
 .menuBtn:disabled .fa {
   color: #9ca3af;
+}
+
+.menuBtn:disabled .text {
+  color: #9ca3af;
+}
+
+/* กันจอเล็กมาก */
+@media (max-width: 360px) {
+  .menuStack {
+    grid-template-columns: 1fr;
+  }
+
+  .text {
+    font-size: 18px;
+  }
+
+  .menuBox {
+    grid-template-columns: 48px 1fr;
+    padding: 10px 12px;
+  }
 }
