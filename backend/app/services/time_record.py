@@ -163,7 +163,18 @@ class TimeRecordService:
     def _get_open_attendance_time_record_by_employee_raw(
         db: Session,
         employee_code: str,
+        work_date: date | None = None,
+        shift_id: int | None = None,
     ) -> TimeRecord | None:
+        """
+        ดึงรายการลงเวลาเข้างานที่ยังไม่ออกงานของพนักงาน
+
+        สำคัญ:
+        - ถ้าส่ง work_date + shift_id จะค้นหาเฉพาะรอบของวันนั้น
+        - ป้องกันปัญหา record เก่าวันก่อน เช่น 26 พ.ค. ค้างมาแสดงในวันใหม่
+        - ไม่รวม time_record ที่ผูกกับ checkpoint_assignment
+        """
+
         checkpoint_time_record_exists = (
             select(CheckpointAssignment.assignment_id)
             .where(CheckpointAssignment.time_record_id == TimeRecord.time_record_id)
@@ -174,11 +185,19 @@ class TimeRecordService:
             select(TimeRecord)
             .where(TimeRecord.employee_code == employee_code)
             .where(TimeRecord.checkout.is_(None))
+            .where(TimeRecord.mark_flag.is_(False))
             .where(~checkpoint_time_record_exists)
-            .order_by(
-                TimeRecord.created_at.desc(),
-                TimeRecord.time_record_id.desc(),
-            )
+        )
+
+        if work_date is not None:
+            stmt = stmt.where(TimeRecord.work_date == work_date)
+
+        if shift_id is not None:
+            stmt = stmt.where(TimeRecord.shift_id == shift_id)
+
+        stmt = stmt.order_by(
+            TimeRecord.created_at.desc(),
+            TimeRecord.time_record_id.desc(),
         )
 
         return db.scalar(stmt)
@@ -198,6 +217,7 @@ class TimeRecordService:
             .where(CheckpointAssignment.assignment_id == assignment_id)
             .where(TimeRecord.employee_code == employee_code)
             .where(TimeRecord.checkout.is_(None))
+            .where(TimeRecord.mark_flag.is_(False))
             .order_by(
                 TimeRecord.created_at.desc(),
                 TimeRecord.time_record_id.desc(),
@@ -210,10 +230,14 @@ class TimeRecordService:
     def _get_open_time_record_by_employee_raw(
         db: Session,
         employee_code: str,
+        work_date: date | None = None,
+        shift_id: int | None = None,
     ) -> TimeRecord | None:
         return TimeRecordService._get_open_attendance_time_record_by_employee_raw(
             db=db,
             employee_code=employee_code,
+            work_date=work_date,
+            shift_id=shift_id,
         )
 
     @staticmethod
@@ -637,6 +661,8 @@ class TimeRecordService:
                 TimeRecordService._get_open_attendance_time_record_by_employee_raw(
                     db=db,
                     employee_code=payload.employee_code,
+                    work_date=payload.work_date,
+                    shift_id=payload.shift_id,
                 )
             )
 
@@ -700,6 +726,8 @@ class TimeRecordService:
     def get_open_attendance_time_record_by_employee(
         db: Session,
         employee_code: str,
+        work_date: date | None = None,
+        shift_id: int | None = None,
     ) -> TimeRecord:
         TimeRecordService._ensure_employee_exists(
             db=db,
@@ -711,6 +739,8 @@ class TimeRecordService:
             TimeRecordService._get_open_attendance_time_record_by_employee_raw(
                 db=db,
                 employee_code=employee_code,
+                work_date=work_date,
+                shift_id=shift_id,
             )
         )
 
@@ -754,10 +784,14 @@ class TimeRecordService:
     def get_open_time_record_by_employee(
         db: Session,
         employee_code: str,
+        work_date: date | None = None,
+        shift_id: int | None = None,
     ) -> TimeRecord:
         return TimeRecordService.get_open_attendance_time_record_by_employee(
             db=db,
             employee_code=employee_code,
+            work_date=work_date,
+            shift_id=shift_id,
         )
 
     @staticmethod

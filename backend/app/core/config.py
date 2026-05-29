@@ -10,7 +10,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     APP_NAME: str = "GUTS-ESS API"
     APP_HOST: str = "127.0.0.1"
-    APP_PORT: int = 8000
+    APP_PORT: int = 8009
     APP_ENV: str = "development"
 
     FRONTEND_ORIGIN: str = "http://localhost:5173"

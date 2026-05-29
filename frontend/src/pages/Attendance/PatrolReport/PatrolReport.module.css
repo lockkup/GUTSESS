@@ -114,7 +114,7 @@
   margin-top: 8px;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 7px;
+  gap: 8px 7px;
 
   background: transparent;
 }
@@ -127,11 +127,16 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 }
 
 .fieldLabel {
-  display: none;
+  display: block;
+  margin: 0;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.15;
 }
 
 .control {
@@ -405,8 +410,9 @@
   background: #dbeafe;
 }
 
+/* มือถือ: ช่องคีย์เวิร์ดอยู่คอลัมน์ซ้าย */
 .keywordGroup {
-  grid-column: auto;
+  grid-column: 1 / 2;
 }
 
 .searchIcon {
@@ -431,8 +437,13 @@
   padding-right: 32px;
 }
 
+/* มือถือ: ปุ่มค้นหาอยู่คอลัมน์ขวา แถวเดียวกับคีย์เวิร์ด */
 .filterActions {
-  display: contents;
+  grid-column: 2 / 3;
+  display: flex;
+  align-items: flex-end;
+  align-self: end;
+  gap: 0;
 }
 
 .searchButton,
@@ -453,13 +464,13 @@
 }
 
 .searchButton {
-  background: #1463f3;
+  background: #1d4a82;
   color: #ffffff;
   box-shadow: 0 7px 16px rgba(20, 99, 243, 0.22);
 }
 
 .searchButton:hover:not(:disabled) {
-  background: #1d4ed8;
+  background: #1d4a82;
 }
 
 .clearButton {
@@ -624,6 +635,12 @@
   border: 1px solid #fed7aa;
 }
 
+.notificationGreen {
+  color: #166534;
+  background: #dcfce7;
+  border: 1px solid #bbf7d0;
+}
+
 .notificationRed {
   color: #b91c1c;
   background: #fee2e2;
@@ -674,8 +691,17 @@
   background: #ffedd5;
 }
 
+.notificationRowGreen {
+  background: #dcfce7;
+}
+
 .notificationRowRed {
   background: #ff0000;
+}
+
+.notificationRowGreen span,
+.notificationRowGreen strong {
+  color: #000000;
 }
 
 .notificationRowRed span,
@@ -696,6 +722,11 @@
 .table td.notificationTableCell.notificationRowOrange {
   color: #000000;
   background: #ffedd5;
+}
+
+.table td.notificationTableCell.notificationRowGreen {
+  color: #000000;
+  background: #dcfce7;
 }
 
 .table td.notificationTableCell.notificationRowRed {
@@ -1011,6 +1042,11 @@
   color: #111827;
 }
 
+.notificationRowGreen span,
+.notificationRowGreen strong {
+  color: #000000;
+}
+
 .notificationRowRed span,
 .notificationRowRed strong {
   color: #000000;
@@ -1101,41 +1137,10 @@
 }
 
 .emptyClipboardIcon {
-  color: #4d8bca;
+  width: 64px;
+  height: 64px;
+  color: #194d8f;
   filter: drop-shadow(0 6px 8px rgba(25, 68, 125, 0.14));
-}
-
-.emptySearchBadge {
-  width: 46px;
-  height: 46px;
-  position: absolute;
-  right: 7px;
-  bottom: 4px;
-  border-radius: 999px;
-  background: linear-gradient(180deg, #194d8f 0%, #123b74 100%);
-  color: #ffffff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 8px 14px rgba(23, 63, 122, 0.22);
-}
-
-.emptyCloseBadge {
-  width: 30px;
-  height: 30px;
-  position: absolute;
-  left: 16px;
-  bottom: 10px;
-  border-radius: 999px;
-  background: #5f96ce;
-  color: #ffffff;
-  font-size: 24px;
-  font-weight: 900;
-  line-height: 26px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 5px 10px rgba(23, 63, 122, 0.16);
 }
 
 .emptyTitle {
@@ -1234,6 +1239,7 @@
 
   .fieldLabel {
     display: block;
+    margin: 0;
     font-size: 14px;
     font-weight: 800;
     color: #475467;
@@ -1406,6 +1412,10 @@
     background: #ffedd5;
   }
 
+  .table tbody tr:hover td.notificationTableCell.notificationRowGreen {
+    background: #dcfce7;
+  }
+
   .table tbody tr:hover td.notificationTableCell.notificationRowRed {
     background: #ff0000;
   }
@@ -1507,19 +1517,8 @@
   }
 
   .emptyClipboardIcon {
-    width: 54px;
-    height: 54px;
-  }
-
-  .emptySearchBadge {
-    width: 40px;
-    height: 40px;
-  }
-
-  .emptyCloseBadge {
-    width: 27px;
-    height: 27px;
-    font-size: 22px;
+    width: 56px;
+    height: 56px;
   }
 
   .emptyHint {
@@ -1531,15 +1530,19 @@
 @media (max-width: 360px) {
   :root {
     --patrol-title-size: 18px;
-    --patrol-filter-font-size: 16px;
-    --patrol-card-title-size: 18px;
-    --patrol-card-time-size: 18px;
+    --patrol-filter-font-size: 13px;
+    --patrol-card-title-size: 13px;
+    --patrol-card-time-size: 12px;
     --patrol-status-size: 12px;
   }
 
   .shell {
     padding-left: 8px;
     padding-right: 8px;
+  }
+
+  .fieldLabel {
+    font-size: 10.5px;
   }
 
   .datePopover {

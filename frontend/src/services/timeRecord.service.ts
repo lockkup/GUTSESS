@@ -11,6 +11,11 @@ import type {
 
 const BASE_PATH = "/api/time-records";
 
+type OpenAttendanceTimeRecordParams = {
+  work_date: string; // YYYY-MM-DD
+  shift_id: number;
+};
+
 function isNotFoundError(error: unknown) {
   return (
     error instanceof Error &&
@@ -21,6 +26,15 @@ function isNotFoundError(error: unknown) {
       error.message.includes("Time record not found") ||
       error.message.includes("ไม่พบข้อมูล"))
   );
+}
+
+function buildOpenRecordQuery(params: OpenAttendanceTimeRecordParams) {
+  const query = new URLSearchParams();
+
+  query.set("work_date", params.work_date);
+  query.set("shift_id", String(params.shift_id));
+
+  return query.toString();
 }
 
 export const timeRecordService = {
@@ -34,14 +48,23 @@ export const timeRecordService = {
 
   /**
    * ใช้กับเมนู "ลงเวลา เข้า-ออกงาน"
-   * Backend จะดึงเฉพาะ time_record ที่ไม่ได้ผูกกับ checkpoint_assignment.time_record_id
+   *
+   * สำคัญ:
+   * ต้องส่ง work_date + shift_id
+   * เพื่อไม่ให้ backend ดึง record เก่าที่ยัง checkout IS NULL
+   * เช่น วันที่ 26 มาแสดงในวันที่ 29
    */
   async getOpenAttendanceTimeRecordByEmployeeCode(
     employeeCode: string,
+    params: OpenAttendanceTimeRecordParams,
   ): Promise<TimeRecordResponse | null> {
     try {
+      const query = buildOpenRecordQuery(params);
+
       return await api.get<TimeRecordResponse>(
-        `${BASE_PATH}/open/attendance/${encodeURIComponent(employeeCode)}`,
+        `${BASE_PATH}/open/attendance/${encodeURIComponent(
+          employeeCode,
+        )}?${query}`,
       );
     } catch (error) {
       if (isNotFoundError(error)) {
@@ -78,12 +101,14 @@ export const timeRecordService = {
 
   /**
    * ฟังก์ชันเดิม
-   * ให้ชี้ไปที่ attendance เท่านั้น เพื่อไม่ให้ดึงข้อมูลสายตรวจมาปน
+   * ให้ชี้ไปที่ attendance เท่านั้น
+   * แต่ต้องส่ง work_date + shift_id ด้วย
    */
   async getOpenTimeRecordByEmployeeCode(
     employeeCode: string,
+    params: OpenAttendanceTimeRecordParams,
   ): Promise<TimeRecordResponse | null> {
-    return this.getOpenAttendanceTimeRecordByEmployeeCode(employeeCode);
+    return this.getOpenAttendanceTimeRecordByEmployeeCode(employeeCode, params);
   },
 
   getTimeRecordById(timeRecordId: number) {

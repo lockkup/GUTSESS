@@ -4,7 +4,7 @@ import {
   Check,
   ChevronRight,
   ChevronUp,
-  ClipboardList,
+  FileSearch,
   Hourglass,
   Info,
   PhoneCall,
@@ -16,6 +16,8 @@ import {
 import BackButton from "@/components/BackButton";
 import {
   getPatrolReport,
+  getPatrolReportFilterOptions,
+  type PatrolReportFilterOptions,
   type PatrolReportRow,
   type PatrolStatus,
 } from "@/services/patrolReportApi";
@@ -24,7 +26,7 @@ import styles from "./PatrolReport.module.css";
 
 type ShiftValue = "day" | "night";
 
-type PatrolNotificationLevel = "none" | "yellow" | "orange" | "red";
+type PatrolNotificationLevel = "none" | "green" | "yellow" | "orange" | "red";
 
 type ReportDisplayStatus = PatrolStatus | "completed_call";
 type StatusFilterValue = "all" | ReportDisplayStatus;
@@ -37,11 +39,36 @@ type FetchPatrolReportOptions = {
   workday: string;
   shiftValue: ShiftValue;
   searchText: string;
+  departmentIdText: string;
+  divisionIdText: string;
+  routeIdText: string;
+  locationIdText: string;
+  employeeCodeText: string;
+};
+
+type ExtraPatrolReportFilterParams = {
+  departmentId?: number;
+  divisionId?: number;
+  routeId?: number;
+  locationId?: number;
+  employeeCode?: string;
 };
 
 type PatrolReportDisplayRow = PatrolReportRow & {
   assignmentStatus?: PatrolStatus | null;
   assignment_status?: PatrolStatus | null;
+
+  departmentId?: number | string | null;
+  department_id?: number | string | null;
+
+  divisionId?: number | string | null;
+  division_id?: number | string | null;
+
+  routeId?: number | string | null;
+  route_id?: number | string | null;
+
+  locationId?: number | string | null;
+  location_id?: number | string | null;
 
   effectiveFrom?: string | null;
   effective_from?: string | null;
@@ -61,8 +88,8 @@ type PatrolReportDisplayRow = PatrolReportRow & {
   notificationText?: string | null;
   notification_text?: string | null;
 
-  planDay?: number | string | null;
-  plan_day?: number | string | null;
+  scheduleText?: string | null;
+  schedule_text?: string | null;
 
   contactDetail?: string | null;
   contact_detail?: string | null;
@@ -86,6 +113,19 @@ type PatrolReportDisplayRow = PatrolReportRow & {
 type CalendarCell = {
   date: Date;
   isCurrentMonth: boolean;
+};
+
+type EmptyReportStateProps = {
+  title?: string;
+  hint?: string;
+};
+
+const EMPTY_FILTER_OPTIONS: PatrolReportFilterOptions = {
+  departments: [],
+  divisions: [],
+  routes: [],
+  locations: [],
+  employees: [],
 };
 
 const THAI_MONTH_SHORT = [
@@ -199,8 +239,23 @@ function getCalendarCells(monthDate: Date): CalendarCell[] {
   });
 }
 
-const DEPARTMENT_ID = 9;
-const DIVISION_ID = 15;
+function toPositiveNumber(value: string) {
+  const text = value.trim();
+
+  if (!text) return undefined;
+
+  const numberValue = Number(text);
+
+  if (!Number.isFinite(numberValue) || numberValue <= 0) {
+    return undefined;
+  }
+
+  return numberValue;
+}
+
+function makeReactKey(...values: Array<string | number | null | undefined>) {
+  return values.map((value) => String(value ?? "")).join("-");
+}
 
 const SHIFT_ID_BY_VALUE: Record<ShiftValue, number> = {
   day: 1,
@@ -210,6 +265,12 @@ const SHIFT_ID_BY_VALUE: Record<ShiftValue, number> = {
 const DEFAULT_SHIFT_VALUE: ShiftValue = "day";
 const DEFAULT_STATUS_VALUE: StatusFilterValue = "all";
 const DEFAULT_SEARCH_TEXT = "";
+
+const DEFAULT_DEPARTMENT_ID_TEXT = "";
+const DEFAULT_DIVISION_ID_TEXT = "";
+const DEFAULT_ROUTE_ID_TEXT = "";
+const DEFAULT_LOCATION_ID_TEXT = "";
+const DEFAULT_EMPLOYEE_CODE_TEXT = "";
 
 function getStatusLabel(status: ReportDisplayStatus) {
   switch (status) {
@@ -273,26 +334,6 @@ function getDisplayStatus(row: PatrolReportDisplayRow): ReportDisplayStatus {
   return getAssignmentStatus(row);
 }
 
-function getPlanDayText(row: PatrolReportDisplayRow) {
-  const value = row.planDay ?? row.plan_day ?? null;
-
-  if (value === null || value === undefined) {
-    return "-";
-  }
-
-  const text = String(value).trim();
-
-  if (!text) {
-    return "-";
-  }
-
-  if (text.includes("วัน")) {
-    return text;
-  }
-
-  return `${text} วัน`;
-}
-
 function getEffectiveFromText(row: PatrolReportDisplayRow) {
   const value = row.effectiveFrom ?? row.effective_from ?? null;
 
@@ -321,6 +362,7 @@ function getNotificationLevel(
   const value = row.notificationLevel ?? row.notification_level ?? "none";
 
   if (
+    value === "green" ||
     value === "yellow" ||
     value === "orange" ||
     value === "red" ||
@@ -339,28 +381,53 @@ function getNotificationText(row: PatrolReportDisplayRow) {
     return "-";
   }
 
-  return text;
+  const textValue = String(text).trim();
+
+  return textValue || "-";
 }
 
-function getNotificationBadgeText(row: PatrolReportDisplayRow) {
-  const level = getNotificationLevel(row);
+function getScheduleText(row: PatrolReportDisplayRow) {
+  const scheduleText = row.scheduleText ?? row.schedule_text ?? null;
 
-  switch (level) {
-    case "yellow":
-      return "เหลือง";
-    case "orange":
-      return "ส้ม";
-    case "red":
-      return "แดง";
-    default:
-      return "-";
+  if (scheduleText !== null && scheduleText !== undefined) {
+    const textValue = String(scheduleText).trim();
+
+    if (textValue) {
+      return textValue;
+    }
   }
+
+  const byContract = row.byContract ?? row.by_contract ?? null;
+
+  if (byContract === null || byContract === undefined) {
+    return "-";
+  }
+
+  const textValue = String(byContract).trim();
+
+  if (!textValue) {
+    return "-";
+  }
+
+  if (textValue.includes("วัน")) {
+    return textValue;
+  }
+
+  const numberValue = Number(textValue);
+
+  if (Number.isFinite(numberValue) && numberValue > 0) {
+    return `${numberValue} วัน`;
+  }
+
+  return textValue;
 }
 
 function getNotificationRowClass(row: PatrolReportDisplayRow) {
   const level = getNotificationLevel(row);
 
   switch (level) {
+    case "green":
+      return styles.notificationRowGreen;
     case "yellow":
       return styles.notificationRowYellow;
     case "orange":
@@ -418,26 +485,95 @@ function getReportCountText(count: number) {
   return `แสดง 1 - ${count} จาก ${count} รายการ`;
 }
 
-function EmptyReportState() {
+function getDepartmentOptionLabel(departmentName: string, departmentId: number) {
+  const name = departmentName.trim();
+
+  if (!name) {
+    return `ภาค ${departmentId}`;
+  }
+
+  return `${departmentId} - ${name}`;
+}
+
+function getDivisionOptionLabel(divisionName: string, divisionId: number) {
+  const name = divisionName.trim();
+
+  if (!name) {
+    return `เขต ${divisionId}`;
+  }
+
+  return `${divisionId} - ${name}`;
+}
+
+function getRouteOptionLabel(routeName: string, routeId: number) {
+  const name = routeName.trim();
+
+  if (!name) {
+    return `เส้นทาง ${routeId}`;
+  }
+
+  return `${routeId} - ${name}`;
+}
+
+function getLocationOptionLabel(
+  contractCode: string,
+  locationName: string,
+  locationId: number,
+) {
+  const contractText = getContractCodeText(contractCode);
+  const locationText = locationName.trim();
+
+  if (contractText !== "-" && locationText) {
+    return `${contractText} - ${locationText}`;
+  }
+
+  if (locationText) {
+    return `${locationId} - ${locationText}`;
+  }
+
+  return `หน่วยงาน ${locationId}`;
+}
+
+function getEmployeeOptionLabel(
+  employeeCode: string,
+  employeeName: string | null,
+  positionName: string | null,
+) {
+  const employeeNameText = employeeName?.trim();
+  const positionNameText = positionName?.trim();
+
+  if (employeeNameText && positionNameText) {
+    return `${employeeCode} - ${employeeNameText} (${positionNameText})`;
+  }
+
+  if (employeeNameText) {
+    return `${employeeCode} - ${employeeNameText}`;
+  }
+
+  if (positionNameText) {
+    return `${employeeCode} - ${positionNameText}`;
+  }
+
+  return employeeCode;
+}
+
+function EmptyReportState({
+  title = "ไม่พบข้อมูลรายงานสายตรวจ",
+  hint = "กรุณาติดต่อผู้ดูแลระบบ",
+}: EmptyReportStateProps) {
   return (
     <div className={styles.emptyState}>
       <div className={styles.emptyIconWrap} aria-hidden="true">
         <div className={styles.emptyIconCircle}>
-          <ClipboardList
+          <FileSearch
             className={styles.emptyClipboardIcon}
-            size={62}
-            strokeWidth={1.8}
+            size={64}
+            strokeWidth={1.9}
           />
-
-          <span className={styles.emptySearchBadge}>
-            <Search size={28} strokeWidth={2.6} />
-          </span>
-
-          <span className={styles.emptyCloseBadge}>×</span>
         </div>
       </div>
 
-      <h3 className={styles.emptyTitle}>ไม่พบข้อมูลรายงานสายตรวจ</h3>
+      <h3 className={styles.emptyTitle}>{title}</h3>
       <div className={styles.emptyDivider} />
 
       <div className={styles.emptyHint}>
@@ -447,7 +583,7 @@ function EmptyReportState() {
           strokeWidth={2.5}
           aria-hidden="true"
         />
-        <span>กรุณาติดต่อผู้ดูแลระบบ</span>
+        <span>{hint}</span>
       </div>
     </div>
   );
@@ -487,11 +623,29 @@ function StatusIcon({ status }: { status: ReportDisplayStatus }) {
 
 export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
   const [patrolRows, setPatrolRows] = useState<PatrolReportDisplayRow[]>([]);
+  const [filterOptions, setFilterOptions] =
+    useState<PatrolReportFilterOptions>(EMPTY_FILTER_OPTIONS);
+
   const [dateValue, setDateValue] = useState(() => getTodayYYYYMMDD());
   const [shiftValue, setShiftValue] = useState<ShiftValue>(DEFAULT_SHIFT_VALUE);
   const [statusValue, setStatusValue] =
     useState<StatusFilterValue>(DEFAULT_STATUS_VALUE);
   const [searchText, setSearchText] = useState(DEFAULT_SEARCH_TEXT);
+
+  const [departmentIdText, setDepartmentIdText] = useState(
+    DEFAULT_DEPARTMENT_ID_TEXT,
+  );
+  const [divisionIdText, setDivisionIdText] = useState(
+    DEFAULT_DIVISION_ID_TEXT,
+  );
+  const [routeIdText, setRouteIdText] = useState(DEFAULT_ROUTE_ID_TEXT);
+  const [locationIdText, setLocationIdText] = useState(
+    DEFAULT_LOCATION_ID_TEXT,
+  );
+  const [employeeCodeText, setEmployeeCodeText] = useState(
+    DEFAULT_EMPLOYEE_CODE_TEXT,
+  );
+
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(() => {
@@ -501,22 +655,88 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
   const datePickerWrapRef = useRef<HTMLDivElement | null>(null);
 
   const [loading, setLoading] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const selectedDepartmentId = toPositiveNumber(departmentIdText);
+  const selectedDivisionId = toPositiveNumber(divisionIdText);
+  const selectedRouteId = toPositiveNumber(routeIdText);
+  const todayText = getTodayYYYYMMDD();
+
+  const hasAnyReportFilter =
+    departmentIdText.trim() !== "" ||
+    divisionIdText.trim() !== "" ||
+    routeIdText.trim() !== "" ||
+    locationIdText.trim() !== "" ||
+    employeeCodeText.trim() !== "" ||
+    searchText.trim() !== "" ||
+    shiftValue !== DEFAULT_SHIFT_VALUE ||
+    statusValue !== DEFAULT_STATUS_VALUE ||
+    dateValue !== todayText;
+
+  const fetchFilterOptions = useCallback(async () => {
+    try {
+      const options = await getPatrolReportFilterOptions();
+
+      setFilterOptions(options);
+    } catch (err) {
+      console.error(err);
+      setFilterOptions(EMPTY_FILTER_OPTIONS);
+      setError("ไม่สามารถดึงตัวเลือกตัวกรองรายงานได้");
+    }
+  }, []);
+
   const fetchPatrolReport = useCallback(
-    async ({ workday, shiftValue, searchText }: FetchPatrolReportOptions) => {
+    async ({
+      workday,
+      shiftValue,
+      searchText,
+      departmentIdText,
+      divisionIdText,
+      routeIdText,
+      locationIdText,
+      employeeCodeText,
+    }: FetchPatrolReportOptions) => {
       setLoading(true);
+      setHasSearched(true);
       setError(null);
 
       try {
-        const rows = await getPatrolReport({
+        const requestParams = {
           workday,
-          departmentId: DEPARTMENT_ID,
-          divisionId: DIVISION_ID,
           shiftId: SHIFT_ID_BY_VALUE[shiftValue],
           status: "all",
           keyword: searchText,
-        });
+        } as Parameters<typeof getPatrolReport>[0] &
+          ExtraPatrolReportFilterParams;
+
+        const departmentId = toPositiveNumber(departmentIdText);
+        const divisionId = toPositiveNumber(divisionIdText);
+        const routeId = toPositiveNumber(routeIdText);
+        const locationId = toPositiveNumber(locationIdText);
+        const employeeCode = employeeCodeText.trim();
+
+        if (departmentId !== undefined) {
+          requestParams.departmentId = departmentId;
+        }
+
+        if (divisionId !== undefined) {
+          requestParams.divisionId = divisionId;
+        }
+
+        if (routeId !== undefined) {
+          requestParams.routeId = routeId;
+        }
+
+        if (locationId !== undefined) {
+          requestParams.locationId = locationId;
+        }
+
+        if (employeeCode) {
+          requestParams.employeeCode = employeeCode;
+        }
+
+        const rows = await getPatrolReport(requestParams);
 
         setPatrolRows(rows as PatrolReportDisplayRow[]);
         setExpandedId(null);
@@ -532,14 +752,8 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
   );
 
   useEffect(() => {
-    const today = getTodayYYYYMMDD();
-
-    void fetchPatrolReport({
-      workday: today,
-      shiftValue: DEFAULT_SHIFT_VALUE,
-      searchText: DEFAULT_SEARCH_TEXT,
-    });
-  }, [fetchPatrolReport]);
+    void fetchFilterOptions();
+  }, [fetchFilterOptions]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -579,14 +793,83 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
     [calendarMonth],
   );
 
-  const todayText = getTodayYYYYMMDD();
+  const departmentOptions = useMemo(() => {
+    return filterOptions.departments;
+  }, [filterOptions.departments]);
+
+  const divisionOptions = useMemo(() => {
+    return filterOptions.divisions.filter((division) => {
+      if (selectedDepartmentId === undefined) return true;
+
+      return division.departmentId === selectedDepartmentId;
+    });
+  }, [filterOptions.divisions, selectedDepartmentId]);
+
+  const routeOptions = useMemo(() => {
+    return filterOptions.routes.filter((route) => {
+      const matchDepartment =
+        selectedDepartmentId === undefined ||
+        route.departmentId === selectedDepartmentId;
+      const matchDivision =
+        selectedDivisionId === undefined ||
+        route.divisionId === selectedDivisionId;
+
+      return matchDepartment && matchDivision;
+    });
+  }, [filterOptions.routes, selectedDepartmentId, selectedDivisionId]);
+
+  const locationOptions = useMemo(() => {
+    return filterOptions.locations.filter((location) => {
+      const matchDepartment =
+        selectedDepartmentId === undefined ||
+        location.departmentId === selectedDepartmentId;
+      const matchDivision =
+        selectedDivisionId === undefined ||
+        location.divisionId === selectedDivisionId;
+      const matchRoute =
+        selectedRouteId === undefined || location.routeId === selectedRouteId;
+
+      return matchDepartment && matchDivision && matchRoute;
+    });
+  }, [
+    filterOptions.locations,
+    selectedDepartmentId,
+    selectedDivisionId,
+    selectedRouteId,
+  ]);
+
+  const employeeOptions = useMemo(() => {
+    return filterOptions.employees;
+  }, [filterOptions.employees]);
+
   const reportCountText = getReportCountText(filteredRows.length);
 
+  const emptyTitle = hasSearched
+    ? "ไม่พบข้อมูลรายงานสายตรวจ"
+    : "โปรดเลือก ภาค เขต เส้นทาง รายหน่วยงาน";
+
+  const emptyHint = hasSearched
+    ? "กรุณาตรวจสอบเงื่อนไขการค้นหาอีกครั้ง"
+    : "เลือกตัวกรองอย่างน้อย 1 รายการ แล้วกดค้นหา";
+
   const handleSearch = () => {
+    if (!hasAnyReportFilter) {
+      setPatrolRows([]);
+      setExpandedId(null);
+      setHasSearched(false);
+      setError(null);
+      return;
+    }
+
     void fetchPatrolReport({
       workday: dateValue,
       shiftValue,
       searchText,
+      departmentIdText,
+      divisionIdText,
+      routeIdText,
+      locationIdText,
+      employeeCodeText,
     });
   };
 
@@ -600,15 +883,18 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
     );
     setShiftValue(DEFAULT_SHIFT_VALUE);
     setStatusValue(DEFAULT_STATUS_VALUE);
-    setSearchText("");
+    setSearchText(DEFAULT_SEARCH_TEXT);
+    setDepartmentIdText(DEFAULT_DEPARTMENT_ID_TEXT);
+    setDivisionIdText(DEFAULT_DIVISION_ID_TEXT);
+    setRouteIdText(DEFAULT_ROUTE_ID_TEXT);
+    setLocationIdText(DEFAULT_LOCATION_ID_TEXT);
+    setEmployeeCodeText(DEFAULT_EMPLOYEE_CODE_TEXT);
     setExpandedId(null);
     setIsDatePickerOpen(false);
 
-    void fetchPatrolReport({
-      workday: today,
-      shiftValue: DEFAULT_SHIFT_VALUE,
-      searchText: DEFAULT_SEARCH_TEXT,
-    });
+    setPatrolRows([]);
+    setHasSearched(false);
+    setError(null);
   };
 
   return (
@@ -616,7 +902,7 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
       <div className={styles.shell}>
         <header className={styles.desktopHeaderRow}>
           <div className={styles.titleWrap}>
-            <h1 className={styles.title}>รายงานงานสายตรวจประจำวัน</h1>
+            <h1 className={styles.title}>รายงานงานการเข้าตรวจหน่วยงาน</h1>
             <p className={styles.subtitle}>
               ตรวจสอบสถานะการเข้าตรวจ เวลาเข้า-ออก และรายละเอียดการติดต่อ
             </p>
@@ -634,11 +920,150 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
         </header>
 
         <header className={styles.topBar}>
-          <h1 className={styles.pageTitle}>รายงานงานสายตรวจประจำวัน</h1>
+          <h1 className={styles.pageTitle}>รายงานงานการเข้าตรวจหน่วยงาน</h1>
         </header>
 
         <section className={styles.filterPanel} aria-label="ตัวกรองรายงาน">
           <h2 className={styles.panelTitle}>ตัวกรองรายงาน</h2>
+
+          <label className={styles.fieldGroup}>
+            <span className={styles.fieldLabel}>ภาค</span>
+            <select
+              value={departmentIdText}
+              onChange={(event) => {
+                setDepartmentIdText(event.target.value);
+                setDivisionIdText(DEFAULT_DIVISION_ID_TEXT);
+                setRouteIdText(DEFAULT_ROUTE_ID_TEXT);
+                setLocationIdText(DEFAULT_LOCATION_ID_TEXT);
+                setEmployeeCodeText(DEFAULT_EMPLOYEE_CODE_TEXT);
+                setPatrolRows([]);
+                setHasSearched(false);
+              }}
+              className={styles.select}
+            >
+              <option value="">ทั้งหมด</option>
+              {departmentOptions.map((option, index) => (
+                <option
+                  key={makeReactKey(
+                    "department",
+                    option.departmentId,
+                    index,
+                  )}
+                  value={String(option.departmentId)}
+                >
+                  {getDepartmentOptionLabel(
+                    option.departmentName,
+                    option.departmentId,
+                  )}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className={styles.fieldGroup}>
+            <span className={styles.fieldLabel}>เขต</span>
+            <select
+              value={divisionIdText}
+              onChange={(event) => {
+                setDivisionIdText(event.target.value);
+                setRouteIdText(DEFAULT_ROUTE_ID_TEXT);
+                setLocationIdText(DEFAULT_LOCATION_ID_TEXT);
+                setEmployeeCodeText(DEFAULT_EMPLOYEE_CODE_TEXT);
+                setPatrolRows([]);
+                setHasSearched(false);
+              }}
+              className={styles.select}
+            >
+              <option value="">ทั้งหมด</option>
+              {divisionOptions.map((option, index) => (
+                <option
+                  key={makeReactKey("division", option.divisionId, index)}
+                  value={String(option.divisionId)}
+                >
+                  {getDivisionOptionLabel(
+                    option.divisionName,
+                    option.divisionId,
+                  )}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className={styles.fieldGroup}>
+            <span className={styles.fieldLabel}>เส้นทาง</span>
+            <select
+              value={routeIdText}
+              onChange={(event) => {
+                setRouteIdText(event.target.value);
+                setLocationIdText(DEFAULT_LOCATION_ID_TEXT);
+                setEmployeeCodeText(DEFAULT_EMPLOYEE_CODE_TEXT);
+                setPatrolRows([]);
+                setHasSearched(false);
+              }}
+              className={styles.select}
+            >
+              <option value="">ทั้งหมด</option>
+              {routeOptions.map((option, index) => (
+                <option
+                  key={makeReactKey("route", option.routeId, index)}
+                  value={String(option.routeId)}
+                >
+                  {getRouteOptionLabel(option.routeName, option.routeId)}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className={styles.fieldGroup}>
+            <span className={styles.fieldLabel}>รายหน่วยงาน</span>
+            <select
+              value={locationIdText}
+              onChange={(event) => {
+                setLocationIdText(event.target.value);
+                setEmployeeCodeText(DEFAULT_EMPLOYEE_CODE_TEXT);
+                setPatrolRows([]);
+                setHasSearched(false);
+              }}
+              className={styles.select}
+            >
+              <option value="">ทั้งหมด</option>
+              {locationOptions.map((option, index) => (
+                <option
+                  key={makeReactKey("location", option.locationId, index)}
+                  value={String(option.locationId)}
+                >
+                  {getLocationOptionLabel(
+                    option.contractCode,
+                    option.locationName,
+                    option.locationId,
+                  )}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className={styles.fieldGroup}>
+            <span className={styles.fieldLabel}>รายสายตรวจ</span>
+            <select
+              value={employeeCodeText}
+              onChange={(event) => setEmployeeCodeText(event.target.value)}
+              className={styles.select}
+            >
+              <option value="">ทั้งหมด</option>
+              {employeeOptions.map((option, index) => (
+                <option
+                  key={makeReactKey("employee", option.employeeCode, index)}
+                  value={option.employeeCode}
+                >
+                  {getEmployeeOptionLabel(
+                    option.employeeCode,
+                    option.employeeName,
+                    option.positionName,
+                  )}
+                </option>
+              ))}
+            </select>
+          </label>
 
           <div className={styles.fieldGroup}>
             <span className={styles.fieldLabel}>วันที่</span>
@@ -887,7 +1312,6 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                     <th>ผลัด</th>
                     <th>สถานะ</th>
                     <th>วันที่เริ่มสัญญา</th>
-                    <th>แผน</th>
                     <th>แจ้งเตือน</th>
                     <th>ตามสัญญา</th>
                     <th>วันที่</th>
@@ -902,20 +1326,31 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan={15}>กำลังโหลดข้อมูล...</td>
+                      <td colSpan={14}>กำลังโหลดข้อมูล...</td>
                     </tr>
                   ) : filteredRows.length === 0 ? (
                     <tr>
-                      <td colSpan={15} className={styles.emptyTableCell}>
-                        <EmptyReportState />
+                      <td colSpan={14} className={styles.emptyTableCell}>
+                        <EmptyReportState
+                          title={emptyTitle}
+                          hint={emptyHint}
+                        />
                       </td>
                     </tr>
                   ) : (
-                    filteredRows.map((row) => {
+                    filteredRows.map((row, index) => {
                       const status = getDisplayStatus(row);
 
                       return (
-                        <tr key={`${row.id}-${row.contractCode}`}>
+                        <tr
+                          key={makeReactKey(
+                            "desktop-row",
+                            row.id,
+                            row.contractCode,
+                            row.locationId ?? row.location_id,
+                            index,
+                          )}
+                        >
                           <td>{row.id}</td>
                           <td>{getContractCodeText(row.contractCode)}</td>
                           <td className={styles.textLeft}>{row.siteName}</td>
@@ -930,16 +1365,15 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                             </span>
                           </td>
                           <td>{getEffectiveFromText(row)}</td>
-                          <td>{getPlanDayText(row)}</td>
                           <td
                             className={`${styles.notificationTableCell} ${getNotificationRowClass(
                               row,
                             )}`}
                           >
-                            {getNotificationBadgeText(row)}
+                            {getNotificationText(row)}
                           </td>
                           <td className={styles.textLeft}>
-                            {getNotificationText(row)}
+                            {getScheduleText(row)}
                           </td>
                           <td>{row.dateText}</td>
                           <td>{row.checkInTime ?? "-"}</td>
@@ -989,15 +1423,21 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
             {loading ? (
               <p className={styles.mobileFooter}>กำลังโหลดข้อมูล...</p>
             ) : filteredRows.length === 0 ? (
-              <EmptyReportState />
+              <EmptyReportState title={emptyTitle} hint={emptyHint} />
             ) : (
-              filteredRows.map((row) => {
+              filteredRows.map((row, index) => {
                 const isExpanded = expandedId === row.id;
                 const status = getDisplayStatus(row);
 
                 return (
                   <article
-                    key={`${row.id}-${row.contractCode}`}
+                    key={makeReactKey(
+                      "mobile-row",
+                      row.id,
+                      row.contractCode,
+                      row.locationId ?? row.location_id,
+                      index,
+                    )}
                     className={`${styles.mobileCard} ${
                       isExpanded ? styles.mobileCardExpanded : ""
                     }`}
@@ -1063,23 +1503,18 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                           <strong>{getEffectiveFromText(row)}</strong>
                         </div>
 
-                        <div className={styles.detailRow}>
-                          <span>แผน</span>
-                          <strong>{getPlanDayText(row)}</strong>
-                        </div>
-
                         <div
                           className={`${styles.detailRow} ${styles.notificationDetailRow} ${getNotificationRowClass(
                             row,
                           )}`}
                         >
                           <span>แจ้งเตือน</span>
-                          <strong>{getNotificationBadgeText(row)}</strong>
+                          <strong>{getNotificationText(row)}</strong>
                         </div>
 
                         <div className={styles.detailRow}>
                           <span>ตามสัญญา</span>
-                          <strong>{getNotificationText(row)}</strong>
+                          <strong>{getScheduleText(row)}</strong>
                         </div>
 
                         <div className={styles.detailRow}>

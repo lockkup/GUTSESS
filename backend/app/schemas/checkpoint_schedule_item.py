@@ -13,7 +13,7 @@ class CheckpointScheduleItemBase(BaseModel):
         str_strip_whitespace=True,
     )
 
-    schedule_id: int = Field(..., gt=0)
+    shift_id: int = Field(..., gt=0)
 
     route_site_location_id: int = Field(..., gt=0)
 
@@ -55,7 +55,7 @@ class CheckpointScheduleItemUpdate(BaseModel):
         str_strip_whitespace=True,
     )
 
-    schedule_id: int | None = Field(
+    shift_id: int | None = Field(
         default=None,
         gt=0,
     )
@@ -109,7 +109,11 @@ class CheckpointScheduleItemAction(BaseModel):
 
 
 class CheckpointScheduleItemResponse(CheckpointScheduleItemBase):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        extra="forbid",
+        str_strip_whitespace=True,
+    )
 
     schedule_item_id: int
 

@@ -28,6 +28,12 @@ export type CheckInOutPayload = {
   assignmentId?: number | null;
   unitName?: string | null;
   passedLocation?: PassedLocation | null;
+
+  /**
+   * ส่งเผื่อให้ parent ใช้ต่อได้
+   */
+  workDate?: string | null;
+  shiftId?: number | null;
 };
 
 type Props = {
@@ -39,6 +45,13 @@ type Props = {
    * checkpoint = ลงเวลาจากตารางงานสายตรวจ
    */
   mode?: CheckInOutMode;
+
+  /**
+   * ใช้กับการกรอง open time record รายวัน
+   * ถ้า parent มี workDate/shiftId ควรส่งเข้ามา
+   */
+  workDate?: string | null; // YYYY-MM-DD
+  shiftId?: number | null;
 
   assignmentId?: number | null;
   unitName?: string | null;
@@ -76,10 +89,56 @@ function safeDate(iso?: string | null) {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+function toLocalYmd(d: Date) {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function addDays(d: Date, amount: number) {
+  const next = new Date(d);
+  next.setDate(next.getDate() + amount);
+
+  return next;
+}
+
+function isSameLocalYmd(value: string | null | undefined, ymd: string) {
+  const d = safeDate(value);
+
+  if (!d) return false;
+
+  return toLocalYmd(d) === ymd;
+}
+
+function resolveWorkDate(params: {
+  now: Date;
+  workDate?: string | null;
+  shiftId?: number | null;
+}) {
+  const { now, workDate, shiftId } = params;
+
+  if (workDate) return workDate;
+
+  /**
+   * กะกลางคืน:
+   * ถ้า parent ส่ง shiftId = 2 และเวลาอยู่หลังเที่ยงคืนถึงก่อน 07:00
+   * ให้ถือว่า work_date เป็นวันก่อนหน้า
+   */
+  if (shiftId === 2 && now.getHours() < 7) {
+    return toLocalYmd(addDays(now, -1));
+  }
+
+  return toLocalYmd(now);
+}
+
 export default function CheckInOut({
   empCode,
   displayName,
   mode = "attendance",
+  workDate = null,
+  shiftId = null,
   assignmentId = null,
   unitName = null,
   passedLocation = null,
@@ -101,8 +160,32 @@ export default function CheckInOut({
     return () => clearInterval(t);
   }, []);
 
-  const lastIn = useMemo(() => safeDate(lastInAt), [lastInAt]);
-  const lastOut = useMemo(() => safeDate(lastOutAt), [lastOutAt]);
+  const workDateForOpenRecord = useMemo(() => {
+    return resolveWorkDate({
+      now,
+      workDate,
+      shiftId,
+    });
+  }, [now, workDate, shiftId]);
+
+  /**
+   * กันข้อมูลเก่าค้าง:
+   * ถ้า lastInAt / lastOutAt ไม่ใช่ workDate ปัจจุบัน ไม่เอามาแสดง
+   */
+  const visibleLastInAt = useMemo(() => {
+    if (isCheckpointMode) return lastInAt ?? null;
+
+    return isSameLocalYmd(lastInAt, workDateForOpenRecord) ? lastInAt : null;
+  }, [isCheckpointMode, lastInAt, workDateForOpenRecord]);
+
+  const visibleLastOutAt = useMemo(() => {
+    if (isCheckpointMode) return lastOutAt ?? null;
+
+    return isSameLocalYmd(lastOutAt, workDateForOpenRecord) ? lastOutAt : null;
+  }, [isCheckpointMode, lastOutAt, workDateForOpenRecord]);
+
+  const lastIn = useMemo(() => safeDate(visibleLastInAt), [visibleLastInAt]);
+  const lastOut = useMemo(() => safeDate(visibleLastOutAt), [visibleLastOutAt]);
 
   const hasCheckedIn = Boolean(lastIn);
   const hasCheckedOut = Boolean(lastOut);
@@ -116,8 +199,17 @@ export default function CheckInOut({
       assignmentId,
       unitName,
       passedLocation,
+      workDate: workDateForOpenRecord,
+      shiftId,
     }),
-    [mode, assignmentId, unitName, passedLocation],
+    [
+      mode,
+      assignmentId,
+      unitName,
+      passedLocation,
+      workDateForOpenRecord,
+      shiftId,
+    ],
   );
 
   const nowDate = fmtThaiDate(now);
@@ -149,19 +241,28 @@ export default function CheckInOut({
         return;
       }
 
-      /*
-       * โหมด attendance:
-       * ตรวจเฉพาะ open time_record ของการลงเวลาเข้า-ออกงานปกติ
-       * backend จะแยกออกจากสายตรวจด้วย checkpoint_assignment.time_record_id
+      /**
+       * ถ้า parent ส่ง shiftId มา:
+       * เช็ก open record เฉพาะ work_date + shift_id
+       *
+       * ถ้า parent ยังไม่ส่ง shiftId:
+       * ไม่บล็อกผู้ใช้ด้วย alert
+       * ให้ parent/backend ตอน createTimeRecord ตรวจต่ออีกชั้น
        */
-      const openRecord =
-        await timeRecordService.getOpenAttendanceTimeRecordByEmployeeCode(
-          empCode,
-        );
+      if (shiftId) {
+        const openRecord =
+          await timeRecordService.getOpenAttendanceTimeRecordByEmployeeCode(
+            empCode,
+            {
+              work_date: workDateForOpenRecord,
+              shift_id: shiftId,
+            },
+          );
 
-      if (openRecord) {
-        setCheckInOutModalOpen(true);
-        return;
+        if (openRecord) {
+          setCheckInOutModalOpen(true);
+          return;
+        }
       }
 
       onCheckIn(checkInOutPayload);

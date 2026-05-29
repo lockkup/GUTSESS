@@ -10,18 +10,18 @@ from sqlalchemy.orm import Session
 from app.core.constants import DBConstants
 from app.core.error_messages import (
     CHECKPOINT_SCHEDULE_ITEM_NOT_FOUND_DETAIL,
-    CHECKPOINT_SCHEDULE_NOT_FOUND_DETAIL,
     DUPLICATE_CHECKPOINT_SCHEDULE_ITEM_DETAIL,
     EMPLOYEE_NOT_FOUND_DETAIL,
     INVALID_CHECKPOINT_SCHEDULE_ITEM_UPDATE_DETAIL,
     INVALID_REFERENCE_DETAIL,
     ROUTE_SITE_LOCATION_NOT_FOUND_DETAIL,
+    SHIFT_NOT_FOUND_DETAIL,
 )
 from app.models import (
-    CheckpointSchedule,
     CheckpointScheduleItem,
     Employees,
     RouteSiteLocation,
+    Shift,
 )
 from app.schemas.checkpoint_schedule_item import (
     CheckpointScheduleItemCreate,
@@ -49,13 +49,13 @@ class CheckpointScheduleItemService:
     def _ensure_not_duplicate(
         db: Session,
         *,
-        schedule_id: int,
+        shift_id: int,
         route_site_location_id: int,
         sequence_no: int,
         exclude_schedule_item_id: int | None = None,
     ) -> None:
         conditions = [
-            CheckpointScheduleItem.schedule_id == schedule_id,
+            CheckpointScheduleItem.shift_id == shift_id,
             CheckpointScheduleItem.mark_flag.is_(False),
             or_(
                 CheckpointScheduleItem.route_site_location_id
@@ -106,7 +106,7 @@ class CheckpointScheduleItemService:
         db: Session,
         skip: int = DBConstants.DEFAULT_PAGE_SKIP,
         limit: int = DBConstants.DEFAULT_PAGE_LIMIT,
-        schedule_id: int | None = None,
+        shift_id: int | None = None,
         route_site_location_id: int | None = None,
         is_active: bool | None = None,
         include_deleted: bool = False,
@@ -116,9 +116,9 @@ class CheckpointScheduleItemService:
         if not include_deleted:
             stmt = stmt.where(CheckpointScheduleItem.mark_flag.is_(False))
 
-        if schedule_id is not None:
+        if shift_id is not None:
             stmt = stmt.where(
-                CheckpointScheduleItem.schedule_id == schedule_id
+                CheckpointScheduleItem.shift_id == shift_id
             )
 
         if route_site_location_id is not None:
@@ -134,7 +134,7 @@ class CheckpointScheduleItemService:
 
         stmt = (
             stmt.order_by(
-                CheckpointScheduleItem.schedule_id.asc(),
+                CheckpointScheduleItem.shift_id.asc(),
                 CheckpointScheduleItem.sequence_no.asc(),
                 CheckpointScheduleItem.schedule_item_id.asc(),
             )
@@ -158,9 +158,9 @@ class CheckpointScheduleItemService:
 
         CheckpointScheduleItemService._ensure_exists(
             db=db,
-            column=CheckpointSchedule.schedule_id,
-            value=payload.schedule_id,
-            error_detail=CHECKPOINT_SCHEDULE_NOT_FOUND_DETAIL,
+            column=Shift.shift_id,
+            value=payload.shift_id,
+            error_detail=SHIFT_NOT_FOUND_DETAIL,
         )
 
         CheckpointScheduleItemService._ensure_exists(
@@ -172,7 +172,7 @@ class CheckpointScheduleItemService:
 
         CheckpointScheduleItemService._ensure_not_duplicate(
             db=db,
-            schedule_id=payload.schedule_id,
+            shift_id=payload.shift_id,
             route_site_location_id=payload.route_site_location_id,
             sequence_no=payload.sequence_no,
         )
@@ -232,9 +232,9 @@ class CheckpointScheduleItemService:
             )
 
         validation_map = {
-            "schedule_id": (
-                CheckpointSchedule.schedule_id,
-                CHECKPOINT_SCHEDULE_NOT_FOUND_DETAIL,
+            "shift_id": (
+                Shift.shift_id,
+                SHIFT_NOT_FOUND_DETAIL,
             ),
             "route_site_location_id": (
                 RouteSiteLocation.route_site_location_id,
@@ -254,16 +254,16 @@ class CheckpointScheduleItemService:
         should_check_duplicate = any(
             field in business_update_data
             for field in (
-                "schedule_id",
+                "shift_id",
                 "route_site_location_id",
                 "sequence_no",
             )
         )
 
         if should_check_duplicate:
-            next_schedule_id = business_update_data.get(
-                "schedule_id",
-                checkpoint_schedule_item.schedule_id,
+            next_shift_id = business_update_data.get(
+                "shift_id",
+                checkpoint_schedule_item.shift_id,
             )
             next_route_site_location_id = business_update_data.get(
                 "route_site_location_id",
@@ -276,7 +276,7 @@ class CheckpointScheduleItemService:
 
             CheckpointScheduleItemService._ensure_not_duplicate(
                 db=db,
-                schedule_id=next_schedule_id,
+                shift_id=next_shift_id,
                 route_site_location_id=next_route_site_location_id,
                 sequence_no=next_sequence_no,
                 exclude_schedule_item_id=schedule_item_id,

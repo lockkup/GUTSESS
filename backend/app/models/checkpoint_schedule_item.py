@@ -31,14 +31,14 @@ class CheckpointScheduleItem(Base):
 
     __table_args__ = (
         UniqueConstraint(
-            "schedule_id",
+            "shift_id",
             "active_route_site_location_id",
-            name="uq_checkpoint_schedule_item_active_location",
+            name="uq_checkpoint_schedule_item_active_shift_location",
         ),
         UniqueConstraint(
-            "schedule_id",
+            "shift_id",
             "active_sequence_no",
-            name="uq_checkpoint_schedule_item_active_sequence",
+            name="uq_checkpoint_schedule_item_active_shift_sequence",
         ),
     )
 
@@ -48,9 +48,9 @@ class CheckpointScheduleItem(Base):
         autoincrement=True,
     )
 
-    schedule_id: Mapped[int] = mapped_column(
+    shift_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("checkpoint_schedule.schedule_id"),
+        ForeignKey("shifts.shift_id"),
         nullable=False,
     )
 

@@ -51,7 +51,8 @@ export default function OutOfAreaModal({
         <div className={styles.icon}>!</div>
 
         <div className={styles.body}>
-          <div>ขณะนี้ท่านอยู่นอกพื้นที่ลงเวลางาน</div>
+          <span>ขณะนี้ท่านอยู่นอก</span>
+          <span>พื้นที่ลงเวลางาน</span>
         </div>
 
         <div className={styles.actions}>

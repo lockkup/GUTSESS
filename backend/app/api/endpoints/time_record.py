@@ -36,7 +36,10 @@ def create_time_record(
 # =========================================================
 # OPEN RECORD: ATTENDANCE
 # ใช้กับเมนู "ลงเวลา เข้า-ออกงาน"
-# ต้องดึงเฉพาะ time_record ที่ไม่ได้ผูกกับ checkpoint_assignment.time_record_id
+#
+# สำคัญ:
+# ต้องส่ง work_date + shift_id เข้ามาด้วย
+# เพื่อไม่ให้ดึงรายการเก่าที่ยัง checkout IS NULL เช่น วันที่ 26 มาแสดงในวันใหม่
 # =========================================================
 @router.get(
     "/open/attendance/{employee_code}",
@@ -49,11 +52,22 @@ def get_open_attendance_time_record_by_employee(
         min_length=DBConstants.EMPLOYEE_CODE_LENGTH,
         max_length=DBConstants.EMPLOYEE_CODE_LENGTH,
     ),
+    work_date: date = Query(
+        ...,
+        description="วันที่ปฏิบัติงานปัจจุบัน รูปแบบ YYYY-MM-DD",
+    ),
+    shift_id: int = Query(
+        ...,
+        gt=0,
+        description="รหัสผลัดปัจจุบัน",
+    ),
     db: Session = Depends(get_db),
 ) -> TimeRecordResponse:
     return TimeRecordService.get_open_attendance_time_record_by_employee(
         db=db,
         employee_code=employee_code,
+        work_date=work_date,
+        shift_id=shift_id,
     )
 
 
@@ -87,7 +101,9 @@ def get_open_checkpoint_time_record_by_employee(
 # =========================================================
 # BACKWARD COMPATIBILITY
 # endpoint เดิม /open/{employee_code}
-# ให้ใช้เป็นงานปกติเท่านั้น เพื่อไม่ให้ดึง record สายตรวจมาแสดงผิดหน้า
+#
+# ปรับให้รับ work_date + shift_id เช่นเดียวกับ /open/attendance
+# เพื่อกันปัญหาดึง record เก่าข้ามวัน
 # =========================================================
 @router.get(
     "/open/{employee_code}",
@@ -100,11 +116,22 @@ def get_open_time_record_by_employee(
         min_length=DBConstants.EMPLOYEE_CODE_LENGTH,
         max_length=DBConstants.EMPLOYEE_CODE_LENGTH,
     ),
+    work_date: date = Query(
+        ...,
+        description="วันที่ปฏิบัติงานปัจจุบัน รูปแบบ YYYY-MM-DD",
+    ),
+    shift_id: int = Query(
+        ...,
+        gt=0,
+        description="รหัสผลัดปัจจุบัน",
+    ),
     db: Session = Depends(get_db),
 ) -> TimeRecordResponse:
     return TimeRecordService.get_open_attendance_time_record_by_employee(
         db=db,
         employee_code=employee_code,
+        work_date=work_date,
+        shift_id=shift_id,
     )
 
 

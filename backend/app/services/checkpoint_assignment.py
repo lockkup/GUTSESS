@@ -24,7 +24,6 @@ from app.core.error_messages import (
 )
 from app.models.checkpoint_assignment import CheckpointAssignment
 from app.models.checkpoint_assignment_call import CheckpointAssignmentCall
-from app.models.checkpoint_schedule import CheckpointSchedule
 from app.models.checkpoint_schedule_item import CheckpointScheduleItem
 from app.models.employees import Employees
 from app.models.route_site_location import RouteSiteLocation
@@ -463,11 +462,6 @@ class CheckpointAssignmentService:
                 == CheckpointScheduleItem.schedule_item_id,
             )
             .join(
-                CheckpointSchedule,
-                CheckpointScheduleItem.schedule_id
-                == CheckpointSchedule.schedule_id,
-            )
-            .join(
                 RouteSiteLocation,
                 CheckpointScheduleItem.route_site_location_id
                 == RouteSiteLocation.route_site_location_id,
@@ -505,7 +499,6 @@ class CheckpointAssignmentService:
             stmt = stmt.where(
                 CheckpointAssignment.is_active.is_(is_active),
                 CheckpointScheduleItem.is_active.is_(is_active),
-                CheckpointSchedule.is_active.is_(is_active),
                 RouteSiteLocation.is_active.is_(is_active),
                 SiteLocation.is_active.is_(is_active),
             )
@@ -513,7 +506,7 @@ class CheckpointAssignmentService:
         if shift_type is not None:
             stmt = stmt.join(
                 Shift,
-                CheckpointSchedule.shift_id == Shift.shift_id,
+                CheckpointScheduleItem.shift_id == Shift.shift_id,
             )
 
             if not include_deleted:

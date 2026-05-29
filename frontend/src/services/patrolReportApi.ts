@@ -3,7 +3,12 @@
 import api from "@/lib/api";
 
 export type PatrolStatus = "completed" | "in_progress" | "pending";
-export type PatrolNotificationLevel = "none" | "yellow" | "orange" | "red";
+export type PatrolNotificationLevel =
+  | "none"
+  | "green"
+  | "yellow"
+  | "orange"
+  | "red";
 
 export type PatrolReportRow = {
   id: number;
@@ -11,6 +16,19 @@ export type PatrolReportRow = {
   contractCode: string;
   siteName: string;
   status: PatrolStatus;
+
+  // ใช้สำหรับตัวกรองรายงาน
+  departmentId: number | null;
+  department_id: number | null;
+
+  divisionId: number | null;
+  division_id: number | null;
+
+  routeId: number | null;
+  route_id: number | null;
+
+  locationId: number | null;
+  location_id: number | null;
 
   // effective_from จาก backend / vw_checkin_report
   effectiveFrom: string | null;
@@ -62,6 +80,47 @@ export type PatrolReportRow = {
   position_name: string | null;
 };
 
+export type PatrolDepartmentOption = {
+  departmentId: number;
+  departmentName: string;
+};
+
+export type PatrolDivisionOption = {
+  divisionId: number;
+  divisionName: string;
+  departmentId: number | null;
+};
+
+export type PatrolRouteOption = {
+  routeId: number;
+  routeName: string;
+  departmentId: number | null;
+  divisionId: number | null;
+};
+
+export type PatrolLocationOption = {
+  locationId: number;
+  contractCode: string;
+  locationName: string;
+  routeId: number | null;
+  departmentId: number | null;
+  divisionId: number | null;
+};
+
+export type PatrolEmployeeOption = {
+  employeeCode: string;
+  employeeName: string | null;
+  positionName: string | null;
+};
+
+export type PatrolReportFilterOptions = {
+  departments: PatrolDepartmentOption[];
+  divisions: PatrolDivisionOption[];
+  routes: PatrolRouteOption[];
+  locations: PatrolLocationOption[];
+  employees: PatrolEmployeeOption[];
+};
+
 type PatrolReportApiRow = {
   id?: number | string | null;
 
@@ -75,6 +134,18 @@ type PatrolReportApiRow = {
   status?: string | null;
   assignmentStatus?: string | null;
   assignment_status?: string | null;
+
+  departmentId?: number | string | null;
+  department_id?: number | string | null;
+
+  divisionId?: number | string | null;
+  division_id?: number | string | null;
+
+  routeId?: number | string | null;
+  route_id?: number | string | null;
+
+  locationId?: number | string | null;
+  location_id?: number | string | null;
 
   effectiveFrom?: string | null;
   effective_from?: string | null;
@@ -135,11 +206,27 @@ type PatrolReportApiRow = {
   position_name?: string | null;
 };
 
+type PatrolReportFilterOptionsApiResponse = {
+  departments?: PatrolDepartmentOption[] | null;
+  divisions?: PatrolDivisionOption[] | null;
+  routes?: PatrolRouteOption[] | null;
+  locations?: PatrolLocationOption[] | null;
+  employees?: PatrolEmployeeOption[] | null;
+};
+
 export type GetPatrolReportParams = {
   workday: string;
-  departmentId: number;
-  divisionId: number;
   shiftId: number;
+
+  // ไม่บังคับแล้ว เพื่อให้ค่าเริ่มต้น ภาค/เขต ว่างได้
+  departmentId?: number;
+  divisionId?: number;
+
+  // ตัวกรองใหม่
+  routeId?: number;
+  locationId?: number;
+  employeeCode?: string;
+
   status?: "all" | PatrolStatus;
   keyword?: string;
 };
@@ -191,6 +278,7 @@ function normalizeNotificationLevel(value: unknown): PatrolNotificationLevel {
   const level = String(value ?? "").trim();
 
   if (
+    level === "green" ||
     level === "yellow" ||
     level === "orange" ||
     level === "red" ||
@@ -236,6 +324,16 @@ function mapPatrolReportRow(
   const status = normalizeStatus(
     row.status ?? row.assignmentStatus ?? row.assignment_status,
   );
+
+  const departmentId = toNumberOrNull(
+    row.departmentId ?? row.department_id,
+  );
+
+  const divisionId = toNumberOrNull(row.divisionId ?? row.division_id);
+
+  const routeId = toNumberOrNull(row.routeId ?? row.route_id);
+
+  const locationId = toNumberOrNull(row.locationId ?? row.location_id);
 
   const effectiveFrom = toNullableText(
     row.effectiveFrom ?? row.effective_from,
@@ -299,6 +397,18 @@ function mapPatrolReportRow(
     siteName,
     status,
 
+    departmentId,
+    department_id: departmentId,
+
+    divisionId,
+    division_id: divisionId,
+
+    routeId,
+    route_id: routeId,
+
+    locationId,
+    location_id: locationId,
+
     effectiveFrom,
     effective_from: effectiveFrom,
 
@@ -346,20 +456,61 @@ function mapPatrolReportRow(
   };
 }
 
+function normalizeFilterOptions(
+  options: PatrolReportFilterOptionsApiResponse,
+): PatrolReportFilterOptions {
+  return {
+    departments: Array.isArray(options.departments) ? options.departments : [],
+    divisions: Array.isArray(options.divisions) ? options.divisions : [],
+    routes: Array.isArray(options.routes) ? options.routes : [],
+    locations: Array.isArray(options.locations) ? options.locations : [],
+    employees: Array.isArray(options.employees) ? options.employees : [],
+  };
+}
+
+export async function getPatrolReportFilterOptions() {
+  const options = await api.get<PatrolReportFilterOptionsApiResponse>(
+    "/api/reports/patrol/filter-options",
+  );
+
+  return normalizeFilterOptions(options);
+}
+
 export async function getPatrolReport({
   workday,
   departmentId,
   divisionId,
   shiftId,
+  routeId,
+  locationId,
+  employeeCode,
   status,
   keyword,
 }: GetPatrolReportParams) {
   const params: Record<string, string | number> = {
     workday,
-    department_id: departmentId,
-    division_id: divisionId,
     shift_id: shiftId,
   };
+
+  if (departmentId !== undefined) {
+    params.department_id = departmentId;
+  }
+
+  if (divisionId !== undefined) {
+    params.division_id = divisionId;
+  }
+
+  if (routeId !== undefined) {
+    params.route_id = routeId;
+  }
+
+  if (locationId !== undefined) {
+    params.location_id = locationId;
+  }
+
+  if (employeeCode?.trim()) {
+    params.employee_code = employeeCode.trim();
+  }
 
   if (status && status !== "all") {
     params.status = status;
