@@ -1,3 +1,5 @@
+# app/api/endpoints/time_record.py
+
 from __future__ import annotations
 
 from datetime import date
@@ -37,9 +39,8 @@ def create_time_record(
 # OPEN RECORD: ATTENDANCE
 # ใช้กับเมนู "ลงเวลา เข้า-ออกงาน"
 #
-# สำคัญ:
-# ต้องส่ง work_date + shift_id เข้ามาด้วย
-# เพื่อไม่ให้ดึงรายการเก่าที่ยัง checkout IS NULL เช่น วันที่ 26 มาแสดงในวันใหม่
+# ใช้ employee_code + work_date
+# ไม่ใช้ shift_id แล้ว
 # =========================================================
 @router.get(
     "/open/attendance/{employee_code}",
@@ -56,18 +57,12 @@ def get_open_attendance_time_record_by_employee(
         ...,
         description="วันที่ปฏิบัติงานปัจจุบัน รูปแบบ YYYY-MM-DD",
     ),
-    shift_id: int = Query(
-        ...,
-        gt=0,
-        description="รหัสผลัดปัจจุบัน",
-    ),
     db: Session = Depends(get_db),
 ) -> TimeRecordResponse:
     return TimeRecordService.get_open_attendance_time_record_by_employee(
         db=db,
         employee_code=employee_code,
         work_date=work_date,
-        shift_id=shift_id,
     )
 
 
@@ -102,8 +97,8 @@ def get_open_checkpoint_time_record_by_employee(
 # BACKWARD COMPATIBILITY
 # endpoint เดิม /open/{employee_code}
 #
-# ปรับให้รับ work_date + shift_id เช่นเดียวกับ /open/attendance
-# เพื่อกันปัญหาดึง record เก่าข้ามวัน
+# ปรับให้รับแค่ work_date เหมือน /open/attendance
+# ไม่ใช้ shift_id แล้ว
 # =========================================================
 @router.get(
     "/open/{employee_code}",
@@ -120,18 +115,12 @@ def get_open_time_record_by_employee(
         ...,
         description="วันที่ปฏิบัติงานปัจจุบัน รูปแบบ YYYY-MM-DD",
     ),
-    shift_id: int = Query(
-        ...,
-        gt=0,
-        description="รหัสผลัดปัจจุบัน",
-    ),
     db: Session = Depends(get_db),
 ) -> TimeRecordResponse:
     return TimeRecordService.get_open_attendance_time_record_by_employee(
         db=db,
         employee_code=employee_code,
         work_date=work_date,
-        shift_id=shift_id,
     )
 
 
@@ -152,7 +141,6 @@ def get_time_record_list_items(
         min_length=DBConstants.EMPLOYEE_CODE_LENGTH,
         max_length=DBConstants.EMPLOYEE_CODE_LENGTH,
     ),
-    shift_id: int | None = Query(default=None, gt=0),
     work_date: date | None = Query(
         default=None,
         description="กรองข้อมูลตามวันที่ปฏิบัติงาน (YYYY-MM-DD)",
@@ -164,7 +152,6 @@ def get_time_record_list_items(
         skip=skip,
         limit=limit,
         employee_code=employee_code,
-        shift_id=shift_id,
         work_date=work_date,
     )
 
@@ -201,7 +188,6 @@ def get_time_records(
         min_length=DBConstants.EMPLOYEE_CODE_LENGTH,
         max_length=DBConstants.EMPLOYEE_CODE_LENGTH,
     ),
-    shift_id: int | None = Query(default=None, gt=0),
     work_date: date | None = Query(
         default=None,
         description="กรองข้อมูลตามวันที่ปฏิบัติงาน (YYYY-MM-DD)",
@@ -213,7 +199,6 @@ def get_time_records(
         skip=skip,
         limit=limit,
         employee_code=employee_code,
-        shift_id=shift_id,
         work_date=work_date,
     )
 

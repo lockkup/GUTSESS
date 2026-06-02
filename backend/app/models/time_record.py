@@ -1,9 +1,21 @@
+# app/models/time_record.py
+
 from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import DECIMAL, Date, DateTime, ForeignKey, Index, Integer, String, Text, text
+from sqlalchemy import (
+    DECIMAL,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    text,
+)
 from sqlalchemy.dialects.mysql import LONGTEXT
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -31,11 +43,6 @@ class TimeRecord(Base):
             "time_record_id",
         ),
         Index(
-            "ix_time_record_shift_work_date",
-            "shift_id",
-            "work_date",
-        ),
-        Index(
             "ix_time_record_checkin_location_work_date",
             "checkin_location_id",
             "work_date",
@@ -60,10 +67,12 @@ class TimeRecord(Base):
         index=True,
     )
 
-    shift_id: Mapped[int] = mapped_column(
+    # ไม่บังคับใช้ shift แล้ว
+    # เก็บไว้ nullable เพื่อรองรับข้อมูลเก่าในฐานข้อมูล
+    shift_id: Mapped[int | None] = mapped_column(
         Integer,
         ForeignKey("shifts.shift_id"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
 

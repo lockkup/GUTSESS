@@ -1,3 +1,5 @@
+# app/services/time_record.py
+
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
@@ -21,7 +23,6 @@ from app.core.error_messages import (
     INVALID_TIME_RECORD_UPDATE_DETAIL,
     OPEN_TIME_RECORD_ALREADY_EXISTS_DETAIL,
     OPEN_TIME_RECORD_NOT_FOUND_DETAIL,
-    SHIFT_NOT_FOUND_DETAIL,
     TIME_RECORD_ALREADY_CHECKED_OUT_DETAIL,
     TIME_RECORD_NOT_FOUND_DETAIL,
     UPDATED_BY_EMPLOYEE_NOT_FOUND_DETAIL,
@@ -30,7 +31,6 @@ from app.models.checkpoint_assignment import CheckpointAssignment
 from app.models.checkpoint_schedule_item import CheckpointScheduleItem
 from app.models.employees import Employees
 from app.models.route_site_location import RouteSiteLocation
-from app.models.shift import Shift
 from app.models.site_location import SiteLocation
 from app.models.time_record import TimeRecord
 from app.schemas.time_record import (
@@ -72,14 +72,6 @@ class TimeRecordService:
         return db.scalar(stmt)
 
     @staticmethod
-    def _get_shift(
-        db: Session,
-        shift_id: int,
-    ) -> Shift | None:
-        stmt = select(Shift).where(Shift.shift_id == shift_id)
-        return db.scalar(stmt)
-
-    @staticmethod
     def _get_site_location(
         db: Session,
         location_id: int,
@@ -104,21 +96,6 @@ class TimeRecordService:
             TimeRecordService._raise_not_found(detail)
 
         return employee
-
-    @staticmethod
-    def _ensure_shift_exists(
-        db: Session,
-        shift_id: int,
-    ) -> Shift:
-        shift = TimeRecordService._get_shift(
-            db=db,
-            shift_id=shift_id,
-        )
-
-        if shift is None or TimeRecordService._is_deleted_or_inactive(shift):
-            TimeRecordService._raise_not_found(SHIFT_NOT_FOUND_DETAIL)
-
-        return shift
 
     @staticmethod
     def _ensure_site_location_exists(
@@ -164,15 +141,13 @@ class TimeRecordService:
         db: Session,
         employee_code: str,
         work_date: date | None = None,
-        shift_id: int | None = None,
     ) -> TimeRecord | None:
         """
         ดึงรายการลงเวลาเข้างานที่ยังไม่ออกงานของพนักงาน
 
-        สำคัญ:
-        - ถ้าส่ง work_date + shift_id จะค้นหาเฉพาะรอบของวันนั้น
-        - ป้องกันปัญหา record เก่าวันก่อน เช่น 26 พ.ค. ค้างมาแสดงในวันใหม่
-        - ไม่รวม time_record ที่ผูกกับ checkpoint_assignment
+        ใช้ employee_code + work_date
+        ไม่ใช้ shift_id แล้ว
+        ไม่รวม time_record ที่ผูกกับ checkpoint_assignment
         """
 
         checkpoint_time_record_exists = (
@@ -185,15 +160,11 @@ class TimeRecordService:
             select(TimeRecord)
             .where(TimeRecord.employee_code == employee_code)
             .where(TimeRecord.checkout.is_(None))
-            .where(TimeRecord.mark_flag.is_(False))
             .where(~checkpoint_time_record_exists)
         )
 
         if work_date is not None:
             stmt = stmt.where(TimeRecord.work_date == work_date)
-
-        if shift_id is not None:
-            stmt = stmt.where(TimeRecord.shift_id == shift_id)
 
         stmt = stmt.order_by(
             TimeRecord.created_at.desc(),
@@ -217,7 +188,6 @@ class TimeRecordService:
             .where(CheckpointAssignment.assignment_id == assignment_id)
             .where(TimeRecord.employee_code == employee_code)
             .where(TimeRecord.checkout.is_(None))
-            .where(TimeRecord.mark_flag.is_(False))
             .order_by(
                 TimeRecord.created_at.desc(),
                 TimeRecord.time_record_id.desc(),
@@ -231,13 +201,11 @@ class TimeRecordService:
         db: Session,
         employee_code: str,
         work_date: date | None = None,
-        shift_id: int | None = None,
     ) -> TimeRecord | None:
         return TimeRecordService._get_open_attendance_time_record_by_employee_raw(
             db=db,
             employee_code=employee_code,
             work_date=work_date,
-            shift_id=shift_id,
         )
 
     @staticmethod
@@ -276,7 +244,6 @@ class TimeRecordService:
     def _validate_checkout_after_checkin(
         time_record: TimeRecord,
         checkout: str,
-        shift: Shift,
     ) -> None:
         if time_record.checkin is None:
             raise HTTPException(
@@ -293,12 +260,13 @@ class TimeRecordService:
             work_date=time_record.work_date,
         )
 
-        crosses_midnight = bool(getattr(shift, "crosses_midnight", False))
-
-        if (
-            checkout_at < checkin_at
-            and crosses_midnight
-            and not TimeRecordService._is_datetime_value(checkout)
+        """
+        ไม่ใช้ shift แล้ว:
+        - ถ้า checkout ส่งมาเป็น datetime เต็ม ระบบจะเทียบตามวันที่จริง
+        - ถ้า checkout ส่งมาเป็นเวลาอย่างเดียว และน้อยกว่า checkin ให้ถือว่าออกวันถัดไป
+        """
+        if checkout_at < checkin_at and not TimeRecordService._is_datetime_value(
+            checkout
         ):
             checkout_at += timedelta(days=1)
 
@@ -557,14 +525,10 @@ class TimeRecordService:
     def _apply_filters(
         stmt: Any,
         employee_code: str | None = None,
-        shift_id: int | None = None,
         work_date: date | None = None,
     ) -> Any:
         if employee_code:
             stmt = stmt.where(TimeRecord.employee_code == employee_code)
-
-        if shift_id is not None:
-            stmt = stmt.where(TimeRecord.shift_id == shift_id)
 
         if work_date is not None:
             stmt = stmt.where(TimeRecord.work_date == work_date)
@@ -614,11 +578,6 @@ class TimeRecordService:
             for_update=True,
         )
 
-        TimeRecordService._ensure_shift_exists(
-            db=db,
-            shift_id=payload.shift_id,
-        )
-
         TimeRecordService._ensure_employee_exists(
             db=db,
             employee_code=payload.created_by,
@@ -662,7 +621,6 @@ class TimeRecordService:
                     db=db,
                     employee_code=payload.employee_code,
                     work_date=payload.work_date,
-                    shift_id=payload.shift_id,
                 )
             )
 
@@ -727,7 +685,6 @@ class TimeRecordService:
         db: Session,
         employee_code: str,
         work_date: date | None = None,
-        shift_id: int | None = None,
     ) -> TimeRecord:
         TimeRecordService._ensure_employee_exists(
             db=db,
@@ -740,7 +697,6 @@ class TimeRecordService:
                 db=db,
                 employee_code=employee_code,
                 work_date=work_date,
-                shift_id=shift_id,
             )
         )
 
@@ -785,13 +741,11 @@ class TimeRecordService:
         db: Session,
         employee_code: str,
         work_date: date | None = None,
-        shift_id: int | None = None,
     ) -> TimeRecord:
         return TimeRecordService.get_open_attendance_time_record_by_employee(
             db=db,
             employee_code=employee_code,
             work_date=work_date,
-            shift_id=shift_id,
         )
 
     @staticmethod
@@ -800,7 +754,6 @@ class TimeRecordService:
         skip: int = DBConstants.DEFAULT_PAGE_SKIP,
         limit: int = DBConstants.DEFAULT_PAGE_LIMIT,
         employee_code: str | None = None,
-        shift_id: int | None = None,
         work_date: date | None = None,
     ) -> list[TimeRecord]:
         stmt = select(TimeRecord)
@@ -808,7 +761,6 @@ class TimeRecordService:
         stmt = TimeRecordService._apply_filters(
             stmt=stmt,
             employee_code=employee_code,
-            shift_id=shift_id,
             work_date=work_date,
         )
         stmt = TimeRecordService._apply_ordering_and_pagination(
@@ -825,7 +777,6 @@ class TimeRecordService:
         skip: int = DBConstants.DEFAULT_PAGE_SKIP,
         limit: int = DBConstants.DEFAULT_PAGE_LIMIT,
         employee_code: str | None = None,
-        shift_id: int | None = None,
         work_date: date | None = None,
     ) -> list[TimeRecordListItemResponse]:
         CheckinLocation = aliased(SiteLocation)
@@ -846,7 +797,6 @@ class TimeRecordService:
         stmt = TimeRecordService._apply_filters(
             stmt=stmt,
             employee_code=employee_code,
-            shift_id=shift_id,
             work_date=work_date,
         )
         stmt = TimeRecordService._apply_ordering_and_pagination(
@@ -910,15 +860,9 @@ class TimeRecordService:
             detail=UPDATED_BY_EMPLOYEE_NOT_FOUND_DETAIL,
         )
 
-        shift = TimeRecordService._ensure_shift_exists(
-            db=db,
-            shift_id=time_record.shift_id,
-        )
-
         TimeRecordService._validate_checkout_after_checkin(
             time_record=time_record,
             checkout=payload.checkout,
-            shift=shift,
         )
 
         assignment_id = getattr(payload, "assignment_id", None)

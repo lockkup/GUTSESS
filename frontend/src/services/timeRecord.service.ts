@@ -11,9 +11,8 @@ import type {
 
 const BASE_PATH = "/api/time-records";
 
-type OpenAttendanceTimeRecordParams = {
+export type OpenAttendanceTimeRecordParams = {
   work_date: string; // YYYY-MM-DD
-  shift_id: number;
 };
 
 function isNotFoundError(error: unknown) {
@@ -28,11 +27,26 @@ function isNotFoundError(error: unknown) {
   );
 }
 
-function buildOpenRecordQuery(params: OpenAttendanceTimeRecordParams) {
+function validateOpenRecordParams(
+  params?: OpenAttendanceTimeRecordParams | null,
+): OpenAttendanceTimeRecordParams {
+  if (!params) {
+    throw new Error("ไม่พบข้อมูล work_date สำหรับค้นหาข้อมูลลงเวลา");
+  }
+
+  if (!params.work_date) {
+    throw new Error("ไม่พบข้อมูล work_date สำหรับค้นหาข้อมูลลงเวลา");
+  }
+
+  return params;
+}
+
+function buildOpenRecordQuery(params?: OpenAttendanceTimeRecordParams | null) {
+  const validParams = validateOpenRecordParams(params);
+
   const query = new URLSearchParams();
 
-  query.set("work_date", params.work_date);
-  query.set("shift_id", String(params.shift_id));
+  query.set("work_date", validParams.work_date);
 
   return query.toString();
 }
@@ -49,14 +63,12 @@ export const timeRecordService = {
   /**
    * ใช้กับเมนู "ลงเวลา เข้า-ออกงาน"
    *
-   * สำคัญ:
-   * ต้องส่ง work_date + shift_id
-   * เพื่อไม่ให้ backend ดึง record เก่าที่ยัง checkout IS NULL
-   * เช่น วันที่ 26 มาแสดงในวันที่ 29
+   * ใช้ employee_code + work_date
+   * ไม่ใช้ shift_id แล้ว
    */
   async getOpenAttendanceTimeRecordByEmployeeCode(
     employeeCode: string,
-    params: OpenAttendanceTimeRecordParams,
+    params?: OpenAttendanceTimeRecordParams | null,
   ): Promise<TimeRecordResponse | null> {
     try {
       const query = buildOpenRecordQuery(params);
@@ -101,12 +113,13 @@ export const timeRecordService = {
 
   /**
    * ฟังก์ชันเดิม
-   * ให้ชี้ไปที่ attendance เท่านั้น
-   * แต่ต้องส่ง work_date + shift_id ด้วย
+   * ให้ชี้ไปที่ attendance
+   * ใช้ employee_code + work_date
+   * ไม่ใช้ shift_id แล้ว
    */
   async getOpenTimeRecordByEmployeeCode(
     employeeCode: string,
-    params: OpenAttendanceTimeRecordParams,
+    params?: OpenAttendanceTimeRecordParams | null,
   ): Promise<TimeRecordResponse | null> {
     return this.getOpenAttendanceTimeRecordByEmployeeCode(employeeCode, params);
   },

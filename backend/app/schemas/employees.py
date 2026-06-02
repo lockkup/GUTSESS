@@ -20,8 +20,8 @@ class EmployeesResponse(BaseModel):
         max_length=DBConstants.EMPLOYEE_CODE_LENGTH,
     )
 
-    role_id: int
-    name_prefix_id: int
+    role_id: int | None = None
+    name_prefix_id: int | None = None
 
     first_name: str = Field(
         ...,
@@ -35,7 +35,7 @@ class EmployeesResponse(BaseModel):
     profile_image_path: str | None = None
     profile_image_updated_at: datetime | None = None
 
-    birth_date: date
+    birth_date: date | None = None
 
     email: str | None = Field(
         default=None,
@@ -48,25 +48,28 @@ class EmployeesResponse(BaseModel):
 
     address_id: int | None = None
 
-    field_id: int
-    department_id: int
-    division_id: int
-    position_id: int
+    # ตาราง employees เป็นของทีมอื่น ข้อมูลบางคนอาจเป็น NULL ได้
+    field_id: int | None = None
+    department_id: int | None = None
+    division_id: int | None = None
+    position_id: int | None = None
 
     routes_id: int | None = None
 
-    shift_id: int
+    # ไม่ใช้ shift_id จาก employees ใน flow ลงเวลา
+    # เปิด nullable ไว้เพื่อไม่ให้ response พังถ้าข้อมูลเป็น NULL
+    shift_id: int | None = None
 
     start_date: date | None = None
     leave_date: date | None = None
 
-    is_active: bool
+    is_active: bool | None = None
 
-    created_at: datetime
-    updated_at: datetime
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
-    created_by: str = Field(
-        ...,
+    created_by: str | None = Field(
+        default=None,
         min_length=DBConstants.EMPLOYEE_CODE_LENGTH,
         max_length=DBConstants.EMPLOYEE_CODE_LENGTH,
     )

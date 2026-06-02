@@ -1,3 +1,5 @@
+# app/schemas/time_record.py
+
 from __future__ import annotations
 
 import re
@@ -55,8 +57,6 @@ class TimeRecordBase(BaseModel):
         min_length=DBConstants.EMPLOYEE_CODE_LENGTH,
         max_length=DBConstants.EMPLOYEE_CODE_LENGTH,
     )
-
-    shift_id: int = Field(..., gt=0)
 
     work_date: date
 
@@ -188,9 +188,12 @@ class TimeRecordResponse(TimeRecordBase):
     images_checkout_1: str | None = None
     images_checkout_2: str | None = None
 
-    created_at: datetime
-    updated_at: datetime
-    created_by: str
+    # ปรับเป็น nullable เพื่อรองรับข้อมูลเก่าในฐานข้อมูล
+    # ถ้า record เก่า created_at / updated_at / created_by เป็น NULL
+    # จะไม่ทำให้ FastAPI response validation error เป็น 500
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    created_by: str | None = None
     updated_by: str | None = None
 
 

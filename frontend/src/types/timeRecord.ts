@@ -3,7 +3,6 @@
 export type TimeRecord = {
   time_record_id: number;
   employee_code: string;
-  shift_id: number;
   work_date: string;
 
   checkin_location_id?: number | null;
@@ -31,7 +30,6 @@ export type TimeRecord = {
 
 export type TimeRecordCheckIn = {
   employee_code: string;
-  shift_id: number;
   work_date: string;
 
   /**
@@ -93,7 +91,6 @@ export type GetTimeRecordsParams = {
   skip?: number;
   limit?: number;
   employee_code?: string;
-  shift_id?: number;
   work_date?: string;
   start_date?: string;
   end_date?: string;

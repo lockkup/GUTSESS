@@ -30,13 +30,15 @@ type PatrolNotificationLevel = "none" | "green" | "yellow" | "orange" | "red";
 
 type ReportDisplayStatus = PatrolStatus | "completed_call";
 type StatusFilterValue = "all" | ReportDisplayStatus;
+type DatePickerField = "start" | "end";
 
 type PatrolReportPageProps = {
   onBack: () => void;
 };
 
 type FetchPatrolReportOptions = {
-  workday: string;
+  startDate: string;
+  endDate: string;
   shiftValue: ShiftValue;
   searchText: string;
   departmentIdText: string;
@@ -47,6 +49,10 @@ type FetchPatrolReportOptions = {
 };
 
 type ExtraPatrolReportFilterParams = {
+  workdayStart?: string;
+  workdayEnd?: string;
+  startDate?: string;
+  endDate?: string;
   departmentId?: number;
   divisionId?: number;
   routeId?: number;
@@ -271,6 +277,16 @@ const DEFAULT_DIVISION_ID_TEXT = "";
 const DEFAULT_ROUTE_ID_TEXT = "";
 const DEFAULT_LOCATION_ID_TEXT = "";
 const DEFAULT_EMPLOYEE_CODE_TEXT = "";
+
+/**
+ * ซ่อนคอลัมน์:
+ * - วันที่เริ่มสัญญา
+ * - แจ้งเตือน
+ * - ตามสัญญา
+ *
+ * ถ้าต้องการให้กลับมาแสดง ให้เปลี่ยนเป็น false
+ */
+const HIDE_CONTRACT_COLUMNS = true;
 
 function getStatusLabel(status: ReportDisplayStatus) {
   switch (status) {
@@ -626,7 +642,8 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
   const [filterOptions, setFilterOptions] =
     useState<PatrolReportFilterOptions>(EMPTY_FILTER_OPTIONS);
 
-  const [dateValue, setDateValue] = useState(() => getTodayYYYYMMDD());
+  const [startDateValue, setStartDateValue] = useState(() => getTodayYYYYMMDD());
+  const [endDateValue, setEndDateValue] = useState(() => getTodayYYYYMMDD());
   const [shiftValue, setShiftValue] = useState<ShiftValue>(DEFAULT_SHIFT_VALUE);
   const [statusValue, setStatusValue] =
     useState<StatusFilterValue>(DEFAULT_STATUS_VALUE);
@@ -647,12 +664,14 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
   );
 
   const [expandedId, setExpandedId] = useState<number | null>(null);
-  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+  const [activeDatePicker, setActiveDatePicker] =
+    useState<DatePickerField | null>(null);
   const [calendarMonth, setCalendarMonth] = useState(() => {
     return parseYYYYMMDD(getTodayYYYYMMDD()) ?? new Date();
   });
 
-  const datePickerWrapRef = useRef<HTMLDivElement | null>(null);
+  const startDatePickerWrapRef = useRef<HTMLDivElement | null>(null);
+  const endDatePickerWrapRef = useRef<HTMLDivElement | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
@@ -672,7 +691,8 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
     searchText.trim() !== "" ||
     shiftValue !== DEFAULT_SHIFT_VALUE ||
     statusValue !== DEFAULT_STATUS_VALUE ||
-    dateValue !== todayText;
+    startDateValue !== todayText ||
+    endDateValue !== todayText;
 
   const fetchFilterOptions = useCallback(async () => {
     try {
@@ -688,7 +708,8 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
 
   const fetchPatrolReport = useCallback(
     async ({
-      workday,
+      startDate,
+      endDate,
       shiftValue,
       searchText,
       departmentIdText,
@@ -703,7 +724,13 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
 
       try {
         const requestParams = {
-          workday,
+          // คง workday ไว้เพื่อรองรับ backend เดิมที่รับวันที่เดียว
+          // และส่งช่วงวันที่เพิ่มให้ backend ใหม่ใช้กรองแบบ BETWEEN
+          workday: startDate,
+          workdayStart: startDate,
+          workdayEnd: endDate,
+          startDate,
+          endDate,
           shiftId: SHIFT_ID_BY_VALUE[shiftValue],
           status: "all",
           keyword: searchText,
@@ -757,17 +784,21 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+
       if (
-        datePickerWrapRef.current &&
-        !datePickerWrapRef.current.contains(event.target as Node)
+        startDatePickerWrapRef.current?.contains(target) ||
+        endDatePickerWrapRef.current?.contains(target)
       ) {
-        setIsDatePickerOpen(false);
+        return;
       }
+
+      setActiveDatePicker(null);
     };
 
     const handleEsc = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setIsDatePickerOpen(false);
+        setActiveDatePicker(null);
       }
     };
 
@@ -861,8 +892,20 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
       return;
     }
 
+    const startDate = parseYYYYMMDD(startDateValue);
+    const endDate = parseYYYYMMDD(endDateValue);
+
+    if (startDate && endDate && startDate > endDate) {
+      setPatrolRows([]);
+      setExpandedId(null);
+      setHasSearched(false);
+      setError("วันที่เริ่มต้นต้องไม่มากกว่าวันที่สิ้นสุด");
+      return;
+    }
+
     void fetchPatrolReport({
-      workday: dateValue,
+      startDate: startDateValue,
+      endDate: endDateValue,
       shiftValue,
       searchText,
       departmentIdText,
@@ -877,7 +920,8 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
     const today = getTodayYYYYMMDD();
     const todayDate = parseYYYYMMDD(today) ?? new Date();
 
-    setDateValue(today);
+    setStartDateValue(today);
+    setEndDateValue(today);
     setCalendarMonth(
       new Date(todayDate.getFullYear(), todayDate.getMonth(), 1),
     );
@@ -890,11 +934,142 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
     setLocationIdText(DEFAULT_LOCATION_ID_TEXT);
     setEmployeeCodeText(DEFAULT_EMPLOYEE_CODE_TEXT);
     setExpandedId(null);
-    setIsDatePickerOpen(false);
+    setActiveDatePicker(null);
 
     setPatrolRows([]);
     setHasSearched(false);
     setError(null);
+  };
+
+  const handleOpenDatePicker = (field: DatePickerField) => {
+    const selectedDateText = field === "start" ? startDateValue : endDateValue;
+
+    setCalendarMonth(parseYYYYMMDD(selectedDateText) ?? new Date());
+    setActiveDatePicker((prev) => (prev === field ? null : field));
+  };
+
+  const handleSelectDate = (field: DatePickerField, dateText: string) => {
+    const selectedDate = parseYYYYMMDD(dateText);
+
+    if (field === "start") {
+      const currentEndDate = parseYYYYMMDD(endDateValue);
+
+      setStartDateValue(dateText);
+
+      if (selectedDate && currentEndDate && selectedDate > currentEndDate) {
+        setEndDateValue(dateText);
+      }
+    } else {
+      const currentStartDate = parseYYYYMMDD(startDateValue);
+
+      setEndDateValue(dateText);
+
+      if (selectedDate && currentStartDate && selectedDate < currentStartDate) {
+        setStartDateValue(dateText);
+      }
+    }
+
+    if (selectedDate) {
+      setCalendarMonth(
+        new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1),
+      );
+    }
+
+    setActiveDatePicker(null);
+    setError(null);
+  };
+
+  const handleSelectToday = (field: DatePickerField) => {
+    const today = getTodayYYYYMMDD();
+    const todayDate = parseYYYYMMDD(today) ?? new Date();
+
+    handleSelectDate(field, today);
+    setCalendarMonth(new Date(todayDate.getFullYear(), todayDate.getMonth(), 1));
+  };
+
+  const renderDatePopover = (field: DatePickerField) => {
+    const selectedDateValue = field === "start" ? startDateValue : endDateValue;
+
+    return (
+      <div className={styles.datePopover}>
+        <div className={styles.calendarBox}>
+          <div className={styles.calendarHeader}>
+            <button
+              type="button"
+              className={styles.calendarNavButton}
+              onClick={() =>
+                setCalendarMonth(
+                  (prev) =>
+                    new Date(prev.getFullYear(), prev.getMonth() - 1, 1),
+                )
+              }
+              aria-label="เดือนก่อนหน้า"
+            >
+              ‹
+            </button>
+
+            <strong className={styles.calendarTitle}>
+              {getCalendarTitle(calendarMonth)}
+            </strong>
+
+            <button
+              type="button"
+              className={styles.calendarNavButton}
+              onClick={() =>
+                setCalendarMonth(
+                  (prev) =>
+                    new Date(prev.getFullYear(), prev.getMonth() + 1, 1),
+                )
+              }
+              aria-label="เดือนถัดไป"
+            >
+              ›
+            </button>
+          </div>
+
+          <div className={styles.calendarWeekdays}>
+            {THAI_WEEKDAYS.map((weekday) => (
+              <span key={weekday} className={styles.calendarWeekday}>
+                {weekday}
+              </span>
+            ))}
+          </div>
+
+          <div className={styles.calendarGrid}>
+            {calendarCells.map((cell) => {
+              const cellValue = formatDateToYYYYMMDD(cell.date);
+              const isSelected = cellValue === selectedDateValue;
+              const isToday = cellValue === todayText;
+
+              return (
+                <button
+                  key={makeReactKey(field, cellValue)}
+                  type="button"
+                  className={`${styles.calendarDay} ${
+                    !cell.isCurrentMonth ? styles.calendarDayOutside : ""
+                  } ${isToday ? styles.calendarDayToday : ""} ${
+                    isSelected ? styles.calendarDaySelected : ""
+                  }`}
+                  onClick={() => handleSelectDate(field, cellValue)}
+                >
+                  {cell.date.getDate()}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className={styles.calendarFooter}>
+            <button
+              type="button"
+              className={styles.calendarTodayButton}
+              onClick={() => handleSelectToday(field)}
+            >
+              วันนี้
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -902,7 +1077,7 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
       <div className={styles.shell}>
         <header className={styles.desktopHeaderRow}>
           <div className={styles.titleWrap}>
-            <h1 className={styles.title}>รายงานงานการเข้าตรวจหน่วยงาน</h1>
+            <h1 className={styles.title}>รายงานการเข้าตรวจหน่วยงาน</h1>
             <p className={styles.subtitle}>
               ตรวจสอบสถานะการเข้าตรวจ เวลาเข้า-ออก และรายละเอียดการติดต่อ
             </p>
@@ -920,7 +1095,7 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
         </header>
 
         <header className={styles.topBar}>
-          <h1 className={styles.pageTitle}>รายงานงานการเข้าตรวจหน่วยงาน</h1>
+          <h1 className={styles.pageTitle}>รายงานการเข้าตรวจหน่วยงาน</h1>
         </header>
 
         <section className={styles.filterPanel} aria-label="ตัวกรองรายงาน">
@@ -1065,161 +1240,6 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
             </select>
           </label>
 
-          <div className={styles.fieldGroup}>
-            <span className={styles.fieldLabel}>วันที่</span>
-
-            <div className={styles.datePickerWrap} ref={datePickerWrapRef}>
-              <button
-                type="button"
-                className={styles.dateControl}
-                onClick={() => {
-                  setCalendarMonth(parseYYYYMMDD(dateValue) ?? new Date());
-                  setIsDatePickerOpen((prev) => !prev);
-                }}
-                aria-label="เลือกวันที่"
-              >
-                <span className={styles.controlIcon}>
-                  <CalendarDays size={14} strokeWidth={2.5} />
-                </span>
-
-                <span className={styles.dateDisplay}>
-                  {formatDateThaiShort(dateValue)}
-                </span>
-              </button>
-
-              {isDatePickerOpen && (
-                <div className={styles.datePopover}>
-                  <div className={styles.calendarBox}>
-                    <div className={styles.calendarHeader}>
-                      <button
-                        type="button"
-                        className={styles.calendarNavButton}
-                        onClick={() =>
-                          setCalendarMonth(
-                            (prev) =>
-                              new Date(
-                                prev.getFullYear(),
-                                prev.getMonth() - 1,
-                                1,
-                              ),
-                          )
-                        }
-                        aria-label="เดือนก่อนหน้า"
-                      >
-                        ‹
-                      </button>
-
-                      <strong className={styles.calendarTitle}>
-                        {getCalendarTitle(calendarMonth)}
-                      </strong>
-
-                      <button
-                        type="button"
-                        className={styles.calendarNavButton}
-                        onClick={() =>
-                          setCalendarMonth(
-                            (prev) =>
-                              new Date(
-                                prev.getFullYear(),
-                                prev.getMonth() + 1,
-                                1,
-                              ),
-                          )
-                        }
-                        aria-label="เดือนถัดไป"
-                      >
-                        ›
-                      </button>
-                    </div>
-
-                    <div className={styles.calendarWeekdays}>
-                      {THAI_WEEKDAYS.map((weekday) => (
-                        <span
-                          key={weekday}
-                          className={styles.calendarWeekday}
-                        >
-                          {weekday}
-                        </span>
-                      ))}
-                    </div>
-
-                    <div className={styles.calendarGrid}>
-                      {calendarCells.map((cell) => {
-                        const cellValue = formatDateToYYYYMMDD(cell.date);
-                        const isSelected = cellValue === dateValue;
-                        const isToday = cellValue === todayText;
-
-                        return (
-                          <button
-                            key={cellValue}
-                            type="button"
-                            className={`${styles.calendarDay} ${
-                              !cell.isCurrentMonth
-                                ? styles.calendarDayOutside
-                                : ""
-                            } ${isToday ? styles.calendarDayToday : ""} ${
-                              isSelected ? styles.calendarDaySelected : ""
-                            }`}
-                            onClick={() => {
-                              setDateValue(cellValue);
-                              setCalendarMonth(
-                                new Date(
-                                  cell.date.getFullYear(),
-                                  cell.date.getMonth(),
-                                  1,
-                                ),
-                              );
-                              setIsDatePickerOpen(false);
-                            }}
-                          >
-                            {cell.date.getDate()}
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    <div className={styles.calendarFooter}>
-                      <button
-                        type="button"
-                        className={styles.calendarTodayButton}
-                        onClick={() => {
-                          const today = getTodayYYYYMMDD();
-                          const todayDate = parseYYYYMMDD(today) ?? new Date();
-
-                          setDateValue(today);
-                          setCalendarMonth(
-                            new Date(
-                              todayDate.getFullYear(),
-                              todayDate.getMonth(),
-                              1,
-                            ),
-                          );
-                          setIsDatePickerOpen(false);
-                        }}
-                      >
-                        วันนี้
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <label className={styles.fieldGroup}>
-            <span className={styles.fieldLabel}>ผลัด</span>
-            <select
-              value={shiftValue}
-              onChange={(event) =>
-                setShiftValue(event.target.value as ShiftValue)
-              }
-              className={styles.select}
-            >
-              <option value="day">ผลัดกลางวัน</option>
-              <option value="night">ผลัดกลางคืน</option>
-            </select>
-          </label>
-
           <label className={styles.fieldGroup}>
             <span className={styles.fieldLabel}>สถานะ</span>
             <select
@@ -1234,6 +1254,70 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
               <option value="completed_call">ตรวจแล้ว(โทร)</option>
               <option value="in_progress">อยู่ระหว่างการเข้าตรวจ</option>
               <option value="pending">รอดำเนินการเข้าตรวจ</option>
+            </select>
+          </label>
+
+          <div className={styles.fieldGroup} ref={startDatePickerWrapRef}>
+            <span className={styles.fieldLabel}>จากวันที่</span>
+
+            <div
+              className={`${styles.datePickerWrap} ${styles.startDatePickerWrap}`}
+            >
+              <button
+                type="button"
+                className={styles.dateControl}
+                onClick={() => handleOpenDatePicker("start")}
+                aria-label="เลือกวันที่เริ่มต้น"
+              >
+                <span className={styles.controlIcon}>
+                  <CalendarDays size={14} strokeWidth={2.5} />
+                </span>
+
+                <span className={styles.dateDisplay}>
+                  {formatDateThaiShort(startDateValue)}
+                </span>
+              </button>
+
+              {activeDatePicker === "start" && renderDatePopover("start")}
+            </div>
+          </div>
+
+          <div className={styles.fieldGroup} ref={endDatePickerWrapRef}>
+            <span className={styles.fieldLabel}>ถึงวันที่</span>
+
+            <div
+              className={`${styles.datePickerWrap} ${styles.endDatePickerWrap}`}
+            >
+              <button
+                type="button"
+                className={styles.dateControl}
+                onClick={() => handleOpenDatePicker("end")}
+                aria-label="เลือกวันที่สิ้นสุด"
+              >
+                <span className={styles.controlIcon}>
+                  <CalendarDays size={14} strokeWidth={2.5} />
+                </span>
+
+                <span className={styles.dateDisplay}>
+                  {formatDateThaiShort(endDateValue)}
+                </span>
+              </button>
+
+              {activeDatePicker === "end" && renderDatePopover("end")}
+            </div>
+          </div>
+
+          <label className={styles.fieldGroup}>
+            <span className={styles.fieldLabel}>ผลัด</span>
+            <select
+              value={shiftValue}
+              onChange={(event) =>
+                setShiftValue(event.target.value as ShiftValue)
+              }
+              className={styles.select}
+            >
+              <option value="day">ผลัดกลางวัน</option>
+              <option value="night">ผลัดกลางคืน</option>
             </select>
           </label>
 
@@ -1311,9 +1395,9 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                     <th>ชื่อจุดรักษาการณ์</th>
                     <th>ผลัด</th>
                     <th>สถานะ</th>
-                    <th>วันที่เริ่มสัญญา</th>
-                    <th>แจ้งเตือน</th>
-                    <th>ตามสัญญา</th>
+                    <th hidden={HIDE_CONTRACT_COLUMNS}>วันที่เริ่มสัญญา</th>
+                    <th hidden={HIDE_CONTRACT_COLUMNS}>แจ้งเตือน</th>
+                    <th hidden={HIDE_CONTRACT_COLUMNS}>ตามสัญญา</th>
                     <th>วันที่</th>
                     <th>เวลาเข้า</th>
                     <th>เวลาออก</th>
@@ -1364,17 +1448,27 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                               {getStatusLabel(status)}
                             </span>
                           </td>
-                          <td>{getEffectiveFromText(row)}</td>
+
+                          <td hidden={HIDE_CONTRACT_COLUMNS}>
+                            {getEffectiveFromText(row)}
+                          </td>
+
                           <td
+                            hidden={HIDE_CONTRACT_COLUMNS}
                             className={`${styles.notificationTableCell} ${getNotificationRowClass(
                               row,
                             )}`}
                           >
                             {getNotificationText(row)}
                           </td>
-                          <td className={styles.textLeft}>
+
+                          <td
+                            hidden={HIDE_CONTRACT_COLUMNS}
+                            className={styles.textLeft}
+                          >
                             {getScheduleText(row)}
                           </td>
+
                           <td>{row.dateText}</td>
                           <td>{row.checkInTime ?? "-"}</td>
                           <td>{row.checkOutTime ?? "-"}</td>
@@ -1498,24 +1592,28 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                           <strong>{getStatusLabel(status)}</strong>
                         </div>
 
-                        <div className={styles.detailRow}>
-                          <span>วันที่เริ่มสัญญา</span>
-                          <strong>{getEffectiveFromText(row)}</strong>
-                        </div>
+                        {!HIDE_CONTRACT_COLUMNS && (
+                          <>
+                            <div className={styles.detailRow}>
+                              <span>วันที่เริ่มสัญญา</span>
+                              <strong>{getEffectiveFromText(row)}</strong>
+                            </div>
 
-                        <div
-                          className={`${styles.detailRow} ${styles.notificationDetailRow} ${getNotificationRowClass(
-                            row,
-                          )}`}
-                        >
-                          <span>แจ้งเตือน</span>
-                          <strong>{getNotificationText(row)}</strong>
-                        </div>
+                            <div
+                              className={`${styles.detailRow} ${styles.notificationDetailRow} ${getNotificationRowClass(
+                                row,
+                              )}`}
+                            >
+                              <span>แจ้งเตือน</span>
+                              <strong>{getNotificationText(row)}</strong>
+                            </div>
 
-                        <div className={styles.detailRow}>
-                          <span>ตามสัญญา</span>
-                          <strong>{getScheduleText(row)}</strong>
-                        </div>
+                            <div className={styles.detailRow}>
+                              <span>ตามสัญญา</span>
+                              <strong>{getScheduleText(row)}</strong>
+                            </div>
+                          </>
+                        )}
 
                         <div className={styles.detailRow}>
                           <span>วันที่</span>

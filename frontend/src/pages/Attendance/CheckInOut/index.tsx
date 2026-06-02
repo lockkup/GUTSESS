@@ -30,10 +30,10 @@ export type CheckInOutPayload = {
   passedLocation?: PassedLocation | null;
 
   /**
-   * ส่งเผื่อให้ parent ใช้ต่อได้
+   * ส่งให้ parent ใช้ต่อ
+   * ไม่ใช้ shift ในหน้านี้
    */
   workDate?: string | null;
-  shiftId?: number | null;
 };
 
 type Props = {
@@ -47,11 +47,10 @@ type Props = {
   mode?: CheckInOutMode;
 
   /**
-   * ใช้กับการกรอง open time record รายวัน
-   * ถ้า parent มี workDate/shiftId ควรส่งเข้ามา
+   * ถ้า parent/backend ส่ง workDate มา จะใช้ค่านั้น
+   * ถ้าไม่ส่งมา จะใช้วันที่ปัจจุบัน
    */
   workDate?: string | null; // YYYY-MM-DD
-  shiftId?: number | null;
 
   assignmentId?: number | null;
   unitName?: string | null;
@@ -97,13 +96,6 @@ function toLocalYmd(d: Date) {
   return `${year}-${month}-${day}`;
 }
 
-function addDays(d: Date, amount: number) {
-  const next = new Date(d);
-  next.setDate(next.getDate() + amount);
-
-  return next;
-}
-
 function isSameLocalYmd(value: string | null | undefined, ymd: string) {
   const d = safeDate(value);
 
@@ -115,20 +107,10 @@ function isSameLocalYmd(value: string | null | undefined, ymd: string) {
 function resolveWorkDate(params: {
   now: Date;
   workDate?: string | null;
-  shiftId?: number | null;
 }) {
-  const { now, workDate, shiftId } = params;
+  const { now, workDate } = params;
 
   if (workDate) return workDate;
-
-  /**
-   * กะกลางคืน:
-   * ถ้า parent ส่ง shiftId = 2 และเวลาอยู่หลังเที่ยงคืนถึงก่อน 07:00
-   * ให้ถือว่า work_date เป็นวันก่อนหน้า
-   */
-  if (shiftId === 2 && now.getHours() < 7) {
-    return toLocalYmd(addDays(now, -1));
-  }
 
   return toLocalYmd(now);
 }
@@ -138,7 +120,6 @@ export default function CheckInOut({
   displayName,
   mode = "attendance",
   workDate = null,
-  shiftId = null,
   assignmentId = null,
   unitName = null,
   passedLocation = null,
@@ -164,9 +145,8 @@ export default function CheckInOut({
     return resolveWorkDate({
       now,
       workDate,
-      shiftId,
     });
-  }, [now, workDate, shiftId]);
+  }, [now, workDate]);
 
   /**
    * กันข้อมูลเก่าค้าง:
@@ -200,16 +180,8 @@ export default function CheckInOut({
       unitName,
       passedLocation,
       workDate: workDateForOpenRecord,
-      shiftId,
     }),
-    [
-      mode,
-      assignmentId,
-      unitName,
-      passedLocation,
-      workDateForOpenRecord,
-      shiftId,
-    ],
+    [mode, assignmentId, unitName, passedLocation, workDateForOpenRecord],
   );
 
   const nowDate = fmtThaiDate(now);
@@ -241,28 +213,17 @@ export default function CheckInOut({
         return;
       }
 
-      /**
-       * ถ้า parent ส่ง shiftId มา:
-       * เช็ก open record เฉพาะ work_date + shift_id
-       *
-       * ถ้า parent ยังไม่ส่ง shiftId:
-       * ไม่บล็อกผู้ใช้ด้วย alert
-       * ให้ parent/backend ตอน createTimeRecord ตรวจต่ออีกชั้น
-       */
-      if (shiftId) {
-        const openRecord =
-          await timeRecordService.getOpenAttendanceTimeRecordByEmployeeCode(
-            empCode,
-            {
-              work_date: workDateForOpenRecord,
-              shift_id: shiftId,
-            },
-          );
+      const openRecord =
+        await timeRecordService.getOpenAttendanceTimeRecordByEmployeeCode(
+          empCode,
+          {
+            work_date: workDateForOpenRecord,
+          },
+        );
 
-        if (openRecord) {
-          setCheckInOutModalOpen(true);
-          return;
-        }
+      if (openRecord) {
+        setCheckInOutModalOpen(true);
+        return;
       }
 
       onCheckIn(checkInOutPayload);

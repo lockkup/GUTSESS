@@ -33,6 +33,8 @@ type Props = {
   onGoOther?: () => void;
 };
 
+const ADMIN_EMPLOYEE_CODE = "036259";
+
 export default function Home({
   empCode,
   displayName,
@@ -44,10 +46,7 @@ export default function Home({
   onGoFaceProfiles,
   onGoOther,
 }: Props) {
-  const isAdmin = empCode === "036259";
-
-  // รหัสที่ให้เห็นเมนูงานสายตรวจ
-  const canSeePatrolMenu = empCode === "036259" || empCode === "632070";
+  const isAdmin = empCode === ADMIN_EMPLOYEE_CODE;
 
   return (
     <main className="guts-bg">
@@ -71,7 +70,7 @@ export default function Home({
               </div>
             </button>
 
-            {isAdmin && (
+            {isAdmin ? (
               <>
                 <button
                   type="button"
@@ -99,45 +98,38 @@ export default function Home({
                   </div>
                 </button>
               </>
-            )}
+            ) : null}
 
-            {canSeePatrolMenu && (
-              <>
-                <button
-                  type="button"
-                  className={styles.menuBtn}
-                  onClick={onGoCheckpoint}
-                >
-                  <div className={styles.menuBox}>
-                    <div className={styles.iconWrap} aria-hidden="true">
-                      <FontAwesomeIcon
-                        className={styles.fa}
-                        icon={faClipboardList}
-                      />
-                    </div>
-                    <div className={styles.text}>ตารางงานสายตรวจ</div>
-                  </div>
-                </button>
+            <button
+              type="button"
+              className={styles.menuBtn}
+              onClick={onGoCheckpoint}
+            >
+              <div className={styles.menuBox}>
+                <div className={styles.iconWrap} aria-hidden="true">
+                  <FontAwesomeIcon
+                    className={styles.fa}
+                    icon={faClipboardList}
+                  />
+                </div>
+                <div className={styles.text}>ตารางงานสายตรวจ</div>
+              </div>
+            </button>
 
-                <button
-                  type="button"
-                  className={styles.menuBtn}
-                  onClick={onGoPatrolReport}
-                >
-                  <div className={styles.menuBox}>
-                    <div className={styles.iconWrap} aria-hidden="true">
-                      <FontAwesomeIcon
-                        className={styles.fa}
-                        icon={faFileLines}
-                      />
-                    </div>
-                    <div className={styles.text}>รายงานสายตรวจ</div>
-                  </div>
-                </button>
-              </>
-            )}
+            <button
+              type="button"
+              className={styles.menuBtn}
+              onClick={onGoPatrolReport}
+            >
+              <div className={styles.menuBox}>
+                <div className={styles.iconWrap} aria-hidden="true">
+                  <FontAwesomeIcon className={styles.fa} icon={faFileLines} />
+                </div>
+                <div className={styles.text}>รายงานสายตรวจ</div>
+              </div>
+            </button>
 
-            {isAdmin && (
+            {isAdmin ? (
               <button
                 type="button"
                 className={styles.menuBtn}
@@ -151,7 +143,7 @@ export default function Home({
                   <div className={styles.text}>อื่นๆ</div>
                 </div>
               </button>
-            )}
+            ) : null}
           </div>
 
           <div className={styles.actions}>

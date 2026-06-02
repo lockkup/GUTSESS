@@ -1,13 +1,11 @@
 // src/pages/Attendance/FaceVerify/index.tsx
 
 import { useEffect, useRef, useState } from "react";
-import * as faceapi from "face-api.js";
 
 import Header from "@/layout/Header";
 import BackButton from "@/components/BackButton";
 import CameraModal from "@/components/CameraModal";
 import SuccessModal from "@/components/SuccessModal";
-import FaceNotFoundModal from "@/components/FaceNotFoundModal";
 import CheckInOutModal from "@/components/CheckInOutModal";
 
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -21,7 +19,7 @@ import styles from "./FaceVerify.module.css";
 
 type PunchType = "in" | "out";
 type Step = "capture" | "confirm";
-type ProcessStatus = "idle" | "checking" | "allowed" | "error";
+type ProcessStatus = "idle" | "allowed" | "error";
 
 export type LocationCoords = {
   latitude: number;
@@ -42,7 +40,13 @@ type Props = {
 
   punchType: PunchType;
   onBack: () => void;
+
+  /**
+   * เก็บ prop นี้ไว้ก่อน เผื่ออนาคตต้องเปิดใช้การตรวจใบหน้า
+   * ตอนนี้ไฟล์นี้ยังไม่เรียกใช้งาน
+   */
   onVerifyFace: (embedding: number[]) => Promise<void>;
+
   onConfirm: (
     photoDataUrl: string,
     punchType: PunchType,
@@ -77,7 +81,6 @@ export default function FaceVerify({
   passedLocation = null,
   punchType,
   onBack,
-  onVerifyFace,
   onConfirm,
   onGoCheckInOut,
   onGoCheckpoint,
@@ -89,57 +92,18 @@ export default function FaceVerify({
 
   const [camOpen, setCamOpen] = useState(false);
 
-  const [processStatus, setProcessStatus] = useState<ProcessStatus>("idle");
+  const [processStatus, setProcessStatus] =
+    useState<ProcessStatus>("idle");
   const [processHint, setProcessHint] = useState("");
 
   const [successOpen, setSuccessOpen] = useState(false);
-  const [faceNotFoundOpen, setFaceNotFoundOpen] = useState(false);
-  const [verifyErrorOpen, setVerifyErrorOpen] = useState(false);
-  const [faceVerifyFailed, setFaceVerifyFailed] = useState(false);
   const [checkInOutModalOpen, setCheckInOutModalOpen] = useState(false);
-
-  const [modelsLoaded, setModelsLoaded] = useState(false);
-  const [faceEmbedding, setFaceEmbedding] = useState<number[] | null>(null);
-  const [faceVerified, setFaceVerified] = useState(false);
 
   const saveReqRef = useRef(0);
 
   const hasSelectedAssignment = Boolean(assignmentId);
   const hasPassedLocation = isValidLocation(passedLocation);
   const isCheckpointMode = Boolean(assignmentId);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadModels = async () => {
-      try {
-        const MODEL_URL = "/models";
-
-        await Promise.all([
-          faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-          faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-          faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
-        ]);
-
-        if (!cancelled) {
-          setModelsLoaded(true);
-        }
-      } catch (error) {
-        console.error("loadModels error:", error);
-
-        if (!cancelled) {
-          setErr("โหลดโมเดลตรวจจับใบหน้าไม่สำเร็จ");
-          setModelsLoaded(false);
-        }
-      }
-    };
-
-    void loadModels();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     saveReqRef.current++;
@@ -155,11 +119,6 @@ export default function FaceVerify({
     setSuccessOpen(false);
     setBusy(false);
 
-    setFaceEmbedding(null);
-    setFaceNotFoundOpen(false);
-    setFaceVerified(false);
-    setVerifyErrorOpen(false);
-    setFaceVerifyFailed(false);
     setCheckInOutModalOpen(false);
   }, [punchType, assignmentId]);
 
@@ -177,47 +136,8 @@ export default function FaceVerify({
     };
   }
 
-  async function extractFaceEmbedding(dataUrl: string): Promise<number[] | null> {
-    if (!modelsLoaded) {
-      return null;
-    }
-
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.src = dataUrl;
-
-      img.onload = async () => {
-        try {
-          const result = await faceapi
-            .detectSingleFace(
-              img,
-              new faceapi.TinyFaceDetectorOptions({
-                inputSize: 320,
-                scoreThreshold: 0.5,
-              }),
-            )
-            .withFaceLandmarks()
-            .withFaceDescriptor();
-
-          if (!result) {
-            resolve(null);
-            return;
-          }
-
-          resolve(Array.from(result.descriptor));
-        } catch (error) {
-          console.error("extractFaceEmbedding error:", error);
-          resolve(null);
-        }
-      };
-
-      img.onerror = () => resolve(null);
-    });
-  }
-
   async function saveAndShowSuccess(
     photoDataUrl: string,
-    embeddingToSave: number[],
     location: LocationCoords,
   ) {
     const saveId = ++saveReqRef.current;
@@ -225,7 +145,12 @@ export default function FaceVerify({
     setErr("");
 
     try {
-      await onConfirm(photoDataUrl, punchType, embeddingToSave, location);
+      /**
+       * ตอนนี้ไม่ตรวจใบหน้า
+       * จึงส่ง embedding เป็น [] ไปก่อน
+       * App.tsx ใช้ _embedding อยู่แล้ว จึงไม่กระทบ flow บันทึกเวลา
+       */
+      await onConfirm(photoDataUrl, punchType, [], location);
 
       if (saveId !== saveReqRef.current) return;
 
@@ -255,83 +180,32 @@ export default function FaceVerify({
     }
   }
 
-  async function verifyFaceAndContinue(dataUrl: string, embedding: number[]) {
-    setProcessStatus("checking");
-    setProcessHint("กำลังตรวจสอบใบหน้ากับข้อมูลในระบบ...");
-
-    try {
-      await onVerifyFace(embedding);
-
-      setFaceVerified(true);
-      setFaceVerifyFailed(false);
-
-      const confirmedLocation = getConfirmedLocation();
-
-      if (!confirmedLocation) {
-        setProcessStatus("error");
-        setProcessHint("");
-        setErr(
-          "ไม่พบข้อมูลพิกัดที่ผ่านการตรวจสอบ กรุณากลับไปเลือกจุดจากตารางงานสายตรวจก่อน",
-        );
-        return;
-      }
-
-      setProcessStatus("allowed");
-      setProcessHint("ยืนยันใบหน้าสำเร็จ กำลังบันทึกข้อมูล...");
-
-      await saveAndShowSuccess(dataUrl, embedding, confirmedLocation);
-    } catch (error) {
-      console.error("verifyFaceAndContinue error:", error);
-
-      setFaceVerified(false);
-      setFaceVerifyFailed(true);
-
-      setProcessStatus("idle");
-      setProcessHint("");
-      setErr("");
-      setVerifyErrorOpen(true);
-    }
-  }
-
   async function processCapturedImage(dataUrl: string) {
-    setFaceNotFoundOpen(false);
-    setVerifyErrorOpen(false);
-    setFaceVerifyFailed(false);
     setCheckInOutModalOpen(false);
 
     setPhoto(dataUrl);
     setStep("confirm");
 
-    setFaceEmbedding(null);
-    setFaceVerified(false);
-
     setErr("");
-    setProcessHint("กำลังประมวลผลใบหน้า...");
-    setProcessStatus("checking");
+    setProcessStatus("allowed");
+    setProcessHint("กำลังบันทึกข้อมูล...");
 
-    const embedding = await extractFaceEmbedding(dataUrl);
+    const confirmedLocation = getConfirmedLocation();
 
-    if (!embedding) {
-      setProcessStatus("idle");
+    if (!confirmedLocation) {
+      setProcessStatus("error");
       setProcessHint("");
-      setFaceEmbedding(null);
-      setFaceVerifyFailed(true);
-      setFaceNotFoundOpen(true);
-
+      setErr(
+        "ไม่พบข้อมูลพิกัดที่ผ่านการตรวจสอบ กรุณากลับไปเลือกจุดจากตารางงานสายตรวจก่อน",
+      );
       return;
     }
 
-    setFaceEmbedding(embedding);
-    await verifyFaceAndContinue(dataUrl, embedding);
+    await saveAndShowSuccess(dataUrl, confirmedLocation);
   }
 
   async function onPickFile(file?: File | null) {
     if (!file) return;
-
-    if (!modelsLoaded) {
-      setErr("ระบบ AI ยังโหลดไม่เสร็จ กรุณารอสักครู่");
-      return;
-    }
 
     if (!assignmentId) {
       setErr(
@@ -368,8 +242,8 @@ export default function FaceVerify({
   }
 
   async function retrySaveWithPassedLocation() {
-    if (!photo || !faceEmbedding || !faceVerified) {
-      setErr("กรุณาถ่ายใหม่เพื่อยืนยันตัวตน");
+    if (!photo) {
+      setErr("กรุณาถ่ายรูปใหม่เพื่อบันทึกเวลา");
       return;
     }
 
@@ -388,7 +262,7 @@ export default function FaceVerify({
     setProcessHint("กำลังบันทึกข้อมูล...");
 
     try {
-      await saveAndShowSuccess(photo, faceEmbedding, confirmedLocation);
+      await saveAndShowSuccess(photo, confirmedLocation);
     } finally {
       setBusy(false);
     }
@@ -398,9 +272,6 @@ export default function FaceVerify({
     saveReqRef.current++;
 
     setSuccessOpen(false);
-    setFaceNotFoundOpen(false);
-    setVerifyErrorOpen(false);
-    setFaceVerifyFailed(false);
     setCheckInOutModalOpen(false);
 
     setPhoto("");
@@ -411,9 +282,6 @@ export default function FaceVerify({
     setProcessHint("");
 
     setCamOpen(false);
-
-    setFaceEmbedding(null);
-    setFaceVerified(false);
   }
 
   function handleSuccessOk() {
@@ -427,27 +295,27 @@ export default function FaceVerify({
     onGoCheckInOut();
   }
 
-  const title = "กรุณาถ่ายภาพใบหน้าเพื่อยืนยันตัวตน";
+  const title = "กรุณาถ่ายภาพเพื่อบันทึกเวลางานสายตรวจ";
 
   const canOpenCamera =
     !busy &&
     step === "capture" &&
-    modelsLoaded &&
     hasSelectedAssignment &&
     hasPassedLocation;
 
   const shouldShowRetrySaveButton =
-    faceVerified && processStatus === "error" && Boolean(err);
+    processStatus === "error" && Boolean(err) && Boolean(photo);
 
   const shouldShowSavingButton =
-    faceVerified && processStatus === "allowed" && !err;
+    processStatus === "allowed" && busy && !err;
 
-  const shouldShowRetakeButton = faceVerifyFailed && !verifyErrorOpen;
+  const shouldShowRetakeButton =
+    step === "confirm" && !busy && !successOpen;
 
   return (
     <main className="guts-bg">
       <div className="guts-home">
-        <section className="guts-home-card" aria-label="Face Verify">
+        <section className="guts-home-card" aria-label="Checkpoint Photo">
           <Header empCode={empCode} displayName={displayName} />
 
           <h2 className={styles.attTitle}>หน้าจอ - ลงเวลางานสายตรวจ</h2>
@@ -473,21 +341,15 @@ export default function FaceVerify({
               </div>
             ) : null}
 
-            {!modelsLoaded ? (
-              <div className={styles.fvLocHint}>
-                กำลังโหลดระบบตรวจจับใบหน้า...
-              </div>
-            ) : null}
-
             <div
               className={`guts-fv-frame ${styles.fvFrame}`}
-              aria-label="กรอบแสดงรูปยืนยันตัวตน"
+              aria-label="กรอบแสดงรูปบันทึกเวลา"
             >
               {photo ? (
                 <img
                   className={`guts-fv-img ${styles.fvImg}`}
                   src={photo}
-                  alt="รูปยืนยันตัวตน"
+                  alt="รูปบันทึกเวลา"
                 />
               ) : (
                 <div className={styles.fvEmpty}>
@@ -512,13 +374,9 @@ export default function FaceVerify({
               <div className={`guts-fv-error ${styles.fvError}`}>{err}</div>
             ) : null}
 
-            {step === "confirm" &&
-            (processStatus === "checking" ||
-              (processStatus === "allowed" && busy)) ? (
+            {step === "confirm" && processStatus === "allowed" && busy ? (
               <div className={styles.fvLocHint}>
-                {processStatus === "checking"
-                  ? processHint || "กำลังตรวจสอบข้อมูล..."
-                  : processHint || "กำลังบันทึก..."}
+                {processHint || "กำลังบันทึก..."}
               </div>
             ) : null}
 
@@ -541,13 +399,11 @@ export default function FaceVerify({
                   icon={faCamera}
                   className={styles.fvPrimaryIcon}
                 />
-                {!modelsLoaded
-                  ? "กำลังโหลด AI..."
-                  : !assignmentId
-                    ? "กรุณาเลือกจุดจากตาราง"
-                    : !hasPassedLocation
-                      ? "กรุณาตรวจพิกัดจากตารางก่อน"
-                      : "ถ่ายภาพและยืนยัน"}
+                {!assignmentId
+                  ? "กรุณาเลือกจุดจากตาราง"
+                  : !hasPassedLocation
+                    ? "กรุณาตรวจพิกัดจากตารางก่อน"
+                    : "ถ่ายภาพและบันทึก"}
               </button>
             ) : (
               <>
@@ -600,11 +456,6 @@ export default function FaceVerify({
         open={camOpen}
         onClose={() => setCamOpen(false)}
         onCaptured={async (dataUrl) => {
-          if (!modelsLoaded) {
-            setErr("ระบบ AI ยังโหลดไม่เสร็จ กรุณารอสักครู่");
-            return;
-          }
-
           if (!assignmentId) {
             setErr(
               "ไม่พบ assignment_id ของจุดรักษาการณ์ กรุณาเลือกจุดจากตารางงานสายตรวจก่อน",
@@ -619,6 +470,7 @@ export default function FaceVerify({
             return;
           }
 
+          setCamOpen(false);
           setBusy(true);
           setErr("");
 
@@ -628,20 +480,6 @@ export default function FaceVerify({
             setBusy(false);
           }
         }}
-      />
-
-      <FaceNotFoundModal
-        open={faceNotFoundOpen}
-        title="ไม่พบใบหน้าในรูปภาพ"
-        message="กรุณาถ่ายใหม่ให้เห็นใบหน้าชัดเจน"
-        onClose={() => setFaceNotFoundOpen(false)}
-      />
-
-      <FaceNotFoundModal
-        open={verifyErrorOpen}
-        title="ใบหน้าไม่ตรงกับข้อมูลพนักงาน"
-        message="กรุณาถ่ายใหม่ หรือตรวจสอบข้อมูลพนักงานในระบบ"
-        onClose={() => setVerifyErrorOpen(false)}
       />
 
       <CheckInOutModal

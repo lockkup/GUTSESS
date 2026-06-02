@@ -1,3 +1,5 @@
+// src/App.tsx
+
 import { useMemo, useState } from "react";
 import Login from "./pages/Login";
 import Home from "./pages/Home";
@@ -48,6 +50,7 @@ type SelectedCheckpoint = {
   unitName: string;
   mode: CheckpointActionMode;
   passedLocation: PassedLocation;
+  workDate?: string | null;
 };
 
 type GoCheckInOutPayload = {
@@ -55,6 +58,7 @@ type GoCheckInOutPayload = {
   unitName: string;
   mode: CheckpointActionMode;
   passedLocation: PassedLocation;
+  workDate?: string | null;
 };
 
 type LocationCoords = {
@@ -65,12 +69,26 @@ type LocationCoords = {
   unitName?: string | null;
 };
 
+type AttendanceTimeContext = {
+  workDate: string;
+};
+
+type OpenAttendanceTimeRecordParams = {
+  work_date: string;
+};
+
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
 
 const FIRST_LOGIN_EMPLOYEE_CODES = new Set(["632071"]);
 
-async function getEmployeeDisplayName(employeeCode: string) {
+/**
+ * false = ถ่ายรูป + เช็กพิกัด + บันทึกเวลา แต่ไม่เทียบใบหน้า
+ * true  = เปิดใช้การเทียบใบหน้ากับข้อมูลพนักงานในอนาคต
+ */
+const ENABLE_FACE_VERIFY = false;
+
+async function getEmployeeData(employeeCode: string) {
   const response = await fetch(`${API_BASE_URL}/api/employees/${employeeCode}`);
 
   if (!response.ok) {
@@ -79,7 +97,9 @@ async function getEmployeeDisplayName(employeeCode: string) {
 
   const employee = (await response.json()) as EmployeesResponse;
 
-  return `${employee.first_name} ${employee.last_name}`.trim();
+  return {
+    displayName: `${employee.first_name} ${employee.last_name}`.trim(),
+  };
 }
 
 function formatCheckTime(date = new Date()) {
@@ -105,6 +125,14 @@ function formatWorkDate(date = new Date()) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+function toOpenRecordParams(
+  context: AttendanceTimeContext,
+): OpenAttendanceTimeRecordParams {
+  return {
+    work_date: context.workDate,
+  };
+}
+
 export default function App() {
   const [stack, setStack] = useState<Route[]>(["login"]);
   const route = stack[stack.length - 1];
@@ -122,7 +150,9 @@ export default function App() {
   const [lastOutAt, setLastOutAt] = useState<string | null>(null);
   const [punchType, setPunchType] = useState<PunchType>("in");
 
-  const [shiftId] = useState(1);
+  const [attendanceTimeContext, setAttendanceTimeContext] =
+    useState<AttendanceTimeContext | null>(null);
+
   const [, setOpenTimeRecord] = useState<TimeRecordResponse | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -150,11 +180,28 @@ export default function App() {
     setLastOutAt(null);
   }
 
-  async function loadOpenAttendanceTimeRecord(employeeCode: string) {
+  function makeAttendanceTimeContext(params?: {
+    date?: Date;
+    workDate?: string | null;
+  }): AttendanceTimeContext {
+    const date = params?.date ?? new Date();
+
+    return {
+      workDate: params?.workDate ?? formatWorkDate(date),
+    };
+  }
+
+  async function loadOpenAttendanceTimeRecord(
+    employeeCode: string,
+    context?: AttendanceTimeContext | null,
+  ) {
     try {
+      const attendanceContext = context ?? makeAttendanceTimeContext();
+
       const record =
         await timeRecordService.getOpenAttendanceTimeRecordByEmployeeCode(
           employeeCode,
+          toOpenRecordParams(attendanceContext),
         );
 
       if (!record) {
@@ -207,14 +254,19 @@ export default function App() {
     }
 
     try {
-      const name = await getEmployeeDisplayName(empCode);
-      setDisplayName(name);
+      const employeeData = await getEmployeeData(empCode);
+
+      setDisplayName(employeeData.displayName);
+
+      const context = makeAttendanceTimeContext();
+
+      setAttendanceTimeContext(context);
+      await loadOpenAttendanceTimeRecord(empCode, context);
     } catch (error) {
       alert(error instanceof Error ? error.message : "โหลดชื่อพนักงานไม่สำเร็จ");
       return;
     }
 
-    await loadOpenAttendanceTimeRecord(empCode);
     reset("home");
   }
 
@@ -227,6 +279,7 @@ export default function App() {
     setEmpCode("");
     setPin("");
     setDisplayName("");
+    setAttendanceTimeContext(null);
     clearCheckInOutTimeState();
     setSelectedCheckpoint(null);
     reset("login");
@@ -234,12 +287,18 @@ export default function App() {
 
   async function goDirectCheckInOut() {
     setSelectedCheckpoint(null);
-    await loadOpenAttendanceTimeRecord(empCode);
+
+    const context = makeAttendanceTimeContext();
+
+    setAttendanceTimeContext(context);
+    await loadOpenAttendanceTimeRecord(empCode, context);
+
     push("checkInOut");
   }
 
   async function goCheckpoint() {
     setSelectedCheckpoint(null);
+    setAttendanceTimeContext(null);
     clearCheckInOutTimeState();
     push("checkpoint");
   }
@@ -250,6 +309,7 @@ export default function App() {
       unitName: payload.unitName,
       mode: payload.mode,
       passedLocation: payload.passedLocation,
+      workDate: payload.workDate ?? formatWorkDate(),
     });
 
     if (payload.mode === "checkout") {
@@ -273,8 +333,19 @@ export default function App() {
     push("patrolReport");
   }
 
-  function goAttendanceFaceVerify(type: PunchType) {
+  function goAttendanceFaceVerify(
+    type: PunchType,
+    payload?: {
+      workDate?: string | null;
+    },
+  ) {
     setSelectedCheckpoint(null);
+
+    const context = makeAttendanceTimeContext({
+      workDate: payload?.workDate ?? null,
+    });
+
+    setAttendanceTimeContext(context);
     setPunchType(type);
     push("attendanceFaceVerify");
   }
@@ -285,6 +356,7 @@ export default function App() {
       assignmentId?: number | null;
       unitName?: string | null;
       passedLocation?: PassedLocation | null;
+      workDate?: string | null;
     },
   ) {
     if (payload?.assignmentId) {
@@ -298,11 +370,15 @@ export default function App() {
         return;
       }
 
+      const resolvedWorkDate =
+        payload.workDate ?? selectedCheckpoint?.workDate ?? formatWorkDate();
+
       setSelectedCheckpoint({
         assignmentId: payload.assignmentId,
         unitName: payload.unitName ?? "",
         mode: type === "in" ? "checkin" : "checkout",
         passedLocation,
+        workDate: resolvedWorkDate,
       });
     }
 
@@ -311,6 +387,15 @@ export default function App() {
   }
 
   async function onVerifyFaceOnly(embedding: number[]): Promise<void> {
+    /**
+     * ตอนนี้ไม่ต้องตรวจว่าใบหน้าเป็นใคร
+     * ให้ผ่านทันที เพื่อให้ flow เป็น:
+     * ถ่ายรูป + เช็กพิกัด + บันทึกเวลา
+     */
+    if (!ENABLE_FACE_VERIFY) {
+      return;
+    }
+
     const result = await faceVerifyService.verify({
       employee_code: empCode,
       face_embedding: embedding,
@@ -334,12 +419,21 @@ export default function App() {
 
       const now = new Date();
       const nowText = formatCheckTime(now);
-      const workDate = formatWorkDate(now);
+
+      const context =
+        attendanceTimeContext ??
+        makeAttendanceTimeContext({
+          date: now,
+        });
+
+      const workDate = context.workDate;
+      const openRecordParams = toOpenRecordParams(context);
 
       if (type === "in") {
         const existingOpen =
           await timeRecordService.getOpenAttendanceTimeRecordByEmployeeCode(
             empCode,
+            openRecordParams,
           );
 
         if (existingOpen) {
@@ -351,7 +445,6 @@ export default function App() {
 
         const createPayload = {
           employee_code: empCode,
-          shift_id: shiftId,
           work_date: workDate,
 
           current_latitude: location.latitude,
@@ -380,6 +473,7 @@ export default function App() {
         const record =
           await timeRecordService.getOpenAttendanceTimeRecordByEmployeeCode(
             empCode,
+            openRecordParams,
           );
 
         if (!record) {
@@ -443,7 +537,8 @@ export default function App() {
 
       const now = new Date();
       const nowText = formatCheckTime(now);
-      const workDate = formatWorkDate(now);
+
+      const workDate = selectedCheckpoint?.workDate ?? formatWorkDate(now);
 
       if (type === "in") {
         const existingOpen =
@@ -461,7 +556,6 @@ export default function App() {
 
         const createPayload = {
           employee_code: empCode,
-          shift_id: shiftId,
           work_date: workDate,
 
           assignment_id: location.assignmentId,
@@ -567,6 +661,10 @@ export default function App() {
   const isCheckpointCheckout = selectedCheckpoint?.mode === "checkout";
   const checkInOutMode = selectedCheckpoint ? "checkpoint" : "attendance";
 
+  const checkInOutWorkDate = selectedCheckpoint
+    ? selectedCheckpoint.workDate ?? null
+    : attendanceTimeContext?.workDate ?? null;
+
   return (
     <>
       {route === "login" && (
@@ -628,6 +726,7 @@ export default function App() {
           empCode={empCode}
           displayName={displayName}
           mode={checkInOutMode}
+          workDate={checkInOutWorkDate}
           assignmentId={selectedCheckpoint?.assignmentId ?? null}
           unitName={selectedCheckpoint?.unitName ?? null}
           passedLocation={selectedCheckpoint?.passedLocation ?? null}
@@ -648,7 +747,7 @@ export default function App() {
           onBack={back}
           onCheckIn={(payload) => {
             if (payload.mode === "attendance") {
-              goAttendanceFaceVerify("in");
+              goAttendanceFaceVerify("in", payload);
               return;
             }
 
@@ -656,7 +755,7 @@ export default function App() {
           }}
           onCheckOut={(payload) => {
             if (payload.mode === "attendance") {
-              goAttendanceFaceVerify("out");
+              goAttendanceFaceVerify("out", payload);
               return;
             }
 

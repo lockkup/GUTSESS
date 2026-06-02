@@ -36,6 +36,10 @@ type Props = {
   punchType: PunchType;
   onBack: () => void;
 
+  /**
+   * เก็บไว้ก่อน เผื่ออนาคตเปิดใช้ตรวจใบหน้า
+   * ตอนนี้จะไม่ถูกเรียก ถ้า ENABLE_FACE_VERIFY = false
+   */
   onVerifyFace: (embedding: number[]) => Promise<void>;
 
   onConfirm: (
@@ -56,6 +60,12 @@ type LocStatus =
   | "blocked"
   | "unavailable"
   | "error";
+
+/**
+ * false = ถ่ายรูป + ตรวจ GPS + บันทึกเวลา แต่ไม่ตรวจว่าเป็นใคร
+ * true  = เปิดใช้ตรวจใบหน้าในอนาคต
+ */
+const ENABLE_FACE_VERIFY = false;
 
 const GEO = {
   desiredAccuracyM: 25,
@@ -209,6 +219,11 @@ export default function AttendanceFaceVerify({
   const saveReqRef = useRef(0);
 
   useEffect(() => {
+    if (!ENABLE_FACE_VERIFY) {
+      setModelsLoaded(true);
+      return;
+    }
+
     let cancelled = false;
 
     const loadModels = async () => {
@@ -354,7 +369,7 @@ export default function AttendanceFaceVerify({
   }
 
   async function extractFaceEmbedding(dataUrl: string): Promise<number[] | null> {
-    if (!modelsLoaded) {
+    if (!ENABLE_FACE_VERIFY || !modelsLoaded) {
       return null;
     }
 
@@ -481,10 +496,30 @@ export default function AttendanceFaceVerify({
     setFaceVerified(false);
 
     setErr("");
-    setLocHint("กำลังประมวลผลใบหน้า...");
-    setLocStatus("checking");
     setLocFix(null);
     setOutModalOpen(false);
+
+    if (!ENABLE_FACE_VERIFY) {
+      const emptyEmbedding: number[] = [];
+
+      setFaceEmbedding(emptyEmbedding);
+      setFaceVerified(true);
+      setFaceVerifyFailed(false);
+
+      setLocHint("กำลังตรวจสอบตำแหน่ง GPS...");
+      setLocStatus("checking");
+
+      const res = await checkLocationGate();
+
+      if (res.ok && res.location) {
+        await saveAndShowSuccess(dataUrl, emptyEmbedding, res.location);
+      }
+
+      return;
+    }
+
+    setLocHint("กำลังประมวลผลใบหน้า...");
+    setLocStatus("checking");
 
     const embedding = await extractFaceEmbedding(dataUrl);
 
@@ -504,7 +539,7 @@ export default function AttendanceFaceVerify({
   async function onPickFile(file?: File | null) {
     if (!file) return;
 
-    if (!modelsLoaded) {
+    if (ENABLE_FACE_VERIFY && !modelsLoaded) {
       setErr("ระบบ AI ยังโหลดไม่เสร็จ กรุณารอสักครู่");
       return;
     }
@@ -530,7 +565,12 @@ export default function AttendanceFaceVerify({
   }
 
   async function recheckAndAutoConfirm() {
-    if (!photo || !faceEmbedding || !faceVerified) {
+    if (!photo) {
+      setErr("กรุณาถ่ายรูปใหม่เพื่อบันทึกเวลา");
+      return;
+    }
+
+    if (ENABLE_FACE_VERIFY && (!faceEmbedding || !faceVerified)) {
       setErr("กรุณาถ่ายใหม่เพื่อยืนยันตัวตน");
       return;
     }
@@ -547,7 +587,11 @@ export default function AttendanceFaceVerify({
       const res = await checkLocationGate();
 
       if (res.ok && res.location) {
-        await saveAndShowSuccess(photo, faceEmbedding, res.location);
+        await saveAndShowSuccess(
+          photo,
+          ENABLE_FACE_VERIFY ? faceEmbedding ?? [] : [],
+          res.location,
+        );
       }
     } finally {
       setBusy(false);
@@ -555,13 +599,22 @@ export default function AttendanceFaceVerify({
   }
 
   function retrySaveWithLastLocation() {
-    if (!photo || !faceEmbedding || !locFix) return;
+    if (!photo || !locFix) return;
 
-    void saveAndShowSuccess(photo, faceEmbedding, {
-      latitude: locFix.lat,
-      longitude: locFix.lng,
-      accuracy: locFix.accuracy,
-    });
+    if (ENABLE_FACE_VERIFY && (!faceEmbedding || !faceVerified)) {
+      setErr("กรุณาถ่ายใหม่เพื่อยืนยันตัวตน");
+      return;
+    }
+
+    void saveAndShowSuccess(
+      photo,
+      ENABLE_FACE_VERIFY ? faceEmbedding ?? [] : [],
+      {
+        latitude: locFix.lat,
+        longitude: locFix.lng,
+        accuracy: locFix.accuracy,
+      },
+    );
   }
 
   function retake() {
@@ -594,16 +647,21 @@ export default function AttendanceFaceVerify({
     onGoCheckInOut();
   }
 
-  const title = "กรุณาถ่ายภาพใบหน้าเพื่อยืนยันตัวตน";
+  const title = ENABLE_FACE_VERIFY
+    ? "กรุณาถ่ายภาพใบหน้าเพื่อยืนยันตัวตน"
+    : "กรุณาถ่ายภาพเพื่อบันทึกเวลา";
 
-  const canOpenCamera = !busy && step === "capture" && modelsLoaded;
+  const canOpenCamera =
+    !busy && step === "capture" && (!ENABLE_FACE_VERIFY || modelsLoaded);
 
   const shouldShowRecheckButton =
-    faceVerified &&
+    (ENABLE_FACE_VERIFY ? faceVerified : true) &&
     !outModalOpen &&
     ["outside", "blocked", "unavailable", "error"].includes(locStatus);
 
-  const shouldShowRetakeButton = faceVerifyFailed && !verifyErrorOpen;
+  const shouldShowRetakeButton = ENABLE_FACE_VERIFY
+    ? faceVerifyFailed && !verifyErrorOpen
+    : step === "confirm" && !busy && !successOpen && !checkInOutModalOpen;
 
   return (
     <main className="guts-bg">
@@ -620,7 +678,7 @@ export default function AttendanceFaceVerify({
           <div className={`guts-fv-card ${styles.fvCard}`}>
             <div className={styles.fvTitle}>{title}</div>
 
-            {!modelsLoaded ? (
+            {ENABLE_FACE_VERIFY && !modelsLoaded ? (
               <div className={styles.fvLocHint}>
                 กำลังโหลดระบบตรวจจับใบหน้า...
               </div>
@@ -628,13 +686,17 @@ export default function AttendanceFaceVerify({
 
             <div
               className={`guts-fv-frame ${styles.fvFrame}`}
-              aria-label="กรอบแสดงรูปยืนยันตัวตน"
+              aria-label="กรอบแสดงรูปบันทึกเวลา"
             >
               {photo ? (
                 <img
                   className={`guts-fv-img ${styles.fvImg}`}
                   src={photo}
-                  alt="รูปยืนยันตัวตน"
+                  alt={
+                    ENABLE_FACE_VERIFY
+                      ? "รูปยืนยันตัวตน"
+                      : "รูปบันทึกเวลา"
+                  }
                 />
               ) : (
                 <div className={styles.fvEmpty}>
@@ -687,39 +749,41 @@ export default function AttendanceFaceVerify({
                   icon={faCamera}
                   className={styles.fvPrimaryIcon}
                 />
-                {!modelsLoaded ? "กำลังโหลด AI..." : "ถ่ายภาพและยืนยัน"}
+                {!modelsLoaded
+                  ? "กำลังโหลด AI..."
+                  : ENABLE_FACE_VERIFY
+                    ? "ถ่ายภาพและยืนยัน"
+                    : "ถ่ายภาพและบันทึก"}
               </button>
             ) : (
               <>
-                {faceVerified ? (
-                  shouldShowRecheckButton ? (
-                    <button
-                      type="button"
-                      className={`guts-fv-primary ${styles.fvPrimary}`}
-                      onClick={() => void recheckAndAutoConfirm()}
-                      disabled={busy}
-                    >
-                      ตรวจสอบตำแหน่งอีกครั้ง
-                    </button>
-                  ) : locStatus === "allowed" && err ? (
-                    <button
-                      type="button"
-                      className={`guts-fv-primary ${styles.fvPrimary}`}
-                      onClick={retrySaveWithLastLocation}
-                      disabled={busy || !locFix}
-                    >
-                      ลองบันทึกอีกครั้ง
-                    </button>
-                  ) : locStatus === "allowed" ? (
-                    <button
-                      type="button"
-                      className={`guts-fv-primary ${styles.fvPrimary}`}
-                      disabled
-                      style={{ opacity: 0.7, cursor: "not-allowed" }}
-                    >
-                      รอระบบบันทึก...
-                    </button>
-                  ) : null
+                {shouldShowRecheckButton ? (
+                  <button
+                    type="button"
+                    className={`guts-fv-primary ${styles.fvPrimary}`}
+                    onClick={() => void recheckAndAutoConfirm()}
+                    disabled={busy}
+                  >
+                    ตรวจสอบตำแหน่งอีกครั้ง
+                  </button>
+                ) : locStatus === "allowed" && err ? (
+                  <button
+                    type="button"
+                    className={`guts-fv-primary ${styles.fvPrimary}`}
+                    onClick={retrySaveWithLastLocation}
+                    disabled={busy || !locFix}
+                  >
+                    ลองบันทึกอีกครั้ง
+                  </button>
+                ) : locStatus === "allowed" && busy ? (
+                  <button
+                    type="button"
+                    className={`guts-fv-primary ${styles.fvPrimary}`}
+                    disabled
+                    style={{ opacity: 0.7, cursor: "not-allowed" }}
+                  >
+                    รอระบบบันทึก...
+                  </button>
                 ) : null}
 
                 {shouldShowRetakeButton ? (
@@ -751,11 +815,12 @@ export default function AttendanceFaceVerify({
         open={camOpen}
         onClose={() => setCamOpen(false)}
         onCaptured={async (dataUrl) => {
-          if (!modelsLoaded) {
+          if (ENABLE_FACE_VERIFY && !modelsLoaded) {
             setErr("ระบบ AI ยังโหลดไม่เสร็จ กรุณารอสักครู่");
             return;
           }
 
+          setCamOpen(false);
           setBusy(true);
           setErr("");
 
