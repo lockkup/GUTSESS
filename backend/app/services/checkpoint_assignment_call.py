@@ -12,7 +12,6 @@ from app.core.error_messages import (
     CHECKPOINT_ASSIGNMENT_CALL_NOT_FOUND_DETAIL,
     CHECKPOINT_ASSIGNMENT_NOT_FOUND_DETAIL,
     CREATED_BY_EMPLOYEE_NOT_FOUND_DETAIL,
-    DUPLICATE_CHECKPOINT_ASSIGNMENT_CALL_DETAIL,
     INACTIVE_CHECKPOINT_ASSIGNMENT_DETAIL,
     INVALID_CHECKPOINT_ASSIGNMENT_CALL_UPDATE_DETAIL,
     INVALID_REFERENCE_DETAIL,
@@ -119,30 +118,6 @@ class CheckpointAssignmentCallService:
             )
 
     @staticmethod
-    def _ensure_not_duplicate(
-        db: Session,
-        assignment_id: int,
-        exclude_assignment_call_id: int | None = None,
-    ) -> None:
-        conditions = [
-            CheckpointAssignmentCall.assignment_id == assignment_id,
-        ]
-
-        if exclude_assignment_call_id is not None:
-            conditions.append(
-                CheckpointAssignmentCall.assignment_call_id
-                != exclude_assignment_call_id
-            )
-
-        stmt = select(exists().where(*conditions))
-
-        if db.scalar(stmt):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=DUPLICATE_CHECKPOINT_ASSIGNMENT_CALL_DETAIL,
-            )
-
-    @staticmethod
     def get_checkpoint_assignment_call(
         db: Session,
         assignment_call_id: int,
@@ -214,11 +189,8 @@ class CheckpointAssignmentCallService:
             assignment_id=payload.assignment_id,
         )
 
-        CheckpointAssignmentCallService._ensure_not_duplicate(
-            db=db,
-            assignment_id=payload.assignment_id,
-        )
-
+        # อนุญาตให้ assignment_id เดิมบันทึกการโทรได้หลายครั้ง
+        # 1 assignment_id = หลาย call log
         checkpoint_assignment_call = CheckpointAssignmentCall(
             **payload.model_dump(exclude_none=True)
         )
@@ -270,12 +242,6 @@ class CheckpointAssignmentCallService:
             CheckpointAssignmentCallService._validate_active_checkpoint_assignment(
                 db=db,
                 assignment_id=next_assignment_id,
-            )
-
-            CheckpointAssignmentCallService._ensure_not_duplicate(
-                db=db,
-                assignment_id=next_assignment_id,
-                exclude_assignment_call_id=assignment_call_id,
             )
 
         for field, value in update_data.items():

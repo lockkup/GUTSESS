@@ -24,7 +24,8 @@ import {
 
 import styles from "./PatrolReport.module.css";
 
-type ShiftValue = "day" | "night";
+type ShiftValue = "all" | "day" | "night";
+type ReportPlanMode = "planned" | "outside_plan";
 
 type PatrolNotificationLevel = "none" | "green" | "yellow" | "orange" | "red";
 
@@ -40,6 +41,7 @@ type FetchPatrolReportOptions = {
   startDate: string;
   endDate: string;
   shiftValue: ShiftValue;
+  planMode: ReportPlanMode;
   searchText: string;
   departmentIdText: string;
   divisionIdText: string;
@@ -50,9 +52,12 @@ type FetchPatrolReportOptions = {
 
 type ExtraPatrolReportFilterParams = {
   workdayStart?: string;
+  planMode?: ReportPlanMode;
+  plan_mode?: ReportPlanMode;
   workdayEnd?: string;
   startDate?: string;
   endDate?: string;
+  shiftId?: number;
   departmentId?: number;
   divisionId?: number;
   routeId?: number;
@@ -263,12 +268,13 @@ function makeReactKey(...values: Array<string | number | null | undefined>) {
   return values.map((value) => String(value ?? "")).join("-");
 }
 
-const SHIFT_ID_BY_VALUE: Record<ShiftValue, number> = {
+const SHIFT_ID_BY_VALUE: Record<Exclude<ShiftValue, "all">, number> = {
   day: 1,
   night: 2,
 };
 
-const DEFAULT_SHIFT_VALUE: ShiftValue = "day";
+const DEFAULT_SHIFT_VALUE: ShiftValue = "all";
+const DEFAULT_PLAN_MODE: ReportPlanMode = "planned";
 const DEFAULT_STATUS_VALUE: StatusFilterValue = "all";
 const DEFAULT_SEARCH_TEXT = "";
 
@@ -287,6 +293,16 @@ const DEFAULT_EMPLOYEE_CODE_TEXT = "";
  * ถ้าต้องการให้กลับมาแสดง ให้เปลี่ยนเป็น false
  */
 const HIDE_CONTRACT_COLUMNS = true;
+
+function getReportStatusSortOrder(status: ReportDisplayStatus) {
+  // ให้ "ตรวจแล้ว(โทร)" อยู่ล่างสุด
+  if (status === "completed_call") {
+    return 2;
+  }
+
+  // สถานะอื่น ๆ คงลำดับเดิมไว้ก่อน
+  return 1;
+}
 
 function getStatusLabel(status: ReportDisplayStatus) {
   switch (status) {
@@ -645,6 +661,8 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
   const [startDateValue, setStartDateValue] = useState(() => getTodayYYYYMMDD());
   const [endDateValue, setEndDateValue] = useState(() => getTodayYYYYMMDD());
   const [shiftValue, setShiftValue] = useState<ShiftValue>(DEFAULT_SHIFT_VALUE);
+  const [planMode, setPlanMode] =
+    useState<ReportPlanMode>(DEFAULT_PLAN_MODE);
   const [statusValue, setStatusValue] =
     useState<StatusFilterValue>(DEFAULT_STATUS_VALUE);
   const [searchText, setSearchText] = useState(DEFAULT_SEARCH_TEXT);
@@ -690,6 +708,7 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
     employeeCodeText.trim() !== "" ||
     searchText.trim() !== "" ||
     shiftValue !== DEFAULT_SHIFT_VALUE ||
+    Boolean(planMode) ||
     statusValue !== DEFAULT_STATUS_VALUE ||
     startDateValue !== todayText ||
     endDateValue !== todayText;
@@ -711,6 +730,7 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
       startDate,
       endDate,
       shiftValue,
+      planMode,
       searchText,
       departmentIdText,
       divisionIdText,
@@ -731,11 +751,16 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
           workdayEnd: endDate,
           startDate,
           endDate,
-          shiftId: SHIFT_ID_BY_VALUE[shiftValue],
           status: "all",
           keyword: searchText,
+          planMode,
+          plan_mode: planMode,
         } as Parameters<typeof getPatrolReport>[0] &
           ExtraPatrolReportFilterParams;
+
+        if (shiftValue !== "all") {
+          requestParams.shiftId = SHIFT_ID_BY_VALUE[shiftValue];
+        }
 
         const departmentId = toPositiveNumber(departmentIdText);
         const divisionId = toPositiveNumber(divisionIdText);
@@ -812,11 +837,31 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
   }, []);
 
   const filteredRows = useMemo(() => {
-    if (statusValue === "all") {
-      return patrolRows;
-    }
+    const rows =
+      statusValue === "all"
+        ? patrolRows
+        : patrolRows.filter((row) => getDisplayStatus(row) === statusValue);
 
-    return patrolRows.filter((row) => getDisplayStatus(row) === statusValue);
+    return rows
+      .map((row, originalIndex) => ({
+        row,
+        originalIndex,
+      }))
+      .sort((a, b) => {
+        const aStatus = getDisplayStatus(a.row);
+        const bStatus = getDisplayStatus(b.row);
+
+        const aOrder = getReportStatusSortOrder(aStatus);
+        const bOrder = getReportStatusSortOrder(bStatus);
+
+        if (aOrder !== bOrder) {
+          return aOrder - bOrder;
+        }
+
+        // สถานะเดียวกัน ให้คงลำดับเดิมจาก API
+        return a.originalIndex - b.originalIndex;
+      })
+      .map(({ row }) => row);
   }, [patrolRows, statusValue]);
 
   const calendarCells = useMemo(
@@ -883,6 +928,14 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
     ? "กรุณาตรวจสอบเงื่อนไขการค้นหาอีกครั้ง"
     : "เลือกตัวกรองอย่างน้อย 1 รายการ แล้วกดค้นหา";
 
+  const handlePlanModeChange = (value: ReportPlanMode) => {
+    setPlanMode(value);
+    setPatrolRows([]);
+    setExpandedId(null);
+    setHasSearched(false);
+    setError(null);
+  };
+
   const handleSearch = () => {
     if (!hasAnyReportFilter) {
       setPatrolRows([]);
@@ -907,6 +960,7 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
       startDate: startDateValue,
       endDate: endDateValue,
       shiftValue,
+      planMode,
       searchText,
       departmentIdText,
       divisionIdText,
@@ -926,6 +980,7 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
       new Date(todayDate.getFullYear(), todayDate.getMonth(), 1),
     );
     setShiftValue(DEFAULT_SHIFT_VALUE);
+    setPlanMode(DEFAULT_PLAN_MODE);
     setStatusValue(DEFAULT_STATUS_VALUE);
     setSearchText(DEFAULT_SEARCH_TEXT);
     setDepartmentIdText(DEFAULT_DEPARTMENT_ID_TEXT);
@@ -1100,6 +1155,30 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
 
         <section className={styles.filterPanel} aria-label="ตัวกรองรายงาน">
           <h2 className={styles.panelTitle}>ตัวกรองรายงาน</h2>
+
+          <div className={styles.planModeGroup} role="group" aria-label="ประเภทแผน">
+            <button
+              type="button"
+              className={`${styles.planModeButton} ${
+                planMode === "planned" ? styles.planModeButtonActive : ""
+              }`}
+              onClick={() => handlePlanModeChange("planned")}
+            >
+              ตามแผน
+            </button>
+
+            <button
+              type="button"
+              className={`${styles.planModeButton} ${
+                planMode === "outside_plan"
+                  ? styles.planModeButtonActive
+                  : ""
+              }`}
+              onClick={() => handlePlanModeChange("outside_plan")}
+            >
+              นอกแผน
+            </button>
+          </div>
 
           <label className={styles.fieldGroup}>
             <span className={styles.fieldLabel}>ภาค</span>
@@ -1316,6 +1395,7 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
               }
               className={styles.select}
             >
+              <option value="all">ทั้งหมด</option>
               <option value="day">ผลัดกลางวัน</option>
               <option value="night">ผลัดกลางคืน</option>
             </select>

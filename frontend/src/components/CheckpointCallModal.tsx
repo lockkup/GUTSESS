@@ -3,9 +3,6 @@ import styles from "./CheckpointCallModal.module.css";
 export type CallStatus = 1 | 2 | 3;
 
 export type CheckpointCallModalSavePayload = {
-  unitName: string;
-  plan: string;
-  shiftText: string;
   contactDetail: string;
   callNote: string;
   callStatus: CallStatus;
@@ -14,7 +11,11 @@ export type CheckpointCallModalSavePayload = {
 type Props = {
   isOpen: boolean;
   unitName: string;
-  plan: string;
+
+  // ยังเก็บไว้เพื่อไม่ให้ไฟล์แม่ที่ส่ง prop plan เข้ามา error
+  // แต่ใน Modal นี้ไม่แสดงแล้ว และไม่ส่งตอนบันทึก
+  plan?: string;
+
   shiftText: string;
   contactDetail: string;
   callNote: string;
@@ -26,10 +27,19 @@ type Props = {
   onSave: (payload: CheckpointCallModalSavePayload) => void;
 };
 
+function formatShiftText(value?: string | null): string {
+  const text = (value ?? "").trim();
+
+  if (!text) return "-";
+  if (text === "ผลัดกลางวัน") return "กลางวัน";
+  if (text === "ผลัดกลางคืน") return "กลางคืน";
+
+  return text.replace(/^ผลัด/, "").trim() || "-";
+}
+
 export default function CheckpointCallModal({
   isOpen,
   unitName,
-  plan,
   shiftText,
   contactDetail,
   callNote,
@@ -42,11 +52,10 @@ export default function CheckpointCallModal({
 }: Props) {
   if (!isOpen) return null;
 
+  const displayShiftText = formatShiftText(shiftText);
+
   const handleSave = () => {
     onSave({
-      unitName,
-      plan,
-      shiftText,
       contactDetail: contactDetail.trim(),
       callNote: callNote.trim(),
       callStatus,
@@ -80,11 +89,9 @@ export default function CheckpointCallModal({
             <div>
               <span>หน่วยงาน:</span> {unitName || "-"}
             </div>
+
             <div>
-              <span>แผน:</span> {plan || "-"}
-            </div>
-            <div>
-              <span>ผลัด:</span> {shiftText || "-"}
+              <span>ผลัด:</span> {displayShiftText}
             </div>
           </div>
 

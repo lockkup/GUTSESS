@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta
-from typing import Any, Mapping, cast
+from typing import Any, Literal, Mapping, cast
 
 from fastapi import HTTPException, status
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.core.error_messages import PATROL_REPORT_FETCH_FAILED_DETAIL
+from app.core.constants import PatrolReportConstants
+from app.core.error_messages import (
+    PATROL_REPORT_DATE_REQUIRED_DETAIL,
+    PATROL_REPORT_FETCH_FAILED_DETAIL,
+    PATROL_REPORT_INVALID_DATE_RANGE_DETAIL,
+)
 from app.schemas.patrol_report import (
     PatrolDepartmentOption,
     PatrolDivisionOption,
@@ -20,6 +25,70 @@ from app.schemas.patrol_report import (
     PatrolRouteOption,
     PatrolStatus,
 )
+
+
+ReportPlanMode = Literal["planned", "outside_plan"]
+
+UNPLANNED_VIEW_NAME = "vw_checkin_unplanned"
+
+UNPLANNED_COLUMN_FIRST_NAME = "first_name"
+UNPLANNED_COLUMN_LAST_NAME = "last_name"
+UNPLANNED_COLUMN_DEPARTMENT_NAME = "department_name"
+UNPLANNED_COLUMN_DIVISION_NAME = "division_name"
+
+
+EN_MONTH_NAMES: dict[str, int] = {
+    "january": 1,
+    "jan": 1,
+    "february": 2,
+    "feb": 2,
+    "march": 3,
+    "mar": 3,
+    "april": 4,
+    "apr": 4,
+    "may": 5,
+    "june": 6,
+    "jun": 6,
+    "july": 7,
+    "jul": 7,
+    "august": 8,
+    "aug": 8,
+    "september": 9,
+    "sep": 9,
+    "october": 10,
+    "oct": 10,
+    "november": 11,
+    "nov": 11,
+    "december": 12,
+    "dec": 12,
+}
+
+TH_MONTH_NAMES: dict[str, int] = {
+    "มกราคม": 1,
+    "ม.ค.": 1,
+    "กุมภาพันธ์": 2,
+    "ก.พ.": 2,
+    "มีนาคม": 3,
+    "มี.ค.": 3,
+    "เมษายน": 4,
+    "เม.ย.": 4,
+    "พฤษภาคม": 5,
+    "พ.ค.": 5,
+    "มิถุนายน": 6,
+    "มิ.ย.": 6,
+    "กรกฎาคม": 7,
+    "ก.ค.": 7,
+    "สิงหาคม": 8,
+    "ส.ค.": 8,
+    "กันยายน": 9,
+    "ก.ย.": 9,
+    "ตุลาคม": 10,
+    "ต.ค.": 10,
+    "พฤศจิกายน": 11,
+    "พ.ย.": 11,
+    "ธันวาคม": 12,
+    "ธ.ค.": 12,
+}
 
 
 def _to_text(value: Any, fallback: str = "-") -> str:
@@ -61,6 +130,75 @@ def _to_optional_positive_int(value: Any) -> int | None:
     return int_value
 
 
+def _parse_display_date_text(value: str) -> date | None:
+    """
+    รองรับ work_date ที่เป็นข้อความ เช่น:
+    - วันThursdayที่ 4 June 2026
+    - Thursday 4 June 2026
+    - 4 June 2026
+    - วันพฤหัสบดีที่ 4 มิถุนายน 2569
+    - 4 มิ.ย. 2569
+    """
+    text_value = value.strip()
+
+    if not text_value:
+        return None
+
+    cleaned = (
+        text_value.replace("วัน", " ")
+        .replace("ที่", " ")
+        .replace(",", " ")
+        .replace("-", " ")
+        .replace("/", " ")
+    )
+
+    parts = [part.strip() for part in cleaned.split() if part.strip()]
+
+    if len(parts) < 3:
+        return None
+
+    month_names: dict[str, int] = {}
+    month_names.update(EN_MONTH_NAMES)
+    month_names.update(TH_MONTH_NAMES)
+
+    day_value: int | None = None
+    month_value: int | None = None
+    year_value: int | None = None
+
+    for part in parts:
+        lower_part = part.lower()
+
+        if lower_part in month_names:
+            month_value = month_names[lower_part]
+            continue
+
+        numeric_text = "".join(char for char in part if char.isdigit())
+
+        if not numeric_text:
+            continue
+
+        numeric_value = int(numeric_text)
+
+        if numeric_value > 2400:
+            year_value = numeric_value - 543
+            continue
+
+        if numeric_value >= 1900:
+            year_value = numeric_value
+            continue
+
+        if 1 <= numeric_value <= 31 and day_value is None:
+            day_value = numeric_value
+
+    if day_value is None or month_value is None or year_value is None:
+        return None
+
+    try:
+        return date(year_value, month_value, day_value)
+    except ValueError:
+        return None
+
+
 def _to_optional_date(value: Any) -> date | None:
     if value is None:
         return None
@@ -78,7 +216,7 @@ def _to_optional_date(value: Any) -> date | None:
     try:
         return date.fromisoformat(text_value[:10])
     except ValueError:
-        return None
+        return _parse_display_date_text(text_value)
 
 
 def _format_time(value: Any) -> str | None:
@@ -109,12 +247,18 @@ def _format_time(value: Any) -> str | None:
 
 
 def _normalize_status(value: Any) -> PatrolStatus:
-    text_value = str(value or "pending").strip()
+    text_value = str(
+        value or PatrolReportConstants.STATUS_PENDING,
+    ).strip()
 
-    if text_value in {"completed", "in_progress", "pending"}:
+    if text_value in {
+        PatrolReportConstants.STATUS_COMPLETED,
+        PatrolReportConstants.STATUS_IN_PROGRESS,
+        PatrolReportConstants.STATUS_PENDING,
+    }:
         return cast(PatrolStatus, text_value)
 
-    return "pending"
+    return cast(PatrolStatus, PatrolReportConstants.STATUS_PENDING)
 
 
 def _build_operator_name(employee_code: Any, position_name: Any) -> str | None:
@@ -149,22 +293,14 @@ def _calculate_contract_day_number(
     if report_workday < effective_from:
         return None
 
-    # นับรวมวันเริ่มสัญญาเป็นวันที่ 1
-    # effective_from = 2026-05-20
-    # workday        = 2026-05-20 => วันที่ 1
-    # workday        = 2026-05-21 => วันที่ 2
     return (report_workday - effective_from).days + 1
 
 
 def _calculate_cycle_length(by_contract: int) -> int:
-    # ตามภาพตัวอย่าง:
-    # 3 วัน  = เหลือง 1, ส้ม 2, แดง 3
-    # 5 วัน  = เหลือง 1-2, ส้ม 3-4, แดง 5
-    # 7 วัน  = เหลือง 1-3, ส้ม 4-6, แดง 7
-    # 15 วัน = เหลือง 1-7, ส้ม 8-14, แดง 15
-    #
-    # ถ้า 30 วัน ใช้ pattern 15 วันวน 2 รอบ
-    return min(by_contract, 15)
+    return min(
+        by_contract,
+        PatrolReportConstants.MAX_CYCLE_LENGTH_DAYS,
+    )
 
 
 def _calculate_cycle_range(
@@ -206,12 +342,9 @@ def _calculate_report_day_number(
     if report_workday is None:
         return None
 
-    # วันนี้มี time_record จริง ให้เป็น 0 เพื่อแสดงเขียว
     if has_today_time_record:
         return 0
 
-    # ในรอบนี้เคยมี time_record ก่อนถึงวันนี้แล้ว
-    # วันนี้ไม่ต้องแสดงจำนวนวันแจ้งเตือน
     if has_cycle_time_record:
         return None
 
@@ -228,12 +361,9 @@ def _get_patrol_notification(
     by_contract: int | None,
     report_day_number: int | None,
 ) -> tuple[PatrolNotificationLevel | None, str | None]:
-    # เขียวเฉพาะวันที่มี time_record จริงของจุดนี้
     if has_today_time_record:
         return "green", "เข้าตรวจแล้ว"
 
-    # ถ้าในรอบนี้เคยมี time_record แล้ว แต่วันนี้ไม่ได้ตรวจ
-    # ไม่ต้องแสดง yellow/orange/red
     if has_cycle_time_record:
         return None, None
 
@@ -258,15 +388,44 @@ def _get_patrol_notification(
     return "red", f"ต้องเข้าภายในวันนี้ ครบ {cycle_length} วันแล้ว"
 
 
+def _get_view_column_names(db: Session, view_name: str) -> set[str]:
+    """
+    ใช้เช็กคอลัมน์ใน view ก่อน SELECT
+    เพื่อกัน error กรณี view ยังไม่มีคอลัมน์ใหม่
+    เช่น plan_day, contact_detail, call_status, call_note
+    """
+    try:
+        rows = db.execute(text(f"SHOW COLUMNS FROM {view_name}")).mappings().all()
+
+        column_names: set[str] = set()
+        for row in rows:
+            field_name = row.get("Field")
+            if field_name is not None:
+                column_names.add(str(field_name))
+
+        return column_names
+    except SQLAlchemyError:
+        return set()
+
+
+def _select_view_column(
+    column_names: set[str],
+    column_name: str,
+    *,
+    alias: str | None = None,
+) -> str:
+    alias_name = alias or column_name
+
+    if column_name in column_names:
+        return f"v.{column_name}"
+
+    return f"NULL AS {alias_name}"
+
+
 def _get_time_record_flags(
     db: Session,
     rows: list[Mapping[str, Any]],
 ) -> list[tuple[bool, bool]]:
-    # return แต่ละ row:
-    # (
-    #   has_today_time_record,
-    #   has_cycle_time_record,
-    # )
     flags: list[tuple[bool, bool]] = [(False, False) for _ in rows]
 
     cycle_infos: list[tuple[int, int, date, date]] = []
@@ -276,10 +435,18 @@ def _get_time_record_flags(
     max_lookup_workday: date | None = None
 
     for index, row in enumerate(rows):
-        effective_from = _to_optional_date(row.get("effective_from"))
-        report_workday = _to_optional_date(row.get("workday"))
-        by_contract = _to_optional_positive_int(row.get("by_contract"))
-        location_id = _to_optional_positive_int(row.get("location_id"))
+        effective_from = _to_optional_date(
+            row.get(PatrolReportConstants.COLUMN_EFFECTIVE_FROM),
+        )
+        report_workday = _to_optional_date(
+            row.get(PatrolReportConstants.COLUMN_WORKDAY),
+        )
+        by_contract = _to_optional_positive_int(
+            row.get(PatrolReportConstants.COLUMN_BY_CONTRACT),
+        )
+        location_id = _to_optional_positive_int(
+            row.get(PatrolReportConstants.COLUMN_LOCATION_ID),
+        )
 
         if report_workday is None or location_id is None:
             continue
@@ -309,9 +476,6 @@ def _get_time_record_flags(
         if min_cycle_start is None or cycle_start < min_cycle_start:
             min_cycle_start = cycle_start
 
-        # สำคัญ:
-        # ใช้ถึงวันที่รายงานเท่านั้น
-        # ห้ามใช้ cycle_end เพราะจะเห็น time_record ในอนาคต
         if max_lookup_workday is None or report_workday > max_lookup_workday:
             max_lookup_workday = report_workday
 
@@ -337,8 +501,6 @@ def _get_time_record_flags(
 
     location_in_sql = ", ".join(location_placeholders)
 
-    # ไม่ใช้ shift_id ใน SQL นี้
-    # เพราะสีเขียวต้องดูจาก time_record ของจุดนี้เท่านั้น
     inspection_sql = text(
         f"""
         SELECT DISTINCT
@@ -389,11 +551,8 @@ def _get_time_record_flags(
     for index, location_id, report_workday, cycle_start in cycle_infos:
         inspection_dates = inspection_dates_by_location.get(location_id, set())
 
-        # วันนี้มี time_record จริงไหม
         has_today_time_record = report_workday in inspection_dates
 
-        # รอบนี้เคยมี time_record ตั้งแต่วันเริ่มรอบถึงวันที่รายงานไหม
-        # ไม่ดูวันที่หลัง report_workday
         has_cycle_time_record = any(
             cycle_start <= inspection_date <= report_workday
             for inspection_date in inspection_dates
@@ -414,11 +573,19 @@ def _map_patrol_report_row(
     has_today_time_record: bool,
     has_cycle_time_record: bool,
 ) -> PatrolReportResponse:
-    effective_from = _to_optional_date(row.get("effective_from"))
-    by_contract = _to_optional_positive_int(row.get("by_contract"))
-    report_workday = _to_optional_date(row.get("workday"))
+    effective_from = _to_optional_date(
+        row.get(PatrolReportConstants.COLUMN_EFFECTIVE_FROM),
+    )
+    by_contract = _to_optional_positive_int(
+        row.get(PatrolReportConstants.COLUMN_BY_CONTRACT),
+    )
+    report_workday = _to_optional_date(
+        row.get(PatrolReportConstants.COLUMN_WORKDAY),
+    )
     last_inspection_date = _to_optional_date(row.get("last_inspection_date"))
-    patrol_status = _normalize_status(row.get("assignment_status"))
+    patrol_status = _normalize_status(
+        row.get(PatrolReportConstants.COLUMN_ASSIGNMENT_STATUS),
+    )
 
     report_day_number = _calculate_report_day_number(
         effective_from=effective_from,
@@ -436,46 +603,79 @@ def _map_patrol_report_row(
 
     return PatrolReportResponse(
         id=row_no,
-        contractCode=_to_text(row.get("contract_code")),
-        siteName=_to_text(row.get("location_name")),
+        contractCode=_to_text(
+            row.get(PatrolReportConstants.COLUMN_CONTRACT_CODE),
+        ),
+        siteName=_to_text(
+            row.get(PatrolReportConstants.COLUMN_LOCATION_NAME),
+        ),
         status=patrol_status,
 
-        departmentId=_to_optional_positive_int(row.get("department_id")),
-        divisionId=_to_optional_positive_int(row.get("division_id")),
-        routeId=_to_optional_positive_int(row.get("route_id")),
-        locationId=_to_optional_positive_int(row.get("location_id")),
+        departmentId=_to_optional_positive_int(
+            row.get(PatrolReportConstants.COLUMN_DEPARTMENT_ID),
+        ),
+        divisionId=_to_optional_positive_int(
+            row.get(PatrolReportConstants.COLUMN_DIVISION_ID),
+        ),
+        routeId=_to_optional_positive_int(
+            row.get(PatrolReportConstants.COLUMN_ROUTE_ID),
+        ),
+        locationId=_to_optional_positive_int(
+            row.get(PatrolReportConstants.COLUMN_LOCATION_ID),
+        ),
 
         effectiveFrom=effective_from,
         byContract=by_contract,
 
-        planDay=None,
+        planDay=_to_optional_positive_int(
+            row.get(PatrolReportConstants.COLUMN_PLAN_DAY),
+        ),
 
         lastInspectionDate=last_inspection_date,
 
-        # ถ้าวันนี้มี time_record จะเป็น 0
-        # ถ้าในรอบนี้เคยตรวจแล้ว แต่วันนี้ไม่ได้ตรวจ จะเป็น None
-        # ถ้ายังไม่เคยตรวจในรอบนี้ จะเป็นจำนวนวันที่นับจาก effective_from
         daysWithoutInspection=report_day_number,
 
-        notificationLevel=notification_level,
+        notificationLevel=notification_level
+        or cast(
+            PatrolNotificationLevel,
+            PatrolReportConstants.DEFAULT_NOTIFICATION_LEVEL,
+        ),
         notificationText=notification_text,
 
-        shiftLabel=_to_text(row.get("shift_name_th")),
-        dateText=_to_text(row.get("work_date")),
-
-        checkInTime=_format_time(row.get("started_at")),
-        checkOutTime=_format_time(row.get("completed_at")),
-
-        employeeCode=_to_optional_text(row.get("employee_code")),
-        positionName=_to_optional_text(row.get("position_name")),
-        operatorName=_build_operator_name(
-            row.get("employee_code"),
-            row.get("position_name"),
+        shiftLabel=_to_text(
+            row.get(PatrolReportConstants.COLUMN_SHIFT_NAME_TH),
+        ),
+        dateText=_to_text(
+            row.get(PatrolReportConstants.COLUMN_WORK_DATE),
         ),
 
-        contactDetail=None,
-        callStatus=None,
-        callNote=None,
+        checkInTime=_format_time(
+            row.get(PatrolReportConstants.COLUMN_STARTED_AT),
+        ),
+        checkOutTime=_format_time(
+            row.get(PatrolReportConstants.COLUMN_COMPLETED_AT),
+        ),
+
+        employeeCode=_to_optional_text(
+            row.get(PatrolReportConstants.COLUMN_EMPLOYEE_CODE),
+        ),
+        positionName=_to_optional_text(
+            row.get(PatrolReportConstants.COLUMN_POSITION_NAME),
+        ),
+        operatorName=_build_operator_name(
+            row.get(PatrolReportConstants.COLUMN_EMPLOYEE_CODE),
+            row.get(PatrolReportConstants.COLUMN_POSITION_NAME),
+        ),
+
+        contactDetail=_to_optional_text(
+            row.get(PatrolReportConstants.COLUMN_CONTACT_DETAIL),
+        ),
+        callStatus=_to_optional_positive_int(
+            row.get(PatrolReportConstants.COLUMN_CALL_STATUS),
+        ),
+        callNote=_to_optional_text(
+            row.get(PatrolReportConstants.COLUMN_CALL_NOTE),
+        ),
 
         scheduleText=_build_schedule_text(by_contract),
     )
@@ -615,7 +815,10 @@ def get_patrol_report_filter_options(
             routes.append(
                 PatrolRouteOption(
                     routeId=route_id,
-                    routeName=_to_text(row.get("route_name"), f"เส้นทาง {route_id}"),
+                    routeName=_to_text(
+                        row.get("route_name"),
+                        f"เส้นทาง {route_id}",
+                    ),
                     departmentId=_to_optional_positive_int(
                         row.get("department_id"),
                     ),
@@ -659,8 +862,8 @@ def get_patrol_report_filter_options(
         return PatrolReportFilterOptionsResponse(
             departments=departments,
             divisions=divisions,
-            routes=routes,
             locations=locations,
+            routes=routes,
             employees=employees,
         )
 
@@ -671,11 +874,12 @@ def get_patrol_report_filter_options(
         ) from exc
 
 
-def get_patrol_report_rows(
+def _get_patrol_report_unplanned_rows(
     db: Session,
     *,
-    workday: date,
-    shift_id: int,
+    report_start: date,
+    report_end: date,
+    shift_id: int | None = None,
     department_id: int | None = None,
     division_id: int | None = None,
     route_id: int | None = None,
@@ -684,93 +888,465 @@ def get_patrol_report_rows(
     status_filter: PatrolStatus | None = None,
     keyword: str | None = None,
 ) -> list[PatrolReportResponse]:
-    sql_parts = [
+    view_column_names = _get_view_column_names(
+        db,
+        UNPLANNED_VIEW_NAME,
+    )
+
+    has_department_name = UNPLANNED_COLUMN_DEPARTMENT_NAME in view_column_names
+    has_division_name = UNPLANNED_COLUMN_DIVISION_NAME in view_column_names
+    has_shift_id = PatrolReportConstants.COLUMN_SHIFT_ID in view_column_names
+
+    join_parts: list[str] = []
+
+    if has_department_name:
+        join_parts.append(
+            f"""
+            LEFT JOIN departments dp
+                ON TRIM(dp.department_name)
+                    = TRIM(v.{UNPLANNED_COLUMN_DEPARTMENT_NAME})
+            """
+        )
+        department_id_select = "dp.department_id"
+    else:
+        department_id_select = "NULL"
+
+    if has_division_name:
+        if has_department_name:
+            join_parts.append(
+                f"""
+                LEFT JOIN divisions dv
+                    ON TRIM(dv.division_name)
+                        = TRIM(v.{UNPLANNED_COLUMN_DIVISION_NAME})
+                    AND (
+                        dp.department_id IS NULL
+                        OR dv.department_id = dp.department_id
+                    )
+                """
+            )
+        else:
+            join_parts.append(
+                f"""
+                LEFT JOIN divisions dv
+                    ON TRIM(dv.division_name)
+                        = TRIM(v.{UNPLANNED_COLUMN_DIVISION_NAME})
+                """
+            )
+
+        division_id_select = "dv.division_id"
+    else:
+        division_id_select = "NULL"
+
+    join_parts.append(
+        f"""
+        LEFT JOIN site_location sl
+            ON TRIM(sl.contract_code)
+                = TRIM(v.{PatrolReportConstants.COLUMN_CONTRACT_CODE})
+            AND TRIM(sl.location_name)
+                = TRIM(v.{PatrolReportConstants.COLUMN_LOCATION_NAME})
         """
+    )
+
+    route_id_select = """
+        (
+            SELECT MIN(rsl.routes_id)
+            FROM route_site_location rsl
+            WHERE rsl.location_id = sl.location_id
+        )
+    """
+
+    shift_id_select = (
+        f"v.{PatrolReportConstants.COLUMN_SHIFT_ID}"
+        if has_shift_id
+        else "NULL"
+    )
+
+    sql_parts = [
+        f"""
         SELECT
-            v.contract_code,
-            v.location_name,
-            v.shift_name_th,
-            v.assignment_status,
-            v.work_date,
-            v.started_at,
-            v.completed_at,
-            v.employee_code,
-            v.position_name,
-            v.effective_from,
-            v.by_contract,
-            v.workday,
-            v.department_id,
-            v.division_id,
-            v.route_id,
-            v.location_id,
-            v.shift_id,
+            v.{PatrolReportConstants.COLUMN_CONTRACT_CODE},
+            v.{PatrolReportConstants.COLUMN_LOCATION_NAME},
+
+            'นอกแผน' AS {PatrolReportConstants.COLUMN_SHIFT_NAME_TH},
+
+            CASE
+                WHEN v.{PatrolReportConstants.COLUMN_COMPLETED_AT} IS NOT NULL
+                    THEN '{PatrolReportConstants.STATUS_COMPLETED}'
+                ELSE '{PatrolReportConstants.STATUS_IN_PROGRESS}'
+            END AS {PatrolReportConstants.COLUMN_ASSIGNMENT_STATUS},
+
+            v.{PatrolReportConstants.COLUMN_WORK_DATE},
+            v.{PatrolReportConstants.COLUMN_STARTED_AT},
+            v.{PatrolReportConstants.COLUMN_COMPLETED_AT},
+            v.{PatrolReportConstants.COLUMN_EMPLOYEE_CODE},
+            v.{PatrolReportConstants.COLUMN_POSITION_NAME},
+
+            NULL AS {PatrolReportConstants.COLUMN_EFFECTIVE_FROM},
+            NULL AS {PatrolReportConstants.COLUMN_BY_CONTRACT},
+            NULL AS {PatrolReportConstants.COLUMN_PLAN_DAY},
+
+            v.{PatrolReportConstants.COLUMN_WORK_DATE}
+                AS {PatrolReportConstants.COLUMN_WORKDAY},
+
+            {department_id_select}
+                AS {PatrolReportConstants.COLUMN_DEPARTMENT_ID},
+            {division_id_select}
+                AS {PatrolReportConstants.COLUMN_DIVISION_ID},
+            {route_id_select}
+                AS {PatrolReportConstants.COLUMN_ROUTE_ID},
+            sl.location_id
+                AS {PatrolReportConstants.COLUMN_LOCATION_ID},
+
+            {shift_id_select}
+                AS {PatrolReportConstants.COLUMN_SHIFT_ID},
+
+            NULL AS {PatrolReportConstants.COLUMN_CONTACT_DETAIL},
+            NULL AS {PatrolReportConstants.COLUMN_CALL_STATUS},
+            NULL AS {PatrolReportConstants.COLUMN_CALL_NOTE},
+
             NULL AS last_inspection_date
-        FROM vw_checkin_report v
-        WHERE v.workday = :workday
-          AND v.shift_id = :shift_id
+        FROM {UNPLANNED_VIEW_NAME} v
+        {' '.join(join_parts)}
+        WHERE 1 = 1
         """
     ]
 
-    params: dict[str, Any] = {
-        "workday": workday,
-        "shift_id": shift_id,
-    }
+    params: dict[str, Any] = {}
+
+    if shift_id is not None and has_shift_id:
+        sql_parts.append(f"AND v.{PatrolReportConstants.COLUMN_SHIFT_ID} = :shift_id")
+        params["shift_id"] = shift_id
 
     if department_id is not None:
-        sql_parts.append("AND v.department_id = :department_id")
-        params["department_id"] = department_id
+        if has_department_name:
+            sql_parts.append("AND dp.department_id = :department_id")
+            params["department_id"] = department_id
+        else:
+            sql_parts.append("AND 1 = 0")
 
     if division_id is not None:
-        sql_parts.append("AND v.division_id = :division_id")
-        params["division_id"] = division_id
+        if has_division_name:
+            sql_parts.append("AND dv.division_id = :division_id")
+            params["division_id"] = division_id
+        else:
+            sql_parts.append("AND 1 = 0")
 
     if route_id is not None:
-        sql_parts.append("AND v.route_id = :route_id")
+        sql_parts.append(
+            """
+            AND EXISTS (
+                SELECT 1
+                FROM route_site_location rsl_filter
+                WHERE rsl_filter.location_id = sl.location_id
+                  AND rsl_filter.routes_id = :route_id
+            )
+            """
+        )
         params["route_id"] = route_id
 
     if location_id is not None:
-        sql_parts.append("AND v.location_id = :location_id")
+        sql_parts.append("AND sl.location_id = :location_id")
         params["location_id"] = location_id
 
     if employee_code and employee_code.strip():
-        sql_parts.append("AND v.employee_code = :employee_code")
+        sql_parts.append(
+            f"AND v.{PatrolReportConstants.COLUMN_EMPLOYEE_CODE} = :employee_code",
+        )
         params["employee_code"] = employee_code.strip()
 
-    if status_filter:
-        sql_parts.append("AND v.assignment_status = :status_filter")
-        params["status_filter"] = status_filter
+    if status_filter == PatrolReportConstants.STATUS_COMPLETED:
+        sql_parts.append(
+            f"AND v.{PatrolReportConstants.COLUMN_COMPLETED_AT} IS NOT NULL",
+        )
+
+    if status_filter == PatrolReportConstants.STATUS_IN_PROGRESS:
+        sql_parts.append(
+            f"AND v.{PatrolReportConstants.COLUMN_COMPLETED_AT} IS NULL",
+        )
+
+    if status_filter == PatrolReportConstants.STATUS_PENDING:
+        sql_parts.append("AND 1 = 0")
 
     if keyword and keyword.strip():
+        keyword_conditions = [
+            f"v.{PatrolReportConstants.COLUMN_CONTRACT_CODE} LIKE :keyword",
+            f"v.{PatrolReportConstants.COLUMN_LOCATION_NAME} LIKE :keyword",
+            f"v.{PatrolReportConstants.COLUMN_EMPLOYEE_CODE} LIKE :keyword",
+        ]
+
+        if UNPLANNED_COLUMN_FIRST_NAME in view_column_names:
+            keyword_conditions.append(f"v.{UNPLANNED_COLUMN_FIRST_NAME} LIKE :keyword")
+
+        if UNPLANNED_COLUMN_LAST_NAME in view_column_names:
+            keyword_conditions.append(f"v.{UNPLANNED_COLUMN_LAST_NAME} LIKE :keyword")
+
+        if PatrolReportConstants.COLUMN_POSITION_NAME in view_column_names:
+            keyword_conditions.append(
+                f"v.{PatrolReportConstants.COLUMN_POSITION_NAME} LIKE :keyword",
+            )
+
         sql_parts.append(
-            """
+            f"""
             AND (
-                v.contract_code LIKE :keyword
-                OR v.location_name LIKE :keyword
+                {' OR '.join(keyword_conditions)}
             )
             """
         )
         params["keyword"] = f"%{keyword.strip()}%"
 
     sql_parts.append(
-        """
+        f"""
         ORDER BY
+            v.{PatrolReportConstants.COLUMN_WORK_DATE} DESC,
+            v.{PatrolReportConstants.COLUMN_STARTED_AT} DESC,
+            v.{PatrolReportConstants.COLUMN_CONTRACT_CODE},
+            v.{PatrolReportConstants.COLUMN_LOCATION_NAME}
+        """
+    )
+
+    statement = text("\n".join(sql_parts))
+
+    rows = [
+        dict(row)
+        for row in db.execute(statement, params).mappings().all()
+    ]
+
+    filtered_rows: list[dict[str, Any]] = []
+
+    for row in rows:
+        report_workday = _to_optional_date(
+            row.get(PatrolReportConstants.COLUMN_WORKDAY),
+        )
+
+        if report_workday is None:
+            continue
+
+        if report_workday < report_start or report_workday > report_end:
+            continue
+
+        row[PatrolReportConstants.COLUMN_WORKDAY] = report_workday
+        filtered_rows.append(row)
+
+    filtered_rows.sort(
+        key=lambda row: (
+            _to_optional_date(row.get(PatrolReportConstants.COLUMN_WORKDAY)) or date.min,
+            _format_time(row.get(PatrolReportConstants.COLUMN_STARTED_AT)) or "",
+            _to_text(row.get(PatrolReportConstants.COLUMN_CONTRACT_CODE)),
+            _to_text(row.get(PatrolReportConstants.COLUMN_LOCATION_NAME)),
+        ),
+        reverse=True,
+    )
+
+    results: list[PatrolReportResponse] = []
+
+    for index, row in enumerate(filtered_rows):
+        results.append(
+            _map_patrol_report_row(
+                index + 1,
+                row,
+                has_today_time_record=False,
+                has_cycle_time_record=False,
+            )
+        )
+
+    return results
+
+
+def get_patrol_report_rows(
+    db: Session,
+    *,
+    plan_mode: ReportPlanMode = "planned",
+    workday: date | None = None,
+    workday_start: date | None = None,
+    workday_end: date | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    shift_id: int | None = None,
+    department_id: int | None = None,
+    division_id: int | None = None,
+    route_id: int | None = None,
+    location_id: int | None = None,
+    employee_code: str | None = None,
+    status_filter: PatrolStatus | None = None,
+    keyword: str | None = None,
+) -> list[PatrolReportResponse]:
+    report_start = workday_start or start_date or workday
+    report_end = workday_end or end_date or workday_start or start_date or workday
+
+    if report_start is None or report_end is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=PATROL_REPORT_DATE_REQUIRED_DETAIL,
+        )
+
+    if report_start > report_end:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=PATROL_REPORT_INVALID_DATE_RANGE_DETAIL,
+        )
+
+    if plan_mode == "outside_plan":
+        try:
+            return _get_patrol_report_unplanned_rows(
+                db=db,
+                report_start=report_start,
+                report_end=report_end,
+                shift_id=shift_id,
+                department_id=department_id,
+                division_id=division_id,
+                route_id=route_id,
+                location_id=location_id,
+                employee_code=employee_code,
+                status_filter=status_filter,
+                keyword=keyword,
+            )
+
+        except SQLAlchemyError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=PATROL_REPORT_FETCH_FAILED_DETAIL,
+            ) from exc
+
+    view_column_names = _get_view_column_names(
+        db,
+        PatrolReportConstants.VIEW_NAME,
+    )
+
+    plan_day_select = _select_view_column(
+        view_column_names,
+        PatrolReportConstants.COLUMN_PLAN_DAY,
+        alias=PatrolReportConstants.COLUMN_PLAN_DAY,
+    )
+    contact_detail_select = _select_view_column(
+        view_column_names,
+        PatrolReportConstants.COLUMN_CONTACT_DETAIL,
+        alias=PatrolReportConstants.COLUMN_CONTACT_DETAIL,
+    )
+    call_status_select = _select_view_column(
+        view_column_names,
+        PatrolReportConstants.COLUMN_CALL_STATUS,
+        alias=PatrolReportConstants.COLUMN_CALL_STATUS,
+    )
+    call_note_select = _select_view_column(
+        view_column_names,
+        PatrolReportConstants.COLUMN_CALL_NOTE,
+        alias=PatrolReportConstants.COLUMN_CALL_NOTE,
+    )
+
+    sql_parts = [
+        f"""
+        SELECT
+            v.{PatrolReportConstants.COLUMN_CONTRACT_CODE},
+            v.{PatrolReportConstants.COLUMN_LOCATION_NAME},
+            v.{PatrolReportConstants.COLUMN_SHIFT_NAME_TH},
+            v.{PatrolReportConstants.COLUMN_ASSIGNMENT_STATUS},
+            v.{PatrolReportConstants.COLUMN_WORK_DATE},
+            v.{PatrolReportConstants.COLUMN_STARTED_AT},
+            v.{PatrolReportConstants.COLUMN_COMPLETED_AT},
+            v.{PatrolReportConstants.COLUMN_EMPLOYEE_CODE},
+            v.{PatrolReportConstants.COLUMN_POSITION_NAME},
+            v.{PatrolReportConstants.COLUMN_EFFECTIVE_FROM},
+            v.{PatrolReportConstants.COLUMN_BY_CONTRACT},
+            {plan_day_select},
+            v.{PatrolReportConstants.COLUMN_WORKDAY},
+            v.{PatrolReportConstants.COLUMN_DEPARTMENT_ID},
+            v.{PatrolReportConstants.COLUMN_DIVISION_ID},
+            v.{PatrolReportConstants.COLUMN_ROUTE_ID},
+            v.{PatrolReportConstants.COLUMN_LOCATION_ID},
+            v.{PatrolReportConstants.COLUMN_SHIFT_ID},
+            {contact_detail_select},
+            {call_status_select},
+            {call_note_select},
+            NULL AS last_inspection_date
+        FROM {PatrolReportConstants.VIEW_NAME} v
+        WHERE v.{PatrolReportConstants.COLUMN_WORKDAY}
+            BETWEEN :workday_start AND :workday_end
+        """
+    ]
+
+    params: dict[str, Any] = {
+        "workday_start": report_start,
+        "workday_end": report_end,
+    }
+
+    if shift_id is not None:
+        sql_parts.append(f"AND v.{PatrolReportConstants.COLUMN_SHIFT_ID} = :shift_id")
+        params["shift_id"] = shift_id
+
+    if department_id is not None:
+        sql_parts.append(
+            f"AND v.{PatrolReportConstants.COLUMN_DEPARTMENT_ID} = :department_id",
+        )
+        params["department_id"] = department_id
+
+    if division_id is not None:
+        sql_parts.append(
+            f"AND v.{PatrolReportConstants.COLUMN_DIVISION_ID} = :division_id",
+        )
+        params["division_id"] = division_id
+
+    if route_id is not None:
+        sql_parts.append(f"AND v.{PatrolReportConstants.COLUMN_ROUTE_ID} = :route_id")
+        params["route_id"] = route_id
+
+    if location_id is not None:
+        sql_parts.append(
+            f"AND v.{PatrolReportConstants.COLUMN_LOCATION_ID} = :location_id",
+        )
+        params["location_id"] = location_id
+
+    if employee_code and employee_code.strip():
+        sql_parts.append(
+            f"AND v.{PatrolReportConstants.COLUMN_EMPLOYEE_CODE} = :employee_code",
+        )
+        params["employee_code"] = employee_code.strip()
+
+    if status_filter:
+        sql_parts.append(
+            f"AND v.{PatrolReportConstants.COLUMN_ASSIGNMENT_STATUS} = :status_filter",
+        )
+        params["status_filter"] = status_filter
+
+    if keyword and keyword.strip():
+        sql_parts.append(
+            f"""
+            AND (
+                v.{PatrolReportConstants.COLUMN_CONTRACT_CODE} LIKE :keyword
+                OR v.{PatrolReportConstants.COLUMN_LOCATION_NAME} LIKE :keyword
+            )
+            """
+        )
+        params["keyword"] = f"%{keyword.strip()}%"
+
+    sql_parts.append(
+        f"""
+        ORDER BY
+            v.{PatrolReportConstants.COLUMN_WORKDAY} DESC,
             CASE
-                WHEN v.assignment_status = 'in_progress' THEN 1
-                WHEN v.assignment_status = 'pending' THEN 2
-                WHEN v.assignment_status = 'completed' THEN 3
-                ELSE 4
+                WHEN v.{PatrolReportConstants.COLUMN_ASSIGNMENT_STATUS}
+                    = '{PatrolReportConstants.STATUS_IN_PROGRESS}'
+                    THEN {PatrolReportConstants.STATUS_ORDER_IN_PROGRESS}
+                WHEN v.{PatrolReportConstants.COLUMN_ASSIGNMENT_STATUS}
+                    = '{PatrolReportConstants.STATUS_PENDING}'
+                    THEN {PatrolReportConstants.STATUS_ORDER_PENDING}
+                WHEN v.{PatrolReportConstants.COLUMN_ASSIGNMENT_STATUS}
+                    = '{PatrolReportConstants.STATUS_COMPLETED}'
+                    THEN {PatrolReportConstants.STATUS_ORDER_COMPLETED}
+                ELSE {PatrolReportConstants.STATUS_ORDER_OTHER}
             END,
-            v.contract_code,
-            v.location_name
+            v.{PatrolReportConstants.COLUMN_CONTRACT_CODE},
+            v.{PatrolReportConstants.COLUMN_LOCATION_NAME}
         """
     )
 
     statement = text("\n".join(sql_parts))
 
     try:
-        # ต้องรันใน session/connection เดียวกันก่อน SELECT รายงาน
-        # เพื่อให้ DATE_FORMAT(... %W ... %M ...) ใน vw_checkin_report แสดงวัน/เดือนเป็นภาษาไทย
-        db.execute(text("SET lc_time_names = 'th_TH'"))
+        db.execute(
+            text(
+                f"SET lc_time_names = '{PatrolReportConstants.MYSQL_THAI_LOCALE}'",
+            )
+        )
 
         rows = [
             dict(row)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
@@ -20,6 +20,8 @@ from app.services.patrol_report_service import (
 
 router = APIRouter()
 
+PlanMode = Literal["planned", "outside_plan"]
+
 
 @router.get(
     "/patrol/filter-options",
@@ -35,17 +37,52 @@ def read_patrol_report_filter_options(
 @router.get(
     "/patrol",
     response_model=list[PatrolReportResponse],
-    summary="รายงานงานสายตรวจประจำวัน",
+    summary="รายงานงานสายตรวจ",
 )
 def read_patrol_report(
+    # แยกตามแผน / นอกแผน
+    # planned = vw_checkin_report
+    # outside_plan = vw_checkin_unplanned
+    plan_mode: Annotated[
+        PlanMode,
+        Query(
+            description="ประเภทแผน planned=ตามแผน, outside_plan=นอกแผน",
+        ),
+    ] = "planned",
+
+    # รองรับ backend เดิม / frontend เดิม ที่ส่ง workday วันเดียว
     workday: Annotated[
-        date,
+        date | None,
         Query(description="วันที่รายงาน รูปแบบ YYYY-MM-DD"),
-    ],
+    ] = None,
+
+    # รองรับ frontend ใหม่แบบช่วงวันที่
+    workday_start: Annotated[
+        date | None,
+        Query(description="วันที่เริ่มต้น รูปแบบ YYYY-MM-DD"),
+    ] = None,
+    workday_end: Annotated[
+        date | None,
+        Query(description="วันที่สิ้นสุด รูปแบบ YYYY-MM-DD"),
+    ] = None,
+
+    # รองรับชื่อ param อีกแบบจาก frontend
+    start_date: Annotated[
+        date | None,
+        Query(description="วันที่เริ่มต้น รูปแบบ YYYY-MM-DD"),
+    ] = None,
+    end_date: Annotated[
+        date | None,
+        Query(description="วันที่สิ้นสุด รูปแบบ YYYY-MM-DD"),
+    ] = None,
+
+    # ไม่บังคับแล้ว
+    # ถ้า frontend เลือกผลัด = ทั้งหมด จะไม่ส่ง shift_id มา
     shift_id: Annotated[
-        int,
+        int | None,
         Query(ge=1, description="รหัสผลัด shift_id"),
-    ],
+    ] = None,
+
     department_id: Annotated[
         int | None,
         Query(ge=1, description="รหัสภาค department_id"),
@@ -87,7 +124,12 @@ def read_patrol_report(
 ) -> list[PatrolReportResponse]:
     return get_patrol_report_rows(
         db,
+        plan_mode=plan_mode,
         workday=workday,
+        workday_start=workday_start,
+        workday_end=workday_end,
+        start_date=start_date,
+        end_date=end_date,
         shift_id=shift_id,
         department_id=department_id,
         division_id=division_id,

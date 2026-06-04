@@ -68,10 +68,10 @@ type LocStatus =
 const ENABLE_FACE_VERIFY = false;
 
 const GEO = {
-  desiredAccuracyM: 25,
+  desiredAccuracyM: 50,
   maxAccuracyM: 10000,
-  watchWindowMs: 12000,
-  hardTimeoutMs: 40000,
+  watchWindowMs: 6000,
+  hardTimeoutMs: 15000,
 };
 
 function getBestPositionAsync(opts: {
@@ -109,6 +109,7 @@ function getBestPositionAsync(opts: {
 
     const finish = (ok: boolean, payload?: unknown) => {
       if (done) return;
+
       done = true;
 
       if (watchId != null) navigator.geolocation.clearWatch(watchId);
@@ -663,6 +664,18 @@ export default function AttendanceFaceVerify({
     ? faceVerifyFailed && !verifyErrorOpen
     : step === "confirm" && !busy && !successOpen && !checkInOutModalOpen;
 
+  /**
+   * ล็อกปุ่มย้อนกลับระหว่างระบบกำลังทำงาน
+   * โดยเฉพาะตอนกำลังตรวจสอบตำแหน่ง GPS
+   */
+  const isNavigationLocked = busy || locStatus === "checking";
+
+  function handleBackClick() {
+    if (isNavigationLocked) return;
+
+    onBack();
+  }
+
   return (
     <main className="guts-bg">
       <div className="guts-home">
@@ -802,8 +815,8 @@ export default function AttendanceFaceVerify({
 
             <div className={`guts-fv-bottom ${styles.fvBottom}`}>
               <BackButton
-                onClick={onBack}
-                disabled={busy}
+                onClick={handleBackClick}
+                disabled={isNavigationLocked}
                 className={`guts-fv-backBtn ${styles.fvBackBtn}`}
               />
             </div>

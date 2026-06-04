@@ -176,3 +176,9 @@ INVALID_CHECKPOINT_ASSIGNMENT_CALL_UPDATE_DETAIL: Final[str] = (
 PATROL_REPORT_FETCH_FAILED_DETAIL: Final[str] = (
     "Unable to fetch patrol report"
 )
+PATROL_REPORT_DATE_REQUIRED_DETAIL: Final[str] = (
+    "กรุณาระบุวันที่รายงาน"
+)
+PATROL_REPORT_INVALID_DATE_RANGE_DETAIL: Final[str] = (
+    "วันที่เริ่มต้นต้องไม่มากกว่าวันที่สิ้นสุด"
+)

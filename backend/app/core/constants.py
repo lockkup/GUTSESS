@@ -67,3 +67,53 @@ class DBConstants:
     DEFAULT_GRACE_METER: Final[int] = 0
 
     UNSIGNED_SMALLINT_MAX: Final[int] = 65535
+
+
+class PatrolReportConstants:
+    # Database view / table
+    VIEW_NAME: Final[str] = "vw_checkin_report"
+
+    # MySQL locale
+    MYSQL_THAI_LOCALE: Final[str] = "th_TH"
+
+    # Notification calculation
+    MAX_CYCLE_LENGTH_DAYS: Final[int] = 15
+
+    # Default display / state
+    DEFAULT_NOTIFICATION_LEVEL: Final[str] = "none"
+
+    # Patrol status values
+    STATUS_COMPLETED: Final[str] = "completed"
+    STATUS_IN_PROGRESS: Final[str] = "in_progress"
+    STATUS_PENDING: Final[str] = "pending"
+
+    # Patrol report order
+    STATUS_ORDER_IN_PROGRESS: Final[int] = 1
+    STATUS_ORDER_PENDING: Final[int] = 2
+    STATUS_ORDER_COMPLETED: Final[int] = 3
+    STATUS_ORDER_OTHER: Final[int] = 4
+
+    # Optional columns in vw_checkin_report
+    COLUMN_PLAN_DAY: Final[str] = "plan_day"
+    COLUMN_CONTACT_DETAIL: Final[str] = "contact_detail"
+    COLUMN_CALL_STATUS: Final[str] = "call_status"
+    COLUMN_CALL_NOTE: Final[str] = "call_note"
+
+    # Required report columns
+    COLUMN_CONTRACT_CODE: Final[str] = "contract_code"
+    COLUMN_LOCATION_NAME: Final[str] = "location_name"
+    COLUMN_SHIFT_NAME_TH: Final[str] = "shift_name_th"
+    COLUMN_ASSIGNMENT_STATUS: Final[str] = "assignment_status"
+    COLUMN_WORK_DATE: Final[str] = "work_date"
+    COLUMN_STARTED_AT: Final[str] = "started_at"
+    COLUMN_COMPLETED_AT: Final[str] = "completed_at"
+    COLUMN_EMPLOYEE_CODE: Final[str] = "employee_code"
+    COLUMN_POSITION_NAME: Final[str] = "position_name"
+    COLUMN_EFFECTIVE_FROM: Final[str] = "effective_from"
+    COLUMN_BY_CONTRACT: Final[str] = "by_contract"
+    COLUMN_WORKDAY: Final[str] = "workday"
+    COLUMN_DEPARTMENT_ID: Final[str] = "department_id"
+    COLUMN_DIVISION_ID: Final[str] = "division_id"
+    COLUMN_ROUTE_ID: Final[str] = "route_id"
+    COLUMN_LOCATION_ID: Final[str] = "location_id"
+    COLUMN_SHIFT_ID: Final[str] = "shift_id"

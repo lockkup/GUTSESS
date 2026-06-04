@@ -130,7 +130,7 @@ class TimeRecordService:
     ) -> bool:
         link_exists = (
             select(CheckpointAssignment.assignment_id)
-            .where(CheckpointAssignment.time_record_id == time_record_id)
+            .where(CheckpointAssignment.time_record_id == TimeRecord.time_record_id)
             .exists()
         )
 
@@ -146,7 +146,7 @@ class TimeRecordService:
         ดึงรายการลงเวลาเข้างานที่ยังไม่ออกงานของพนักงาน
 
         ใช้ employee_code + work_date
-        ไม่ใช้ shift_id แล้ว
+        ไม่ใช้ shift_id
         ไม่รวม time_record ที่ผูกกับ checkpoint_assignment
         """
 
@@ -261,7 +261,7 @@ class TimeRecordService:
         )
 
         """
-        ไม่ใช้ shift แล้ว:
+        ไม่ใช้ shift ในการคำนวณเวลาออก:
         - ถ้า checkout ส่งมาเป็น datetime เต็ม ระบบจะเทียบตามวันที่จริง
         - ถ้า checkout ส่งมาเป็นเวลาอย่างเดียว และน้อยกว่า checkin ให้ถือว่าออกวันถัดไป
         """
@@ -590,7 +590,15 @@ class TimeRecordService:
         )
 
         assignment_id = getattr(payload, "assignment_id", None)
+        shift_id = getattr(payload, "shift_id", None)
+
         assignment: CheckpointAssignment | None = None
+
+        if assignment_id is not None and shift_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="ไม่พบ shift_id สำหรับการลงเวลางานสายตรวจ",
+            )
 
         if assignment_id is not None:
             assignment, site_location = TimeRecordService._validate_assignment_location_gate(
@@ -632,12 +640,18 @@ class TimeRecordService:
 
         create_data = payload.model_dump(
             exclude={
+                "shift_id",
                 "assignment_id",
                 "current_latitude",
                 "current_longitude",
                 "gps_accuracy",
             }
         )
+
+        # กติกา:
+        # - มาจาก Checkpoint ต้องมี shift_id และบันทึกลง time_record.shift_id
+        # - มาจาก Attendance ปกติ ไม่เก็บ shift_id ให้เป็น None
+        create_data["shift_id"] = shift_id if assignment_id is not None else None
 
         create_data["checkin_location_id"] = site_location.location_id
         create_data["checkin_lat"] = payload.current_latitude
@@ -816,6 +830,7 @@ class TimeRecordService:
                 TimeRecordListItemResponse(
                     time_record_id=time_record.time_record_id,
                     work_date=time_record.work_date,
+                    shift_id=time_record.shift_id,
                     location_id=(
                         display_location.location_id if display_location else None
                     ),
@@ -866,7 +881,15 @@ class TimeRecordService:
         )
 
         assignment_id = getattr(payload, "assignment_id", None)
+        shift_id = getattr(payload, "shift_id", None)
+
         assignment: CheckpointAssignment | None = None
+
+        if assignment_id is not None and shift_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="ไม่พบ shift_id สำหรับการออกงานสายตรวจ",
+            )
 
         if assignment_id is not None:
             assignment, site_location = TimeRecordService._validate_assignment_location_gate(
@@ -902,12 +925,19 @@ class TimeRecordService:
         update_data = payload.model_dump(
             exclude_unset=True,
             exclude={
+                "shift_id",
                 "assignment_id",
                 "current_latitude",
                 "current_longitude",
                 "gps_accuracy",
             },
         )
+
+        # กติกา:
+        # - ออกงานจาก Checkpoint ให้บันทึก/อัปเดต shift_id
+        # - ออกงาน Attendance ปกติ ไม่แตะ shift_id
+        if assignment_id is not None:
+            update_data["shift_id"] = shift_id
 
         update_data["checkout_location_id"] = site_location.location_id
         update_data["checkout_lat"] = payload.current_latitude

@@ -63,6 +63,10 @@ class TimeRecordBase(BaseModel):
 
 class TimeRecordCheckIn(TimeRecordBase):
     # ใช้เฉพาะกรณีมาจากตารางงานสายตรวจ
+    # ถ้าเป็นลงเวลาเข้า-ออกงานปกติ ไม่ต้องส่ง shift_id
+    shift_id: int | None = Field(default=None, gt=0)
+
+    # ใช้เฉพาะกรณีมาจากตารางงานสายตรวจ
     # ถ้าเป็นลงเวลาเข้า-ออกงานปกติ ไม่ต้องส่ง assignment_id
     assignment_id: int | None = Field(default=None, gt=0)
 
@@ -114,6 +118,10 @@ class TimeRecordCheckOut(BaseModel):
         extra="forbid",
         str_strip_whitespace=True,
     )
+
+    # ใช้เฉพาะกรณีออกงานจากตารางงานสายตรวจ
+    # ถ้าเป็นออกงานปกติ ไม่ต้องส่ง shift_id
+    shift_id: int | None = Field(default=None, gt=0)
 
     # ใช้เฉพาะกรณีออกงานจากตารางงานสายตรวจ
     # ถ้าเป็นออกงานปกติ ไม่ต้องส่ง assignment_id
@@ -171,6 +179,10 @@ class TimeRecordResponse(TimeRecordBase):
 
     time_record_id: int
 
+    # ใช้รองรับข้อมูลรายงานตามผลัด
+    # ข้อมูลเก่าหรือ attendance ปกติ อาจเป็น NULL
+    shift_id: int | None = None
+
     checkin_location_id: int | None = None
     checkout_location_id: int | None = None
 
@@ -206,6 +218,9 @@ class TimeRecordListItemResponse(BaseModel):
 
     time_record_id: int
     work_date: date
+
+    # เผื่อ list-items ส่ง shift_id กลับมาด้วย
+    shift_id: int | None = None
 
     location_id: int | None = None
 

@@ -60,7 +60,10 @@ class PatrolReportResponse(BaseModel):
     # orange  = ส้ม
     # red     = แดง
     # green   = เข้าตรวจแล้ว จาก time_record
-    notificationLevel: PatrolNotificationLevel = "none"
+    #
+    # ให้เป็น None ได้ เพื่อรองรับกรณี Backend ไม่มีการแจ้งเตือนในรอบนั้น
+    # Frontend มี normalizeNotificationLevel() แปลง None เป็น "none" อยู่แล้ว
+    notificationLevel: PatrolNotificationLevel | None = "none"
     notificationText: str | None = None
 
     # shift_name_th -> shiftLabel
@@ -156,8 +159,8 @@ class PatrolReportFilterOptionsResponse(BaseModel):
         str_strip_whitespace=True,
     )
 
-    departments: list[PatrolDepartmentOption] = []
-    divisions: list[PatrolDivisionOption] = []
-    routes: list[PatrolRouteOption] = []
-    locations: list[PatrolLocationOption] = []
-    employees: list[PatrolEmployeeOption] = []
+    departments: list[PatrolDepartmentOption] = Field(default_factory=list)
+    divisions: list[PatrolDivisionOption] = Field(default_factory=list)
+    routes: list[PatrolRouteOption] = Field(default_factory=list)
+    locations: list[PatrolLocationOption] = Field(default_factory=list)
+    employees: list[PatrolEmployeeOption] = Field(default_factory=list)

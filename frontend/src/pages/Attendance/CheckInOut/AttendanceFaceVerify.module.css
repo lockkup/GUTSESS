@@ -139,9 +139,24 @@
   box-shadow: 0 16px 26px rgba(0, 0, 0, 0.12);
 }
 
+.fvPrimary:hover:not(:disabled) {
+  filter: brightness(1.03);
+}
+
+.fvPrimary:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+/* สี disabled ให้ตรงกับ CheckInOut.module.css */
 .fvPrimary:disabled {
-  opacity: 0.7;
   cursor: not-allowed;
+  opacity: 1;
+  color: #ffffff;
+  background: linear-gradient(90deg, #cbd5e1, #94a3b8);
+  box-shadow: none;
+  transform: none;
+  filter: none;
+  pointer-events: none;
 }
 
 .fvPrimaryIcon {
@@ -169,6 +184,25 @@
   box-shadow: 0 16px 26px rgba(0, 0, 0, 0.12);
 }
 
+.fvSecondary:hover:not(:disabled) {
+  filter: brightness(1.03);
+}
+
+.fvSecondary:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.fvSecondary:disabled {
+  cursor: not-allowed;
+  opacity: 1;
+  color: #ffffff;
+  background: linear-gradient(90deg, #cbd5e1, #94a3b8);
+  box-shadow: none;
+  transform: none;
+  filter: none;
+  pointer-events: none;
+}
+
 .fvBottom {
   margin-top: 12px;
   display: grid;
@@ -190,15 +224,29 @@
   box-shadow: 0 10px 16px rgba(0, 0, 0, 0.22);
   transition:
     transform 0.08s ease,
-    opacity 0.15s ease;
+    opacity 0.15s ease,
+    filter 0.15s ease;
 }
 
-.fvBackBtn:hover {
+.fvBackBtn:hover:not(:disabled) {
   opacity: 0.92;
 }
 
-.fvBackBtn:active {
+.fvBackBtn:active:not(:disabled) {
   transform: translateY(1px);
+}
+
+/* ปุ่มย้อนกลับตอน disabled ให้เป็นสีเทาแบบเดียวกับปุ่มเข้างาน/ออกงาน */
+.fvBackBtn:disabled {
+  cursor: not-allowed;
+  opacity: 1;
+  color: #ffffff;
+  border-color: transparent;
+  background: linear-gradient(90deg, #cbd5e1, #94a3b8);
+  box-shadow: none;
+  transform: none;
+  filter: none;
+  pointer-events: none;
 }
 
 .fvEmpty {

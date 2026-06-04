@@ -1,7 +1,9 @@
+/* src/pages/Attendance/Checkpoint/Checkpoint.module.css */
+
 :root {
   --checkpoint-title-size: 23px;
   --checkpoint-round-size: 16px;
-  --checkpoint-shift-size: 18px;
+  --checkpoint-shift-size: 16px;
 
   --checkpoint-head-size: 12px;
   --checkpoint-table-size: 12px;
@@ -191,6 +193,22 @@
 
 .headRow .headCell:last-child {
   border-right: none;
+}
+
+.callHeadText {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  line-height: 1.15;
+  text-align: center;
+  white-space: normal;
+}
+
+.callHeadText span {
+  display: block;
+  white-space: nowrap;
 }
 
 .unitCell,

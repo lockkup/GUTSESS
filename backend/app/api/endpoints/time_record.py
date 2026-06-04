@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from datetime import date
 
-from fastapi import APIRouter, Depends, Path, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from sqlalchemy.orm import Session
 
 from app.core import get_db
 from app.core.constants import DBConstants
+from app.core.error_messages import OPEN_TIME_RECORD_NOT_FOUND_DETAIL
 from app.schemas.time_record import (
     TimeRecordCheckIn,
     TimeRecordCheckOut,
@@ -18,6 +19,18 @@ from app.schemas.time_record import (
 from app.services.time_record import TimeRecordService
 
 router = APIRouter(tags=["Time Records"])
+
+
+def _is_open_time_record_not_found(error: HTTPException) -> bool:
+    """
+    ใช้แยกกรณี:
+    - ไม่พบรายการลงเวลาเข้างานที่ยังค้างอยู่ = สถานะปกติ ให้คืน 200 null
+    - ไม่พบ employee / ไม่พบข้อมูลอื่น ๆ = ยังต้องปล่อยเป็น 404 ตามเดิม
+    """
+    return (
+        error.status_code == status.HTTP_404_NOT_FOUND
+        and error.detail == OPEN_TIME_RECORD_NOT_FOUND_DETAIL
+    )
 
 
 @router.post(
@@ -41,10 +54,15 @@ def create_time_record(
 #
 # ใช้ employee_code + work_date
 # ไม่ใช้ shift_id แล้ว
+#
+# เชิงระบบ:
+# - ถ้ามีรายการค้าง      => 200 + TimeRecordResponse
+# - ถ้าไม่มีรายการค้าง  => 200 + null
+# - ถ้า employee ไม่มีจริง => 404 ตามเดิม
 # =========================================================
 @router.get(
     "/open/attendance/{employee_code}",
-    response_model=TimeRecordResponse,
+    response_model=TimeRecordResponse | None,
     status_code=status.HTTP_200_OK,
 )
 def get_open_attendance_time_record_by_employee(
@@ -58,12 +76,18 @@ def get_open_attendance_time_record_by_employee(
         description="วันที่ปฏิบัติงานปัจจุบัน รูปแบบ YYYY-MM-DD",
     ),
     db: Session = Depends(get_db),
-) -> TimeRecordResponse:
-    return TimeRecordService.get_open_attendance_time_record_by_employee(
-        db=db,
-        employee_code=employee_code,
-        work_date=work_date,
-    )
+) -> TimeRecordResponse | None:
+    try:
+        return TimeRecordService.get_open_attendance_time_record_by_employee(
+            db=db,
+            employee_code=employee_code,
+            work_date=work_date,
+        )
+    except HTTPException as error:
+        if _is_open_time_record_not_found(error):
+            return None
+
+        raise
 
 
 # =========================================================
@@ -71,10 +95,15 @@ def get_open_attendance_time_record_by_employee(
 # ใช้กับเมนู "ตารางงานสายตรวจ"
 # ต้องดึง time_record ผ่าน checkpoint_assignment.time_record_id
 # จาก assignment_id ที่เลือก
+#
+# เชิงระบบ:
+# - ถ้ามีรายการค้าง      => 200 + TimeRecordResponse
+# - ถ้าไม่มีรายการค้าง  => 200 + null
+# - ถ้า employee / assignment ผิดจริง => 404 หรือ error ตามเดิม
 # =========================================================
 @router.get(
     "/open/checkpoint/{employee_code}/{assignment_id}",
-    response_model=TimeRecordResponse,
+    response_model=TimeRecordResponse | None,
     status_code=status.HTTP_200_OK,
 )
 def get_open_checkpoint_time_record_by_employee(
@@ -85,12 +114,18 @@ def get_open_checkpoint_time_record_by_employee(
     ),
     assignment_id: int = Path(..., gt=0),
     db: Session = Depends(get_db),
-) -> TimeRecordResponse:
-    return TimeRecordService.get_open_checkpoint_time_record_by_employee(
-        db=db,
-        employee_code=employee_code,
-        assignment_id=assignment_id,
-    )
+) -> TimeRecordResponse | None:
+    try:
+        return TimeRecordService.get_open_checkpoint_time_record_by_employee(
+            db=db,
+            employee_code=employee_code,
+            assignment_id=assignment_id,
+        )
+    except HTTPException as error:
+        if _is_open_time_record_not_found(error):
+            return None
+
+        raise
 
 
 # =========================================================
@@ -99,10 +134,15 @@ def get_open_checkpoint_time_record_by_employee(
 #
 # ปรับให้รับแค่ work_date เหมือน /open/attendance
 # ไม่ใช้ shift_id แล้ว
+#
+# เชิงระบบ:
+# - ถ้ามีรายการค้าง      => 200 + TimeRecordResponse
+# - ถ้าไม่มีรายการค้าง  => 200 + null
+# - ถ้า employee ไม่มีจริง => 404 ตามเดิม
 # =========================================================
 @router.get(
     "/open/{employee_code}",
-    response_model=TimeRecordResponse,
+    response_model=TimeRecordResponse | None,
     status_code=status.HTTP_200_OK,
 )
 def get_open_time_record_by_employee(
@@ -116,12 +156,18 @@ def get_open_time_record_by_employee(
         description="วันที่ปฏิบัติงานปัจจุบัน รูปแบบ YYYY-MM-DD",
     ),
     db: Session = Depends(get_db),
-) -> TimeRecordResponse:
-    return TimeRecordService.get_open_attendance_time_record_by_employee(
-        db=db,
-        employee_code=employee_code,
-        work_date=work_date,
-    )
+) -> TimeRecordResponse | None:
+    try:
+        return TimeRecordService.get_open_attendance_time_record_by_employee(
+            db=db,
+            employee_code=employee_code,
+            work_date=work_date,
+        )
+    except HTTPException as error:
+        if _is_open_time_record_not_found(error):
+            return None
+
+        raise
 
 
 @router.get(

@@ -20,12 +20,10 @@ export default function Header({
     <header className={styles.header}>
       <h1 className={styles.logo}>
         <span className={styles.logoGuts}>GUTS</span>{" "}
-        <span className={styles.logoEss}>ESS</span>
       </h1>
 
       <div className={styles.subEn}>Employee Self Service</div>
       <div className={styles.subTh}>ระบบบริการตนเอง</div>
-      <div className={styles.subSmall}>สำหรับสายตรวจ</div>
 
       {showUserCard && (
         <div className={styles.usercard} role="status" aria-label="ผู้ใช้งาน">

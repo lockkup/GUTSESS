@@ -50,6 +50,14 @@ type SelectedCheckpoint = {
   unitName: string;
   mode: CheckpointActionMode;
   passedLocation: PassedLocation;
+
+  /**
+   * ใช้เฉพาะกรณีมาจากหน้า Checkpoint
+   * day = 1, night = 2
+   * ใช้บันทึกลง time_record.shift_id เพื่อใช้ตอนทำรายงาน
+   */
+  shiftId: number;
+
   workDate?: string | null;
 };
 
@@ -58,6 +66,12 @@ type GoCheckInOutPayload = {
   unitName: string;
   mode: CheckpointActionMode;
   passedLocation: PassedLocation;
+
+  /**
+   * รับมาจากหน้า Checkpoint
+   */
+  shiftId: number;
+
   workDate?: string | null;
 };
 
@@ -261,7 +275,7 @@ export default function App() {
       const context = makeAttendanceTimeContext();
 
       setAttendanceTimeContext(context);
-      await loadOpenAttendanceTimeRecord(empCode, context);
+      clearCheckInOutTimeState();
     } catch (error) {
       alert(error instanceof Error ? error.message : "โหลดชื่อพนักงานไม่สำเร็จ");
       return;
@@ -286,6 +300,10 @@ export default function App() {
   }
 
   async function goDirectCheckInOut() {
+    /**
+     * กรณีกดเมนู "ลงเวลา เข้า-ออกงาน" จากหน้า Home
+     * ไม่ต้องมี shift_id
+     */
     setSelectedCheckpoint(null);
 
     const context = makeAttendanceTimeContext();
@@ -304,11 +322,16 @@ export default function App() {
   }
 
   async function goCheckInOut(payload: GoCheckInOutPayload) {
+    /**
+     * กรณีมาจากหน้า Checkpoint
+     * ต้องเก็บ shiftId ต่อ เพื่อบันทึกลง time_record.shift_id
+     */
     setSelectedCheckpoint({
       assignmentId: payload.assignmentId,
       unitName: payload.unitName,
       mode: payload.mode,
       passedLocation: payload.passedLocation,
+      shiftId: payload.shiftId,
       workDate: payload.workDate ?? formatWorkDate(),
     });
 
@@ -339,6 +362,10 @@ export default function App() {
       workDate?: string | null;
     },
   ) {
+    /**
+     * กรณี attendance ปกติ
+     * ล้าง selectedCheckpoint เพื่อไม่ให้มี shiftId ติดไป
+     */
     setSelectedCheckpoint(null);
 
     const context = makeAttendanceTimeContext({
@@ -356,6 +383,7 @@ export default function App() {
       assignmentId?: number | null;
       unitName?: string | null;
       passedLocation?: PassedLocation | null;
+      shiftId?: number | null;
       workDate?: string | null;
     },
   ) {
@@ -370,6 +398,13 @@ export default function App() {
         return;
       }
 
+      const resolvedShiftId = payload.shiftId ?? selectedCheckpoint?.shiftId;
+
+      if (!resolvedShiftId) {
+        alert("ไม่พบข้อมูลผลัด กรุณากลับไปเลือกผลัดจากตารางงานสายตรวจก่อน");
+        return;
+      }
+
       const resolvedWorkDate =
         payload.workDate ?? selectedCheckpoint?.workDate ?? formatWorkDate();
 
@@ -378,6 +413,7 @@ export default function App() {
         unitName: payload.unitName ?? "",
         mode: type === "in" ? "checkin" : "checkout",
         passedLocation,
+        shiftId: resolvedShiftId,
         workDate: resolvedWorkDate,
       });
     }
@@ -443,6 +479,10 @@ export default function App() {
           throw new Error("มีการลงเวลาเข้างานค้างไว้แล้วในระบบ");
         }
 
+        /**
+         * attendance ปกติ:
+         * ไม่ส่ง shift_id
+         */
         const createPayload = {
           employee_code: empCode,
           work_date: workDate,
@@ -480,6 +520,10 @@ export default function App() {
           throw new Error("ไม่พบข้อมูลการเข้างานเพื่อทำการออกงาน");
         }
 
+        /**
+         * attendance ปกติ:
+         * ไม่ส่ง shift_id
+         */
         const updatePayload = {
           current_latitude: location.latitude,
           current_longitude: location.longitude,
@@ -503,6 +547,11 @@ export default function App() {
           updatePayload,
         );
 
+        /**
+         * ออกงานสำเร็จ:
+         * ให้บันทึกค่าไว้ก่อน เพื่อให้ popup success ทำงานตาม flow เดิม
+         * หลังผู้ใช้กด "ตกลง" จะไปเคลียร์ state และกลับ Home ใน goCheckInOutFromFaceVerify()
+         */
         setOpenTimeRecord(null);
         setLastInAt(updated.checkin ?? null);
         setLastOutAt(updated.checkout ?? null);
@@ -532,6 +581,14 @@ export default function App() {
       );
     }
 
+    const checkpointShiftId = selectedCheckpoint?.shiftId ?? null;
+
+    if (!checkpointShiftId) {
+      throw new Error(
+        "ไม่พบข้อมูลผลัด กรุณากลับไปเลือกผลัดจากตารางงานสายตรวจก่อน",
+      );
+    }
+
     try {
       setIsSubmitting(true);
 
@@ -554,11 +611,17 @@ export default function App() {
           throw new Error("มีการลงเวลาเข้างานค้างไว้แล้วในระบบ");
         }
 
+        /**
+         * checkpoint:
+         * ส่ง shift_id ไปบันทึกลง time_record เพื่อใช้ตอนทำรายงาน
+         */
         const createPayload = {
           employee_code: empCode,
           work_date: workDate,
 
+          shift_id: checkpointShiftId,
           assignment_id: location.assignmentId,
+
           current_latitude: location.latitude,
           current_longitude: location.longitude,
           gps_accuracy: location.accuracy ?? null,
@@ -571,6 +634,7 @@ export default function App() {
 
           created_by: empCode,
         } as Parameters<typeof timeRecordService.createTimeRecord>[0] & {
+          shift_id: number;
           assignment_id: number;
           current_latitude: number;
           current_longitude: number;
@@ -593,8 +657,14 @@ export default function App() {
           throw new Error("ไม่พบข้อมูลการเข้างานเพื่อทำการออกงาน");
         }
 
+        /**
+         * checkpoint:
+         * ส่ง shift_id ไปตอน update ด้วย เพื่อกันข้อมูลเดิมไม่มี shift_id
+         */
         const updatePayload = {
+          shift_id: checkpointShiftId,
           assignment_id: location.assignmentId,
+
           current_latitude: location.latitude,
           current_longitude: location.longitude,
           gps_accuracy: location.accuracy ?? null,
@@ -607,6 +677,7 @@ export default function App() {
 
           updated_by: empCode,
         } as Parameters<typeof timeRecordService.updateTimeRecord>[1] & {
+          shift_id: number;
           assignment_id: number;
           current_latitude: number;
           current_longitude: number;
@@ -633,7 +704,39 @@ export default function App() {
     }
   }
 
+  /**
+   * ใช้หลังออกงาน attendance สำเร็จ แล้วกด "ตกลง"
+   * ต้องกลับหน้า Home และเคลียร์สถานะปุ่ม disabled
+   *
+   * ผลลัพธ์:
+   * - กลับหน้า Home
+   * - ล้าง lastInAt / lastOutAt
+   * - ล้าง open record
+   * - พอกดเมนูลงเวลาอีกครั้ง จะขึ้นหน้าเริ่มต้น
+   */
+  function goHomeAfterAttendanceCheckout() {
+    setSelectedCheckpoint(null);
+
+    const context = makeAttendanceTimeContext();
+
+    setAttendanceTimeContext(context);
+    clearCheckInOutTimeState();
+    setPunchType("in");
+
+    reset("home");
+  }
+
   function goCheckInOutFromFaceVerify() {
+    /**
+     * กรณีเมนู "ลงเวลา เข้า-ออกงาน" ปกติ
+     * หลังออกงานสำเร็จและกดตกลงใน SuccessModal
+     * ให้กลับหน้า Home ไม่กลับหน้า CheckInOut
+     */
+    if (!selectedCheckpoint && punchType === "out") {
+      goHomeAfterAttendanceCheckout();
+      return;
+    }
+
     setStack((s) => {
       const prev = s[s.length - 2];
 
@@ -730,6 +833,7 @@ export default function App() {
           assignmentId={selectedCheckpoint?.assignmentId ?? null}
           unitName={selectedCheckpoint?.unitName ?? null}
           passedLocation={selectedCheckpoint?.passedLocation ?? null}
+          shiftId={selectedCheckpoint?.shiftId ?? null}
           lastInAt={
             selectedCheckpoint
               ? isCheckpointCheckout

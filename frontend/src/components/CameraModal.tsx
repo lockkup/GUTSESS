@@ -1,3 +1,5 @@
+// src/components/CameraModal.tsx
+
 import { useEffect, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCamera } from "@fortawesome/free-solid-svg-icons";
@@ -58,6 +60,12 @@ export default function CameraModal({
     }
   };
 
+  const handleClose = () => {
+    if (busy || errorState) return;
+
+    onClose();
+  };
+
   const getCameraErrorMessage = (error: unknown) => {
     const err = error as DOMException | undefined;
 
@@ -65,17 +73,22 @@ export default function CameraModal({
       case "NotAllowedError":
       case "PermissionDeniedError":
         return "เปิดกล้องไม่สำเร็จ กรุณาอนุญาตการใช้กล้อง";
+
       case "NotFoundError":
       case "DevicesNotFoundError":
         return "เปิดกล้องไม่สำเร็จ ไม่พบอุปกรณ์กล้อง";
+
       case "NotReadableError":
       case "TrackStartError":
         return "เปิดกล้องไม่สำเร็จ กล้องกำลังถูกใช้งานโดยโปรแกรมอื่น";
+
       case "OverconstrainedError":
       case "ConstraintNotSatisfiedError":
         return "เปิดกล้องไม่สำเร็จ อุปกรณ์นี้ไม่รองรับการตั้งค่ากล้อง";
+
       case "AbortError":
         return "เปิดกล้องไม่สำเร็จ กรุณาลองใหม่อีกครั้ง";
+
       default:
         return "เปิดกล้องไม่สำเร็จ กรุณาตรวจสอบการตั้งค่ากล้อง";
     }
@@ -85,13 +98,19 @@ export default function CameraModal({
     if (!open || !closeOnEsc) return;
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (errorState) return;
-      if (e.key === "Escape") onClose();
+      if (errorState || busy) return;
+
+      if (e.key === "Escape") {
+        onClose();
+      }
     };
 
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open, closeOnEsc, onClose, errorState]);
+
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open, closeOnEsc, onClose, errorState, busy]);
 
   useEffect(() => {
     if (!open) return;
@@ -140,6 +159,7 @@ export default function CameraModal({
         streamRef.current = stream;
 
         const video = videoRef.current;
+
         if (!video) return;
 
         video.srcObject = stream;
@@ -152,6 +172,7 @@ export default function CameraModal({
         await video.play();
 
         if (canceled) return;
+
         setIsReady(true);
       } catch (error) {
         console.error("open camera failed:", error);
@@ -208,9 +229,10 @@ export default function CameraModal({
       onClose();
     } catch (error) {
       hasCapturedRef.current = false;
+
       showError(
         error instanceof Error ? error.message : "ถ่ายภาพไม่สำเร็จ",
-        false
+        false,
       );
     } finally {
       setBusy(false);
@@ -227,17 +249,20 @@ export default function CameraModal({
       aria-label="เปิดกล้องถ่ายภาพ"
       onMouseDown={(e) => {
         if (!closeOnBackdrop) return;
-        if (errorState) return;
-        if (e.target === e.currentTarget) onClose();
+        if (errorState || busy) return;
+
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
       }}
     >
       <div className={styles.modal} onMouseDown={(e) => e.stopPropagation()}>
         <button
           type="button"
           className={styles.close}
-          onClick={onClose}
+          onClick={handleClose}
           aria-label="ปิด"
-          disabled={!!errorState}
+          disabled={busy || !!errorState}
         >
           ×
         </button>
@@ -270,7 +295,9 @@ export default function CameraModal({
           >
             <div className={styles.errorCard}>
               <div className={styles.errorTitle}>แจ้งเตือน</div>
+
               <div className={styles.errorMessage}>{errorState.message}</div>
+
               <button
                 type="button"
                 className={styles.errorBtn}

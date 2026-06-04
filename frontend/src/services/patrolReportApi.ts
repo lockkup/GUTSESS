@@ -3,6 +3,8 @@
 import api from "@/lib/api";
 
 export type PatrolStatus = "completed" | "in_progress" | "pending";
+export type ReportPlanMode = "planned" | "outside_plan";
+
 export type PatrolNotificationLevel =
   | "none"
   | "green"
@@ -215,10 +217,23 @@ type PatrolReportFilterOptionsApiResponse = {
 };
 
 export type GetPatrolReportParams = {
+  // คง workday ไว้รองรับ backend เดิม
   workday: string;
-  shiftId: number;
 
-  // ไม่บังคับแล้ว เพื่อให้ค่าเริ่มต้น ภาค/เขต ว่างได้
+  // แยกตามแผน / นอกแผน
+  planMode?: ReportPlanMode;
+  plan_mode?: ReportPlanMode;
+
+  // รองรับ backend ใหม่แบบช่วงวันที่
+  workdayStart?: string;
+  workdayEnd?: string;
+  startDate?: string;
+  endDate?: string;
+
+  // ไม่บังคับแล้ว เพื่อให้เลือกผลัด = ทั้งหมด ได้
+  shiftId?: number;
+
+  // ไม่บังคับ เพื่อให้ค่าเริ่มต้น ภาค/เขต ว่างได้
   departmentId?: number;
   divisionId?: number;
 
@@ -478,6 +493,12 @@ export async function getPatrolReportFilterOptions() {
 
 export async function getPatrolReport({
   workday,
+  planMode,
+  plan_mode,
+  workdayStart,
+  workdayEnd,
+  startDate,
+  endDate,
   departmentId,
   divisionId,
   shiftId,
@@ -489,8 +510,33 @@ export async function getPatrolReport({
 }: GetPatrolReportParams) {
   const params: Record<string, string | number> = {
     workday,
-    shift_id: shiftId,
   };
+
+  const selectedPlanMode = planMode ?? plan_mode;
+
+  if (selectedPlanMode) {
+    params.plan_mode = selectedPlanMode;
+  }
+
+  if (workdayStart?.trim()) {
+    params.workday_start = workdayStart.trim();
+  }
+
+  if (workdayEnd?.trim()) {
+    params.workday_end = workdayEnd.trim();
+  }
+
+  if (startDate?.trim()) {
+    params.start_date = startDate.trim();
+  }
+
+  if (endDate?.trim()) {
+    params.end_date = endDate.trim();
+  }
+
+  if (shiftId !== undefined) {
+    params.shift_id = shiftId;
+  }
 
   if (departmentId !== undefined) {
     params.department_id = departmentId;

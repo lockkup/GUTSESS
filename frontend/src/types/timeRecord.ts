@@ -5,6 +5,13 @@ export type TimeRecord = {
   employee_code: string;
   work_date: string;
 
+  /**
+   * ใช้เฉพาะกรณี time_record ที่มาจาก "ตารางงานสายตรวจ"
+   * - attendance ปกติ: อาจเป็น null
+   * - checkpoint: ควรมีค่า 1 = กลางวัน, 2 = กลางคืน
+   */
+  shift_id?: number | null;
+
   checkin_location_id?: number | null;
   checkout_location_id?: number | null;
 
@@ -35,6 +42,17 @@ export type TimeRecordCheckIn = {
   /**
    * ใช้เฉพาะกรณีมาจาก "ตารางงานสายตรวจ"
    * - attendance ปกติ: ไม่ต้องส่ง
+   * - checkpoint: ส่ง shift_id เพื่อใช้ตอนทำรายงาน
+   *
+   * ค่า:
+   * 1 = ผลัดกลางวัน
+   * 2 = ผลัดกลางคืน
+   */
+  shift_id?: number | null;
+
+  /**
+   * ใช้เฉพาะกรณีมาจาก "ตารางงานสายตรวจ"
+   * - attendance ปกติ: ไม่ต้องส่ง
    * - checkpoint: ส่ง assignment_id เพื่อให้ backend ตรวจ GPS และผูก time_record_id กับ checkpoint_assignment
    */
   assignment_id?: number | null;
@@ -58,6 +76,17 @@ export type TimeRecordCheckIn = {
 };
 
 export type TimeRecordCheckOut = {
+  /**
+   * ใช้เฉพาะกรณีออกงานจาก "ตารางงานสายตรวจ"
+   * - attendance ปกติ: ไม่ต้องส่ง
+   * - checkpoint: ส่ง shift_id เพื่อใช้ตอนทำรายงาน
+   *
+   * ค่า:
+   * 1 = ผลัดกลางวัน
+   * 2 = ผลัดกลางคืน
+   */
+  shift_id?: number | null;
+
   /**
    * ใช้เฉพาะกรณีออกงานจาก "ตารางงานสายตรวจ"
    * - attendance ปกติ: ไม่ต้องส่ง
@@ -94,4 +123,9 @@ export type GetTimeRecordsParams = {
   work_date?: string;
   start_date?: string;
   end_date?: string;
+
+  /**
+   * เผื่อใช้ filter รายงาน / debug ตามผลัด
+   */
+  shift_id?: number;
 };

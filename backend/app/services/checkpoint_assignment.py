@@ -6,7 +6,7 @@ from typing import Any, ClassVar, Final, Literal
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
-from sqlalchemy import and_, exists, or_, select
+from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -27,7 +27,6 @@ from app.models.checkpoint_assignment_call import CheckpointAssignmentCall
 from app.models.checkpoint_schedule_item import CheckpointScheduleItem
 from app.models.employees import Employees
 from app.models.route_site_location import RouteSiteLocation
-from app.models.shift import Shift
 from app.models.site_location import SiteLocation
 from app.schemas.checkpoint_assignment import (
     AssignmentStatus,
@@ -428,6 +427,9 @@ class CheckpointAssignmentService:
             .where(
                 CheckpointAssignmentCall.assignment_id
                 == CheckpointAssignment.assignment_id,
+                func.date(CheckpointAssignmentCall.created_at)
+                == CheckpointAssignment.work_date,
+                CheckpointAssignmentCall.is_active.is_(True),
                 CheckpointAssignmentCall.mark_flag.is_(False),
             )
             .label("has_call")
@@ -504,31 +506,11 @@ class CheckpointAssignmentService:
             )
 
         if shift_type is not None:
-            stmt = stmt.join(
-                Shift,
-                CheckpointScheduleItem.shift_id == Shift.shift_id,
+            target_shift_id = 1 if shift_type == "day" else 2
+
+            stmt = stmt.where(
+                CheckpointScheduleItem.shift_id == target_shift_id
             )
-
-            if not include_deleted:
-                stmt = stmt.where(Shift.mark_flag.is_(False))
-
-            if is_active is not None:
-                stmt = stmt.where(Shift.is_active.is_(is_active))
-
-            if shift_type == "day":
-                stmt = stmt.where(
-                    or_(
-                        Shift.shift_name_th.ilike("%กลางวัน%"),
-                        Shift.shift_name_en.ilike("%day%"),
-                    )
-                )
-            else:
-                stmt = stmt.where(
-                    or_(
-                        Shift.shift_name_th.ilike("%กลางคืน%"),
-                        Shift.shift_name_en.ilike("%night%"),
-                    )
-                )
 
         stmt = stmt.order_by(
             CheckpointAssignment.work_date.asc(),

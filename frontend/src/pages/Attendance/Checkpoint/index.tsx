@@ -36,6 +36,11 @@ export type PassedLocation = {
 export type GoCheckInOutPayload = {
   assignmentId: number;
   unitName: string;
+
+  // ใช้ส่งต่อไปหน้า CheckInOut เพื่อบันทึกลง time_record.shift_id
+  // day = 1, night = 2
+  shiftId: number;
+
   mode: CheckInOutMode;
   passedLocation: PassedLocation;
 };
@@ -56,6 +61,11 @@ type CheckRow = {
   status: RowStatus;
   requireCall: boolean;
   hasCall: boolean;
+};
+
+const SHIFT_ID_BY_TYPE: Record<ShiftType, number> = {
+  day: 1,
+  night: 2,
 };
 
 const statusText: Record<RowStatus, string> = {
@@ -82,8 +92,8 @@ const statusOrder: Record<RowStatus, number> = {
  * maxAccuracyM: 30,
  */
 const GEO = {
-  desiredAccuracyM: 50,
-  maxAccuracyM: 100,
+  desiredAccuracyM: 500,
+  maxAccuracyM: 1000,
   watchWindowMs: 6000,
   hardTimeoutMs: 15000,
 };
@@ -507,6 +517,7 @@ export default function Checkpoint({
     onGoCheckInOut({
       assignmentId: row.assignmentId,
       unitName: row.unitName,
+      shiftId: SHIFT_ID_BY_TYPE[selectedShift],
       mode,
       passedLocation,
     });
@@ -633,7 +644,14 @@ export default function Checkpoint({
                   <div className={`${styles.cell} ${styles.headCell}`}>
                     หน่วยงาน
                   </div>
-                  <div className={`${styles.cell} ${styles.headCell}`}>แผน</div>
+
+                  <div className={`${styles.cell} ${styles.headCell}`}>
+                    <span className={styles.callHeadText}>
+                      <span>บันทึก</span>
+                      <span>การโทร</span>
+                    </span>
+                  </div>
+
                   <div className={`${styles.cell} ${styles.headCell}`}>
                     ปุ่มดำเนินการ
                   </div>
@@ -704,8 +722,6 @@ export default function Checkpoint({
 
                         <div className={`${styles.cell} ${styles.planCell}`}>
                           <div className={styles.planInline}>
-                            <span className={styles.planText}>{row.plan}</span>
-
                             {showCallButton && (
                               <button
                                 type="button"

@@ -30,9 +30,12 @@ export type CheckInOutPayload = {
   passedLocation?: PassedLocation | null;
 
   /**
-   * ส่งให้ parent ใช้ต่อ
-   * ไม่ใช้ shift ในหน้านี้
+   * ใช้เฉพาะกรณีมาจากหน้า Checkpoint
+   * - checkpoint: ต้องมี shiftId เพื่อบันทึกลง time_record.shift_id
+   * - attendance: ไม่ต้องส่ง shiftId / ส่งเป็น null
    */
+  shiftId?: number | null;
+
   workDate?: string | null;
 };
 
@@ -41,7 +44,7 @@ type Props = {
   displayName?: string;
 
   /**
-   * attendance = ลงเวลาเข้า-ออกงานปกติ
+   * attendance = ลงเวลาเข้า-ออกงานปกติจากหน้า Home
    * checkpoint = ลงเวลาจากตารางงานสายตรวจ
    */
   mode?: CheckInOutMode;
@@ -52,9 +55,13 @@ type Props = {
    */
   workDate?: string | null; // YYYY-MM-DD
 
+  /**
+   * ใช้เฉพาะ mode checkpoint
+   */
   assignmentId?: number | null;
   unitName?: string | null;
   passedLocation?: PassedLocation | null;
+  shiftId?: number | null;
 
   lastInAt?: string | null;
   lastOutAt?: string | null;
@@ -123,6 +130,7 @@ export default function CheckInOut({
   assignmentId = null,
   unitName = null,
   passedLocation = null,
+  shiftId = null,
   lastInAt,
   lastOutAt,
   onBack,
@@ -134,6 +142,11 @@ export default function CheckInOut({
   const [checkInOutModalOpen, setCheckInOutModalOpen] = useState(false);
 
   const isCheckpointMode = mode === "checkpoint";
+
+  /**
+   * ใช้ล็อกปุ่มย้อนกลับระหว่างระบบกำลังตรวจสอบ / กำลังทำงาน
+   */
+  const isNavigationLocked = busy;
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
@@ -149,20 +162,58 @@ export default function CheckInOut({
   }, [now, workDate]);
 
   /**
+   * สำคัญ:
+   * สำหรับเมนูลงเวลาเข้า-ออกงานปกติ
+   * ถ้ารายการของวันนั้นมีทั้งเวลาเข้าและเวลาออกแล้ว
+   * ให้ถือว่ารอบนั้นปิดงานแล้ว
+   *
+   * ผลลัพธ์:
+   * - กลับมาหน้านี้อีกครั้ง จะแสดง --:--
+   * - ปุ่มเข้างานกลับมา enabled
+   * - ปุ่มออกงาน disabled
+   *
+   * ใช้เฉพาะ mode attendance
+   * ไม่กระทบ checkpoint เพราะ checkpoint ต้องอิง assignment เดิม
+   */
+  const isCompletedAttendanceRecord = useMemo(() => {
+    if (isCheckpointMode) return false;
+
+    const hasTodayCheckIn = isSameLocalYmd(lastInAt, workDateForOpenRecord);
+    const hasTodayCheckOut = isSameLocalYmd(lastOutAt, workDateForOpenRecord);
+
+    return hasTodayCheckIn && hasTodayCheckOut;
+  }, [isCheckpointMode, lastInAt, lastOutAt, workDateForOpenRecord]);
+
+  /**
    * กันข้อมูลเก่าค้าง:
-   * ถ้า lastInAt / lastOutAt ไม่ใช่ workDate ปัจจุบัน ไม่เอามาแสดง
+   * 1) ถ้า lastInAt / lastOutAt ไม่ใช่ workDate ปัจจุบัน ไม่เอามาแสดง
+   * 2) ถ้า attendance ออกงานครบแล้ว ให้เคลียร์หน้าเป็นรอบใหม่
    */
   const visibleLastInAt = useMemo(() => {
     if (isCheckpointMode) return lastInAt ?? null;
 
+    if (isCompletedAttendanceRecord) return null;
+
     return isSameLocalYmd(lastInAt, workDateForOpenRecord) ? lastInAt : null;
-  }, [isCheckpointMode, lastInAt, workDateForOpenRecord]);
+  }, [
+    isCheckpointMode,
+    isCompletedAttendanceRecord,
+    lastInAt,
+    workDateForOpenRecord,
+  ]);
 
   const visibleLastOutAt = useMemo(() => {
     if (isCheckpointMode) return lastOutAt ?? null;
 
+    if (isCompletedAttendanceRecord) return null;
+
     return isSameLocalYmd(lastOutAt, workDateForOpenRecord) ? lastOutAt : null;
-  }, [isCheckpointMode, lastOutAt, workDateForOpenRecord]);
+  }, [
+    isCheckpointMode,
+    isCompletedAttendanceRecord,
+    lastOutAt,
+    workDateForOpenRecord,
+  ]);
 
   const lastIn = useMemo(() => safeDate(visibleLastInAt), [visibleLastInAt]);
   const lastOut = useMemo(() => safeDate(visibleLastOutAt), [visibleLastOutAt]);
@@ -179,13 +230,35 @@ export default function CheckInOut({
       assignmentId,
       unitName,
       passedLocation,
+
+      /**
+       * สำคัญ:
+       * ถ้ามาจาก checkpoint ให้ส่ง shiftId ต่อไป
+       * ถ้ามาจาก attendance ปกติ ไม่ส่ง shiftId ไปบันทึก
+       */
+      shiftId: isCheckpointMode ? shiftId : null,
+
       workDate: workDateForOpenRecord,
     }),
-    [mode, assignmentId, unitName, passedLocation, workDateForOpenRecord],
+    [
+      mode,
+      assignmentId,
+      unitName,
+      passedLocation,
+      shiftId,
+      isCheckpointMode,
+      workDateForOpenRecord,
+    ],
   );
 
   const nowDate = fmtThaiDate(now);
   const nowTime = fmtTimeHHMM(now);
+
+  function handleBackClick() {
+    if (isNavigationLocked) return;
+
+    onBack();
+  }
 
   async function handleCheckInClick() {
     if (busy) return;
@@ -197,6 +270,11 @@ export default function CheckInOut({
 
     if (isCheckpointMode && !assignmentId) {
       alert("ไม่พบข้อมูลจุดงานสายตรวจ กรุณากลับไปเลือกจุดจากตารางงานสายตรวจก่อน");
+      return;
+    }
+
+    if (isCheckpointMode && !shiftId) {
+      alert("ไม่พบข้อมูลผลัด กรุณากลับไปเลือกผลัดจากตารางงานสายตรวจก่อน");
       return;
     }
 
@@ -244,6 +322,11 @@ export default function CheckInOut({
 
     if (isCheckpointMode && !assignmentId) {
       alert("ไม่พบข้อมูลจุดงานสายตรวจ กรุณากลับไปเลือกจุดจากตารางงานสายตรวจก่อน");
+      return;
+    }
+
+    if (isCheckpointMode && !shiftId) {
+      alert("ไม่พบข้อมูลผลัด กรุณากลับไปเลือกผลัดจากตารางงานสายตรวจก่อน");
       return;
     }
 
@@ -367,7 +450,11 @@ export default function CheckInOut({
             </button>
 
             <div className="guts-fv-bottom">
-              <BackButton onClick={onBack} className="guts-fv-backBtn" />
+              <BackButton
+                onClick={handleBackClick}
+                disabled={isNavigationLocked}
+                className="guts-fv-backBtn"
+              />
             </div>
           </div>
         </section>
