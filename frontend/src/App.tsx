@@ -1,6 +1,6 @@
 // src/App.tsx
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Login from "./pages/Login";
 import Home from "./pages/Home";
 import Dashboard from "./pages/Dashboard";
@@ -52,9 +52,8 @@ type SelectedCheckpoint = {
   passedLocation: PassedLocation;
 
   /**
-   * ใช้เฉพาะกรณีมาจากหน้า Checkpoint
-   * day = 1, night = 2
-   * ใช้บันทึกลง time_record.shift_id เพื่อใช้ตอนทำรายงาน
+   * ใช้เฉพาะกรณีมาจากหน้า Checkpoint / ตารางงานสายตรวจ
+   * ใช้ส่งต่อเพื่อบันทึกลง time_record.shift_id
    */
   shiftId: number;
 
@@ -68,7 +67,7 @@ type GoCheckInOutPayload = {
   passedLocation: PassedLocation;
 
   /**
-   * รับมาจากหน้า Checkpoint
+   * รับมาจากหน้า Checkpoint / ตารางงานสายตรวจ
    */
   shiftId: number;
 
@@ -170,6 +169,12 @@ export default function App() {
   const [, setOpenTimeRecord] = useState<TimeRecordResponse | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  /**
+   * กันยิง create/update time_record ซ้ำ
+   * ใช้ ref เพราะเปลี่ยนค่าได้ทันที ไม่ต้องรอ React setState
+   */
+  const submittingRef = useRef(false);
+
   const [selectedCheckpoint, setSelectedCheckpoint] =
     useState<SelectedCheckpoint | null>(null);
 
@@ -192,6 +197,16 @@ export default function App() {
     setOpenTimeRecord(null);
     setLastInAt(null);
     setLastOutAt(null);
+  }
+
+  /**
+   * ใช้ล้างค่าชั่วคราวหลังจบ Flow สายตรวจ
+   * ห้ามล้างข้อมูลใน DB เพราะ time_record บันทึกเรียบร้อยแล้ว
+   */
+  function clearCheckpointFlowState() {
+    setSelectedCheckpoint(null);
+    clearCheckInOutTimeState();
+    setPunchType("in");
   }
 
   function makeAttendanceTimeContext(params?: {
@@ -296,13 +311,16 @@ export default function App() {
     setAttendanceTimeContext(null);
     clearCheckInOutTimeState();
     setSelectedCheckpoint(null);
+    setPunchType("in");
     reset("login");
   }
 
   async function goDirectCheckInOut() {
     /**
      * กรณีกดเมนู "ลงเวลา เข้า-ออกงาน" จากหน้า Home
-     * ไม่ต้องมี shift_id
+     * เป็น Attendance ปกติ:
+     * - ไม่มี assignment_id
+     * - ไม่ส่ง shift_id
      */
     setSelectedCheckpoint(null);
 
@@ -318,13 +336,16 @@ export default function App() {
     setSelectedCheckpoint(null);
     setAttendanceTimeContext(null);
     clearCheckInOutTimeState();
+    setPunchType("in");
     push("checkpoint");
   }
 
   async function goCheckInOut(payload: GoCheckInOutPayload) {
     /**
-     * กรณีมาจากหน้า Checkpoint
-     * ต้องเก็บ shiftId ต่อ เพื่อบันทึกลง time_record.shift_id
+     * กรณีมาจากหน้า Checkpoint / ตารางงานสายตรวจ:
+     * - ต้องเก็บ assignmentId
+     * - ต้องเก็บ shiftId
+     * - ใช้ส่ง shift_id ไปบันทึก time_record
      */
     setSelectedCheckpoint({
       assignmentId: payload.assignmentId,
@@ -363,8 +384,10 @@ export default function App() {
     },
   ) {
     /**
-     * กรณี attendance ปกติ
-     * ล้าง selectedCheckpoint เพื่อไม่ให้มี shiftId ติดไป
+     * Attendance ปกติ:
+     * - ล้าง selectedCheckpoint
+     * - ไม่มี assignment_id
+     * - ไม่ส่ง shift_id
      */
     setSelectedCheckpoint(null);
 
@@ -448,11 +471,14 @@ export default function App() {
     _embedding: number[],
     location: LocationCoords,
   ) {
-    if (isSubmitting) return;
+    if (submittingRef.current || isSubmitting) {
+      throw new Error("ระบบกำลังบันทึกอยู่ กรุณารอสักครู่");
+    }
+
+    submittingRef.current = true;
+    setIsSubmitting(true);
 
     try {
-      setIsSubmitting(true);
-
       const now = new Date();
       const nowText = formatCheckTime(now);
 
@@ -480,8 +506,9 @@ export default function App() {
         }
 
         /**
-         * attendance ปกติ:
-         * ไม่ส่ง shift_id
+         * Attendance ปกติ:
+         * - ไม่มี assignment_id
+         * - ไม่ส่ง shift_id
          */
         const createPayload = {
           employee_code: empCode,
@@ -521,8 +548,10 @@ export default function App() {
         }
 
         /**
-         * attendance ปกติ:
-         * ไม่ส่ง shift_id
+         * Attendance ปกติ:
+         * - ไม่มี assignment_id
+         * - ไม่ส่ง shift_id
+         * - ส่ง current_latitude/current_longitude ให้ Backend ตรวจพิกัด
          */
         const updatePayload = {
           current_latitude: location.latitude,
@@ -563,6 +592,7 @@ export default function App() {
         ? error
         : new Error("การบันทึกเวลาล้มเหลว");
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
     }
   }
@@ -573,7 +603,9 @@ export default function App() {
     _embedding: number[],
     location: LocationCoords,
   ) {
-    if (isSubmitting) return;
+    if (submittingRef.current || isSubmitting) {
+      throw new Error("ระบบกำลังบันทึกอยู่ กรุณารอสักครู่");
+    }
 
     if (!location.assignmentId) {
       throw new Error(
@@ -589,9 +621,10 @@ export default function App() {
       );
     }
 
-    try {
-      setIsSubmitting(true);
+    submittingRef.current = true;
+    setIsSubmitting(true);
 
+    try {
       const now = new Date();
       const nowText = formatCheckTime(now);
 
@@ -612,15 +645,17 @@ export default function App() {
         }
 
         /**
-         * checkpoint:
-         * ส่ง shift_id ไปบันทึกลง time_record เพื่อใช้ตอนทำรายงาน
+         * Checkpoint / ตารางงานสายตรวจ:
+         * - ส่ง assignment_id
+         * - ส่ง shift_id
+         * - Backend บันทึกลง time_record.shift_id
          */
         const createPayload = {
           employee_code: empCode,
           work_date: workDate,
 
-          shift_id: checkpointShiftId,
           assignment_id: location.assignmentId,
+          shift_id: checkpointShiftId,
 
           current_latitude: location.latitude,
           current_longitude: location.longitude,
@@ -634,8 +669,8 @@ export default function App() {
 
           created_by: empCode,
         } as Parameters<typeof timeRecordService.createTimeRecord>[0] & {
-          shift_id: number;
           assignment_id: number;
+          shift_id: number;
           current_latitude: number;
           current_longitude: number;
           gps_accuracy: number | null;
@@ -658,12 +693,14 @@ export default function App() {
         }
 
         /**
-         * checkpoint:
-         * ส่ง shift_id ไปตอน update ด้วย เพื่อกันข้อมูลเดิมไม่มี shift_id
+         * Checkpoint / ตารางงานสายตรวจ:
+         * - ส่ง assignment_id
+         * - ส่ง shift_id
+         * - Backend อัปเดต time_record.shift_id
          */
         const updatePayload = {
-          shift_id: checkpointShiftId,
           assignment_id: location.assignmentId,
+          shift_id: checkpointShiftId,
 
           current_latitude: location.latitude,
           current_longitude: location.longitude,
@@ -677,8 +714,8 @@ export default function App() {
 
           updated_by: empCode,
         } as Parameters<typeof timeRecordService.updateTimeRecord>[1] & {
-          shift_id: number;
           assignment_id: number;
+          shift_id: number;
           current_latitude: number;
           current_longitude: number;
           gps_accuracy: number | null;
@@ -700,6 +737,7 @@ export default function App() {
         ? error
         : new Error("การบันทึกเวลาล้มเหลว");
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
     }
   }
@@ -747,8 +785,15 @@ export default function App() {
   }
 
   function goCheckpointFromFaceVerify() {
-    setSelectedCheckpoint(null);
-    clearCheckInOutTimeState();
+    /**
+     * กรณี Checkpoint / ตารางงานสายตรวจ
+     * หลังบันทึก time_record สำเร็จและกดตกลงใน SuccessModal:
+     * - ล้าง selectedCheckpoint
+     * - ล้าง open record / เวลาเข้า / เวลาออก
+     * - reset punchType
+     * - กลับหน้า Checkpoint เพื่อโหลดสถานะใหม่
+     */
+    clearCheckpointFlowState();
 
     setStack((s) => {
       const checkpointIndex = s.lastIndexOf("checkpoint");

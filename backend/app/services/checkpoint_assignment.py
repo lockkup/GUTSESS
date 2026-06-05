@@ -440,6 +440,12 @@ class CheckpointAssignmentService:
                 CheckpointAssignment.assignment_id.label("assignment_id"),
                 CheckpointAssignment.work_date.label("work_date"),
                 CheckpointAssignment.schedule_item_id.label("schedule_item_id"),
+
+                # สำคัญ:
+                # ส่ง shift_id ออกไปให้ Frontend
+                # เพื่อไม่ต้อง hardcode day=1 / night=2 ที่หน้า Checkpoint
+                CheckpointScheduleItem.shift_id.label("shift_id"),
+
                 CheckpointAssignment.time_record_id.label("time_record_id"),
                 CheckpointAssignment.assignment_status.label("assignment_status"),
                 CheckpointAssignment.due_datetime.label("due_datetime"),

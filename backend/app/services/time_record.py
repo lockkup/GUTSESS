@@ -13,16 +13,21 @@ from sqlalchemy.orm import Session, aliased
 
 from app.core.constants import DBConstants
 from app.core.error_messages import (
+    ATTENDANCE_OUT_OF_AREA_TEMPLATE,
     CHECKIN_LOCATION_NOT_FOUND_DETAIL,
     CHECKOUT_BEFORE_CHECKIN_DETAIL,
     CHECKOUT_LOCATION_NOT_FOUND_DETAIL,
+    CHECKPOINT_ASSIGNMENT_SHIFT_NOT_FOUND_DETAIL,
+    CHECKPOINT_OUT_OF_AREA_TEMPLATE,
     CREATED_BY_EMPLOYEE_NOT_FOUND_DETAIL,
     EMPLOYEE_NOT_FOUND_DETAIL,
     INVALID_CHECK_TIME_FORMAT_DETAIL,
+    INVALID_COORDINATES_DETAIL,
     INVALID_TIME_RECORD_REFERENCE_DETAIL,
     INVALID_TIME_RECORD_UPDATE_DETAIL,
     OPEN_TIME_RECORD_ALREADY_EXISTS_DETAIL,
     OPEN_TIME_RECORD_NOT_FOUND_DETAIL,
+    SITE_LOCATION_COORDINATES_NOT_FOUND_DETAIL,
     TIME_RECORD_ALREADY_CHECKED_OUT_DETAIL,
     TIME_RECORD_NOT_FOUND_DETAIL,
     UPDATED_BY_EMPLOYEE_NOT_FOUND_DETAIL,
@@ -128,13 +133,21 @@ class TimeRecordService:
         db: Session,
         time_record_id: int,
     ) -> bool:
-        link_exists = (
+        """
+        ตรวจว่า time_record_id นี้ถูกผูกกับ checkpoint_assignment หรือไม่
+
+        ใช้ตอนออกงาน Attendance ปกติ:
+        - ถ้า time_record นี้ถูกผูกกับ Checkpoint ห้ามออกงานผ่าน Attendance
+        - ถ้าไม่ถูกผูกกับ Checkpoint ให้ออกงาน Attendance ได้ตามปกติ
+        """
+
+        stmt = (
             select(CheckpointAssignment.assignment_id)
-            .where(CheckpointAssignment.time_record_id == TimeRecord.time_record_id)
-            .exists()
+            .where(CheckpointAssignment.time_record_id == time_record_id)
+            .limit(1)
         )
 
-        return bool(db.scalar(select(link_exists)))
+        return db.scalar(stmt) is not None
 
     @staticmethod
     def _get_open_attendance_time_record_by_employee_raw(
@@ -308,16 +321,34 @@ class TimeRecordService:
         except (TypeError, ValueError) as exc:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="ข้อมูลพิกัดไม่ถูกต้อง",
+                detail=INVALID_COORDINATES_DETAIL,
             ) from exc
 
         if not all(isfinite(value) for value in [current_lat, current_lng]):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="ข้อมูลพิกัดไม่ถูกต้อง",
+                detail=INVALID_COORDINATES_DETAIL,
             )
 
         return current_lat, current_lng
+
+    @staticmethod
+    def _coerce_checkpoint_shift_id(value: Any) -> int:
+        try:
+            shift_id = int(value)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=CHECKPOINT_ASSIGNMENT_SHIFT_NOT_FOUND_DETAIL,
+            ) from exc
+
+        if shift_id <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=CHECKPOINT_ASSIGNMENT_SHIFT_NOT_FOUND_DETAIL,
+            )
+
+        return shift_id
 
     @staticmethod
     def _get_assignment_and_site_location(
@@ -325,6 +356,16 @@ class TimeRecordService:
         assignment_id: int,
         detail: str,
     ) -> tuple[CheckpointAssignment, SiteLocation]:
+        """
+        ดึงข้อมูล Assignment + SiteLocation
+
+        กติกาปัจจุบัน:
+        - Frontend ส่ง shift_id มาเฉพาะกรณี Checkpoint
+        - Backend ใช้ assignment_id เพื่อตรวจจุดงานและพิกัด
+        - Backend ไม่ join checkpoint_schedule แล้ว
+        - เพราะ CheckpointScheduleItem ไม่มี schedule_id
+        """
+
         stmt = (
             select(
                 CheckpointAssignment,
@@ -383,7 +424,7 @@ class TimeRecordService:
         if site_location.latitude is None or site_location.longitude is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="จุดรักษาการณ์นี้ยังไม่มีพิกัด latitude/longitude",
+                detail=SITE_LOCATION_COORDINATES_NOT_FOUND_DETAIL,
             )
 
         current_lat, current_lng = TimeRecordService._coerce_current_coordinates(
@@ -408,7 +449,7 @@ class TimeRecordService:
         ):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="ข้อมูลพิกัดไม่ถูกต้อง",
+                detail=INVALID_COORDINATES_DETAIL,
             )
 
         distance_meter = TimeRecordService._distance_meters(
@@ -421,10 +462,9 @@ class TimeRecordService:
         if distance_meter > allowed_radius:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "คุณอยู่นอกพื้นที่จุดรักษาการณ์ "
-                    f"{site_location.location_name} "
-                    f"ระยะห่างประมาณ {round(distance_meter)} เมตร"
+                detail=CHECKPOINT_OUT_OF_AREA_TEMPLATE.format(
+                    location_name=site_location.location_name,
+                    distance_meter=round(distance_meter),
                 ),
             )
 
@@ -493,10 +533,9 @@ class TimeRecordService:
         if best_distance_meter > best_allowed_radius:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "คุณอยู่นอกพื้นที่ลงเวลา "
-                    f"จุดที่ใกล้ที่สุดคือ {best_site_location.location_name} "
-                    f"ระยะห่างประมาณ {round(best_distance_meter)} เมตร"
+                detail=ATTENDANCE_OUT_OF_AREA_TEMPLATE.format(
+                    location_name=best_site_location.location_name,
+                    distance_meter=round(best_distance_meter),
                 ),
             )
 
@@ -590,17 +629,15 @@ class TimeRecordService:
         )
 
         assignment_id = getattr(payload, "assignment_id", None)
-        shift_id = getattr(payload, "shift_id", None)
 
         assignment: CheckpointAssignment | None = None
-
-        if assignment_id is not None and shift_id is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="ไม่พบ shift_id สำหรับการลงเวลางานสายตรวจ",
-            )
+        assignment_shift_id: int | None = None
 
         if assignment_id is not None:
+            assignment_shift_id = TimeRecordService._coerce_checkpoint_shift_id(
+                getattr(payload, "shift_id", None)
+            )
+
             assignment, site_location = TimeRecordService._validate_assignment_location_gate(
                 db=db,
                 assignment_id=assignment_id,
@@ -649,9 +686,11 @@ class TimeRecordService:
         )
 
         # กติกา:
-        # - มาจาก Checkpoint ต้องมี shift_id และบันทึกลง time_record.shift_id
-        # - มาจาก Attendance ปกติ ไม่เก็บ shift_id ให้เป็น None
-        create_data["shift_id"] = shift_id if assignment_id is not None else None
+        # - มาจาก Checkpoint: ใช้ shift_id ที่ Frontend ส่งมา
+        # - มาจาก Attendance ปกติ: ไม่เก็บ shift_id ให้เป็น None
+        create_data["shift_id"] = (
+            assignment_shift_id if assignment_id is not None else None
+        )
 
         create_data["checkin_location_id"] = site_location.location_id
         create_data["checkin_lat"] = payload.current_latitude
@@ -881,17 +920,15 @@ class TimeRecordService:
         )
 
         assignment_id = getattr(payload, "assignment_id", None)
-        shift_id = getattr(payload, "shift_id", None)
 
         assignment: CheckpointAssignment | None = None
-
-        if assignment_id is not None and shift_id is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="ไม่พบ shift_id สำหรับการออกงานสายตรวจ",
-            )
+        assignment_shift_id: int | None = None
 
         if assignment_id is not None:
+            assignment_shift_id = TimeRecordService._coerce_checkpoint_shift_id(
+                getattr(payload, "shift_id", None)
+            )
+
             assignment, site_location = TimeRecordService._validate_assignment_location_gate(
                 db=db,
                 assignment_id=assignment_id,
@@ -934,10 +971,10 @@ class TimeRecordService:
         )
 
         # กติกา:
-        # - ออกงานจาก Checkpoint ให้บันทึก/อัปเดต shift_id
-        # - ออกงาน Attendance ปกติ ไม่แตะ shift_id
+        # - ออกงานจาก Checkpoint: ใช้ shift_id ที่ Frontend ส่งมา
+        # - ออกงาน Attendance ปกติ: ไม่แตะ shift_id
         if assignment_id is not None:
-            update_data["shift_id"] = shift_id
+            update_data["shift_id"] = assignment_shift_id
 
         update_data["checkout_location_id"] = site_location.location_id
         update_data["checkout_lat"] = payload.current_latitude

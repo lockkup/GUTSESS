@@ -155,6 +155,11 @@ class CheckpointAssignmentDailyResponse(BaseModel):
 
     schedule_item_id: int
 
+    # ใช้ให้ frontend รู้ว่างานนี้เป็นผลัดไหน
+    # ดึงจาก checkpoint_schedule_item.shift_id
+    # เพื่อไม่ต้อง hardcode day=1 / night=2 ที่ frontend
+    shift_id: int | None = None
+
     # ใช้ให้ frontend รู้ว่างานนี้มี time_record ผูกอยู่หรือยัง
     time_record_id: int | None = None
 

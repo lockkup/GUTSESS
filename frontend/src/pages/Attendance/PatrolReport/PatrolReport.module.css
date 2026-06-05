@@ -3,9 +3,16 @@
 :root {
   --patrol-title-size: 18px;
   --patrol-filter-font-size: 12px;
+  --patrol-label-font-size: 11px;
   --patrol-card-title-size: 13px;
   --patrol-card-time-size: 11px;
   --patrol-status-size: 11px;
+
+  /* ปรับฟอนต์ตารางจากจุดเดียว */
+  --patrol-table-head-font-size: 13px;
+  --patrol-table-body-font-size: 13px;
+  --patrol-table-head-padding: 11px 10px;
+  --patrol-table-body-padding: 11px 10px;
 }
 
 .page {
@@ -195,7 +202,7 @@
   display: block;
   margin: 0;
   color: #475569;
-  font-size: 11px;
+  font-size: var(--patrol-label-font-size);
   font-weight: 800;
   line-height: 1.15;
 }
@@ -603,21 +610,25 @@
 
 .table th,
 .table td {
-  padding: 11px 10px;
+  padding: var(--patrol-table-body-padding);
   border-bottom: 1px solid rgba(226, 232, 240, 0.9);
   text-align: center;
-  font-size: 13px;
+  font-size: var(--patrol-table-body-font-size);
   white-space: nowrap;
 }
 
 .table th {
+  padding: var(--patrol-table-head-padding);
   background: #f8fafc;
   color: #334155;
+  font-size: var(--patrol-table-head-font-size);
   font-weight: 900;
 }
 
 .table td {
+  padding: var(--patrol-table-body-padding);
   color: #0f172a;
+  font-size: var(--patrol-table-body-font-size);
   font-weight: 500;
 }
 
@@ -1257,9 +1268,16 @@
 
 @media (min-width: 840px) {
   :root {
-    --patrol-title-size: 20px;
-    --patrol-filter-font-size: 14px;
-    --patrol-status-size: 14px;
+    --patrol-title-size: 30px;
+    --patrol-filter-font-size: 20px;
+    --patrol-label-font-size: 20px;
+    --patrol-status-size: 16px;
+
+    /* ปรับฟอนต์ตาราง PC/Desktop จากตรงนี้ */
+    --patrol-table-head-font-size: 18px;
+    --patrol-table-body-font-size: 18px;
+    --patrol-table-head-padding: 16px 14px;
+    --patrol-table-body-padding: 18px 14px;
   }
 
   .page {
@@ -1319,13 +1337,13 @@
   .planModeButton {
     height: 48px;
     border-radius: 14px;
-    font-size: 17px;
+    font-size: var(--patrol-filter-font-size);
   }
 
   .fieldLabel {
     display: block;
     margin: 0;
-    font-size: 14px;
+    font-size: var(--patrol-label-font-size);
     font-weight: 800;
     color: #475467;
   }
@@ -1337,7 +1355,7 @@
   .dateControl {
     height: 48px;
     border-radius: 14px;
-    font-size: 17px;
+    font-size: var(--patrol-filter-font-size);
   }
 
   .controlIcon {
@@ -1366,7 +1384,7 @@
   }
 
   .dateDisplay {
-    font-size: 17px;
+    font-size: var(--patrol-filter-font-size);
     font-weight: 500;
   }
 
@@ -1454,10 +1472,10 @@
   }
 
   .table th {
-    padding: 14px 12px;
+    padding: var(--patrol-table-head-padding);
     background: #f2f4f7;
     color: #101828;
-    font-size: 16px;
+    font-size: var(--patrol-table-head-font-size);
     font-weight: 800;
     border-bottom: 1px solid #eaecf0;
     background-clip: padding-box;
@@ -1472,11 +1490,11 @@
   }
 
   .table td {
-    padding: 16px 12px;
+    padding: var(--patrol-table-body-padding);
     border-bottom: 1px solid #eaecf0;
     background: #ffffff;
     color: #101828;
-    font-size: 16px;
+    font-size: var(--patrol-table-body-font-size);
     font-weight: 500;
     vertical-align: middle;
   }
@@ -1517,14 +1535,14 @@
   .statusBadge {
     min-height: 30px;
     padding: 6px 12px;
-    font-size: 14px;
+    font-size: var(--patrol-status-size);
     font-weight: 600;
   }
 
   .notificationBadge {
     min-height: 30px;
     padding: 6px 12px;
-    font-size: 14px;
+    font-size: var(--patrol-status-size);
     font-weight: 500;
   }
 
@@ -1616,6 +1634,7 @@
   :root {
     --patrol-title-size: 18px;
     --patrol-filter-font-size: 13px;
+    --patrol-label-font-size: 10.5px;
     --patrol-card-title-size: 13px;
     --patrol-card-time-size: 12px;
     --patrol-status-size: 12px;
@@ -1627,7 +1646,7 @@
   }
 
   .fieldLabel {
-    font-size: 10.5px;
+    font-size: var(--patrol-label-font-size);
   }
 
   .datePopover {

@@ -1,6 +1,8 @@
 // src/layout/Header/index.tsx
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faUser } from "@fortawesome/free-solid-svg-icons";
+
+import logoImage from "@/assets/logoguts.svg";
 import styles from "./Header.module.css";
 
 type Props = {
@@ -19,10 +21,15 @@ export default function Header({
   return (
     <header className={styles.header}>
       <h1 className={styles.logo}>
-        <span className={styles.logoGuts}>GUTS</span>{" "}
+        <img className={styles.logoImage} src={logoImage} alt="GUTS" />
       </h1>
 
-      <div className={styles.subEn}>Employee Self Service</div>
+      <div className={styles.subEn}>
+        <span className={styles.redLetter}>E</span>mployee{" "}
+        <span className={styles.redLetter}>S</span>elf{" "}
+        <span className={styles.redLetter}>S</span>ervice
+      </div>
+
       <div className={styles.subTh}>ระบบบริการตนเอง</div>
 
       {showUserCard && (

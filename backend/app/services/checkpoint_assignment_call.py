@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from fastapi import HTTPException, status
@@ -26,6 +27,24 @@ from app.schemas.checkpoint_assignment_call import (
 
 class CheckpointAssignmentCallService:
     @staticmethod
+    def _get_integrity_error_message(exc: IntegrityError) -> str:
+        """
+        ใช้ดู error จริงจาก MySQL ตอน db.commit() ไม่ผ่าน
+
+        ตัวอย่าง error ที่อาจเจอ:
+        - Column 'call_datetime' cannot be null
+        - Column 'updated_by' cannot be null
+        - Data truncated for column 'call_status'
+        - Cannot add or update a child row: a foreign key constraint fails
+        """
+        origin_error = getattr(exc, "orig", None)
+
+        if origin_error is not None:
+            return str(origin_error)
+
+        return str(exc)
+
+    @staticmethod
     def _commit(
         db: Session,
         refresh_obj: Any | None = None,
@@ -38,9 +57,22 @@ class CheckpointAssignmentCallService:
 
         except IntegrityError as exc:
             db.rollback()
+
+            db_error_message = (
+                CheckpointAssignmentCallService._get_integrity_error_message(exc)
+            )
+
+            # แสดง error จริงที่ terminal uvicorn
+            print(
+                "CHECKPOINT_ASSIGNMENT_CALL INTEGRITY ERROR:",
+                db_error_message,
+            )
+
+            # ช่วง debug ให้ frontend เห็น error จริง
+            # ถ้าระบบนิ่งแล้ว ค่อยเปลี่ยนกลับเป็น detail=INVALID_REFERENCE_DETAIL ได้
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=INVALID_REFERENCE_DETAIL,
+                detail=f"{INVALID_REFERENCE_DETAIL}: {db_error_message}",
             ) from exc
 
     @staticmethod
@@ -94,10 +126,10 @@ class CheckpointAssignmentCallService:
         )
 
     @staticmethod
-    def _validate_active_checkpoint_assignment(
+    def _get_active_checkpoint_assignment(
         db: Session,
         assignment_id: int,
-    ) -> None:
+    ) -> CheckpointAssignment:
         stmt = select(CheckpointAssignment).where(
             CheckpointAssignment.assignment_id == assignment_id,
             CheckpointAssignment.mark_flag.is_(False),
@@ -116,6 +148,96 @@ class CheckpointAssignmentCallService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=INACTIVE_CHECKPOINT_ASSIGNMENT_DETAIL,
             )
+
+        return checkpoint_assignment
+
+    @staticmethod
+    def _validate_active_checkpoint_assignment(
+        db: Session,
+        assignment_id: int,
+    ) -> None:
+        CheckpointAssignmentCallService._get_active_checkpoint_assignment(
+            db=db,
+            assignment_id=assignment_id,
+        )
+
+    @staticmethod
+    def _normalize_call_status(value: Any) -> int | None:
+        try:
+            numeric_value = int(value)
+        except (TypeError, ValueError):
+            return None
+
+        if numeric_value in (1, 2, 3):
+            return numeric_value
+
+        return None
+
+    @staticmethod
+    def _set_if_model_has_attr(
+        model_obj: Any,
+        field_name: str,
+        value: Any,
+    ) -> None:
+        if hasattr(model_obj, field_name):
+            setattr(model_obj, field_name, value)
+
+    @staticmethod
+    def _apply_call_status_to_assignment(
+        checkpoint_assignment: CheckpointAssignment,
+        call_status: Any,
+        employee_code: str,
+        now: datetime,
+    ) -> None:
+        """
+        กติกาบันทึกการโทร:
+
+        call_status = 1
+        - ปกติ ไม่ต้องเข้าหน้างาน
+        - ปิดงานทันทีเป็น completed
+
+        call_status = 2
+        - ผิดปกติ ไม่ต้องเข้าหน้างาน
+        - ปิดงานทันทีเป็น completed
+
+        call_status = 3
+        - ผิดปกติ ต้องเข้าหน้างาน
+        - ไม่ปิดงาน
+        - ให้ยังคง pending / in_progress เพื่อเข้าตรวจต่อ
+        """
+        normalized_call_status = (
+            CheckpointAssignmentCallService._normalize_call_status(call_status)
+        )
+
+        CheckpointAssignmentCallService._set_if_model_has_attr(
+            checkpoint_assignment,
+            "updated_by",
+            employee_code,
+        )
+        CheckpointAssignmentCallService._set_if_model_has_attr(
+            checkpoint_assignment,
+            "updated_at",
+            now,
+        )
+
+        if normalized_call_status in (1, 2):
+            checkpoint_assignment.assignment_status = "completed"
+
+            CheckpointAssignmentCallService._set_if_model_has_attr(
+                checkpoint_assignment,
+                "completed_at",
+                now,
+            )
+            CheckpointAssignmentCallService._set_if_model_has_attr(
+                checkpoint_assignment,
+                "completed_by",
+                employee_code,
+            )
+
+        if normalized_call_status == 3:
+            # ห้ามปิดงาน
+            # ให้คงสถานะเดิม เช่น pending หรือ in_progress
+            return
 
     @staticmethod
     def get_checkpoint_assignment_call(
@@ -184,18 +306,39 @@ class CheckpointAssignmentCallService:
             created_by=payload.created_by,
         )
 
-        CheckpointAssignmentCallService._validate_active_checkpoint_assignment(
-            db=db,
-            assignment_id=payload.assignment_id,
+        checkpoint_assignment = (
+            CheckpointAssignmentCallService._get_active_checkpoint_assignment(
+                db=db,
+                assignment_id=payload.assignment_id,
+            )
         )
+
+        now = datetime.now()
+        create_data = payload.model_dump(exclude_none=True)
+
+        # กันกรณี frontend ไม่ได้ส่ง call_datetime
+        # ถ้า DB มี NOT NULL และไม่มี DEFAULT จะไม่พังตอน commit
+        create_data.setdefault("call_datetime", now)
+
+        # กันกรณี column updated_by ใน DB เป็น NOT NULL
+        # ตอนสร้างครั้งแรกให้ใช้คนเดียวกับ created_by
+        create_data.setdefault("updated_by", payload.created_by)
 
         # อนุญาตให้ assignment_id เดิมบันทึกการโทรได้หลายครั้ง
         # 1 assignment_id = หลาย call log
-        checkpoint_assignment_call = CheckpointAssignmentCall(
-            **payload.model_dump(exclude_none=True)
-        )
+        checkpoint_assignment_call = CheckpointAssignmentCall(**create_data)
 
         db.add(checkpoint_assignment_call)
+
+        # สำคัญ:
+        # call_status 1, 2 = ไม่ต้องเข้าหน้างาน ให้ปิดงานทันที
+        # call_status 3 = ต้องเข้าหน้างาน ไม่ปิดงาน
+        CheckpointAssignmentCallService._apply_call_status_to_assignment(
+            checkpoint_assignment=checkpoint_assignment,
+            call_status=payload.call_status,
+            employee_code=payload.created_by,
+            now=now,
+        )
 
         CheckpointAssignmentCallService._commit(
             db=db,
@@ -238,16 +381,33 @@ class CheckpointAssignmentCallService:
             checkpoint_assignment_call.assignment_id,
         )
 
-        if "assignment_id" in update_data:
-            CheckpointAssignmentCallService._validate_active_checkpoint_assignment(
+        checkpoint_assignment = (
+            CheckpointAssignmentCallService._get_active_checkpoint_assignment(
                 db=db,
                 assignment_id=next_assignment_id,
             )
+        )
 
         for field, value in update_data.items():
             setattr(checkpoint_assignment_call, field, value)
 
         checkpoint_assignment_call.updated_by = payload.updated_by
+
+        next_call_status = update_data.get(
+            "call_status",
+            checkpoint_assignment_call.call_status,
+        )
+
+        now = datetime.now()
+
+        # ถ้าแก้ call_status เป็น 1 หรือ 2 ให้ปิดงาน
+        # ถ้าเป็น 3 ไม่ปิดงาน
+        CheckpointAssignmentCallService._apply_call_status_to_assignment(
+            checkpoint_assignment=checkpoint_assignment,
+            call_status=next_call_status,
+            employee_code=payload.updated_by,
+            now=now,
+        )
 
         CheckpointAssignmentCallService._commit(
             db=db,

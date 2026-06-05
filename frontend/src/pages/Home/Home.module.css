@@ -1,18 +1,35 @@
 /* src/pages/Home/Home.module.css */
 
+:root {
+  --home-shell-width: 390px;
+}
+
+/* background global เพราะ Home.tsx ใช้ className="guts-bg" */
+:global(.guts-bg) {
+  min-height: 100dvh;
+  background: #f3f7fb;
+}
+
+/* กรอบหน้า Home:
+   - Desktop แสดงเป็นกล่องมือถืออยู่กลางจอ
+   - Mobile ย่อตามหน้าจอจริง ไม่ล้น
+*/
 .home {
-  width: min(520px, 92vw);
+  width: min(var(--home-shell-width), calc(100vw - 24px));
   margin: 0 auto;
   min-height: 100dvh;
   display: flex;
+  box-sizing: border-box;
 }
 
 /* ให้ card หลักเป็นแนวตั้งและสูงเต็มจอ */
 .home :global(.guts-home-card) {
   width: 100%;
+  max-width: none;
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
+  box-sizing: border-box;
 }
 
 /* --- title --- */
@@ -20,23 +37,17 @@
   margin: 14px 0 10px;
   font-weight: 900;
   color: rgba(27, 43, 74, 0.92);
-  font-size: 26px;
+  font-size: 23px;
+  line-height: 1.2;
   letter-spacing: 0.2px;
 }
 
-/* เมนู */
+/* เมนู: บังคับเรียง 1 คอลัมน์ทุกขนาดจอ */
 .menuStack {
   display: grid;
   grid-template-columns: 1fr;
   gap: 12px;
   margin-top: 12px;
-}
-
-@media (min-width: 520px) {
-  .menuStack {
-    grid-template-columns: 1fr 1fr;
-    gap: 14px;
-  }
 }
 
 /* ปุ่มครอบ */
@@ -115,7 +126,7 @@
 
 .fa {
   font-size: 20px;
-  color: var(--brand);
+  color: var(--brand, #024b76);
   display: block;
 }
 
@@ -143,7 +154,7 @@
   width: 100%;
   border-radius: 30px;
   border: 0;
-  background: var(--red);
+  background: var(--red, #d60000);
   color: #fff;
   height: 54px;
   font-weight: 900;
@@ -187,8 +198,26 @@
   color: #9ca3af;
 }
 
+/* Desktop: คงรูปแบบมือถือ ไม่แตกเป็น 2 คอลัมน์ */
+@media (min-width: 520px) {
+  .home {
+    width: min(var(--home-shell-width), calc(100vw - 24px));
+    margin: 0 auto;
+  }
+
+  .menuStack {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+}
+
 /* กันจอเล็กมาก */
 @media (max-width: 360px) {
+  .home {
+    width: calc(100vw - 24px);
+    max-width: 100%;
+  }
+
   .menuStack {
     grid-template-columns: 1fr;
   }
@@ -198,7 +227,26 @@
   }
 
   .menuBox {
+    height: 60px;
     grid-template-columns: 48px 1fr;
     padding: 10px 12px;
+  }
+
+  .iconWrap {
+    width: 42px;
+    height: 42px;
+  }
+
+  .fa {
+    font-size: 18px;
+  }
+
+  .logout {
+    height: 50px;
+    font-size: 18px;
+  }
+
+  .logoutFa {
+    font-size: 16px;
   }
 }

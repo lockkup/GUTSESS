@@ -1,3 +1,4 @@
+from .app_setting import AppSettingService
 from .audit_log import AuditLogService
 from .checkpoint_assignment import CheckpointAssignmentService
 from .checkpoint_assignment_call import CheckpointAssignmentCallService
@@ -21,6 +22,7 @@ from .site_location_change import SiteLocationChangeService
 from .time_record import TimeRecordService
 
 __all__ = [
+    "AppSettingService",
     "AuditLogService",
     "CheckpointAssignmentService",
     "CheckpointAssignmentCallService",

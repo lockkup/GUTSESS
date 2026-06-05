@@ -13,6 +13,11 @@ import CheckpointCallModal, {
   type CheckpointCallModalSavePayload,
 } from "@/components/CheckpointCallModal";
 
+import {
+  getAttendanceLocationSetting,
+  type AttendanceLocationSetting,
+} from "@/services/appSetting.service";
+
 import { getDailyCheckpointAssignments } from "@/services/checkpointAssignmentService";
 import { createCheckpointAssignmentCall } from "@/services/checkpointAssignmentCallService";
 import { verifyCheckpointLocation } from "@/services/checkpointLocationService";
@@ -37,8 +42,13 @@ export type GoCheckInOutPayload = {
   assignmentId: number;
   unitName: string;
 
-  // ใช้ส่งต่อไปหน้า CheckInOut เพื่อบันทึกลง time_record.shift_id
-  // day = 1, night = 2
+  /**
+   * ใช้เฉพาะงานสายตรวจ / Checkpoint
+   * ส่งต่อไป App.tsx เพื่อบันทึกลง time_record.shift_id
+   *
+   * ไม่ fix ที่ frontend แล้ว
+   * ต้องใช้ shift_id จาก API /checkpoint-assignments/daily
+   */
   shiftId: number;
 
   mode: CheckInOutMode;
@@ -52,20 +62,42 @@ type Props = {
   onGoCheckInOut: (payload: GoCheckInOutPayload) => void;
 };
 
-type RowStatus = "progress" | "pending" | "done" | "doneCall";
+type RowStatus =
+  | "progress"
+  | "pending"
+  | "done"
+  | "doneCall"
+  | "abnormalCall";
 
 type CheckRow = {
   assignmentId: number;
   unitName: string;
+  shiftId: number | null;
   plan: string;
+  assignmentStatus: CheckpointAssignmentStatus;
   status: RowStatus;
   requireCall: boolean;
   hasCall: boolean;
+  latestCallStatus: CallStatus | null;
 };
 
-const SHIFT_ID_BY_TYPE: Record<ShiftType, number> = {
-  day: 1,
-  night: 2,
+type CheckpointDailyRowWithExtra = CheckpointDailyRow & {
+  /**
+   * Backend ควรส่ง field นี้กลับมา
+   * เพื่อไม่ต้อง hardcode day=1 / night=2 ใน frontend
+   */
+  shift_id?: number | string | null;
+
+  /**
+   * Backend ควรส่ง field นี้กลับมาด้วย
+   * เพื่อให้ frontend แยกได้ว่า call_status ล่าสุดเป็น 1, 2 หรือ 3
+   */
+  latest_call_status?: number | string | null;
+
+  /**
+   * fallback เผื่อ backend ใช้ชื่อ call_status แทน latest_call_status
+   */
+  call_status?: number | string | null;
 };
 
 const statusText: Record<RowStatus, string> = {
@@ -73,6 +105,7 @@ const statusText: Record<RowStatus, string> = {
   pending: "รอดำเนินการเข้าตรวจ",
   done: "ตรวจแล้ว",
   doneCall: "ตรวจแล้ว(โทร)",
+  abnormalCall: "ผิดปกติ(โทร)",
 };
 
 const statusOrder: Record<RowStatus, number> = {
@@ -80,23 +113,20 @@ const statusOrder: Record<RowStatus, number> = {
   pending: 2,
   done: 3,
   doneCall: 4,
+  abnormalCall: 4,
 };
 
 /**
- * สำหรับทดสอบ:
- * desiredAccuracyM: 30 = พยายามรอ GPS ให้แม่นประมาณ 30 เมตร
- * maxAccuracyM: 100 = ถ้า accuracy เกิน 100 เมตร จะไม่ให้ไปต่อ
- *
- * ถ้าใช้งานจริงรัศมี 10 เมตร อาจปรับเป็น:
- * desiredAccuracyM: 10,
- * maxAccuracyM: 30,
+ * เปิด log ตลอด เพื่อให้เห็นใน Production Build / Caddy / Cloudflare Tunnel
+ * ถ้าไม่ต้องการ log ตอนใช้งานจริง ค่อยเปลี่ยนกลับไปครอบ import.meta.env.DEV ได้
  */
-const GEO = {
-  desiredAccuracyM: 500,
-  maxAccuracyM: 1000,
-  watchWindowMs: 6000,
-  hardTimeoutMs: 15000,
-};
+function logDev(message: string, payload?: unknown) {
+  console.log(message, payload);
+}
+
+function logDevError(message: string, error: unknown) {
+  console.error(message, error);
+}
 
 function formatDistanceMeter(distance: number) {
   if (distance >= 1000) {
@@ -165,9 +195,16 @@ function getBestPositionAsync(opts: {
     }, watchWindowMs);
 
     const onPos = (pos: GeolocationPosition) => {
-      const accuracy = pos.coords.accuracy ?? 999999;
+      const accuracy = Number.isFinite(pos.coords.accuracy)
+        ? pos.coords.accuracy
+        : Number.POSITIVE_INFINITY;
 
-      if (!best || accuracy < (best.coords.accuracy ?? 999999)) {
+      const bestAccuracy =
+        best && Number.isFinite(best.coords.accuracy)
+          ? best.coords.accuracy
+          : Number.POSITIVE_INFINITY;
+
+      if (!best || accuracy < bestAccuracy) {
         best = pos;
       }
 
@@ -184,7 +221,7 @@ function getBestPositionAsync(opts: {
     watchId = navigator.geolocation.watchPosition(onPos, onErr, {
       enableHighAccuracy: true,
       maximumAge: 0,
-      timeout: Math.min(12000, hardTimeoutMs),
+      timeout: hardTimeoutMs,
     });
   });
 }
@@ -233,14 +270,9 @@ const formatApiDate = (date: Date) => {
   return `${year}-${month}-${day}`;
 };
 
-const mapAssignmentStatusToRowStatus = (
+const mapAssignmentStatusOnly = (
   status: CheckpointAssignmentStatus,
-  hasCall?: boolean,
 ): RowStatus => {
-  if (hasCall) {
-    return "doneCall";
-  }
-
   if (status === "in_progress") {
     return "progress";
   }
@@ -252,17 +284,128 @@ const mapAssignmentStatusToRowStatus = (
   return "pending";
 };
 
+const normalizeCallStatus = (value: unknown): CallStatus | null => {
+  const numericValue =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number(value)
+        : null;
+
+  if (numericValue === 1 || numericValue === 2 || numericValue === 3) {
+    return numericValue;
+  }
+
+  return null;
+};
+
+const normalizeShiftId = (value: unknown): number | null => {
+  const numericValue =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number(value)
+        : null;
+
+  if (typeof numericValue === "number" && Number.isFinite(numericValue)) {
+    return numericValue;
+  }
+
+  return null;
+};
+
+const getLatestCallStatus = (
+  item: CheckpointDailyRowWithExtra,
+): CallStatus | null => {
+  return normalizeCallStatus(item.latest_call_status ?? item.call_status);
+};
+
+const isClosedRowStatus = (status: RowStatus): boolean => {
+  return status === "done" || status === "doneCall" || status === "abnormalCall";
+};
+
+const mapAssignmentStatusToRowStatus = (
+  status: CheckpointAssignmentStatus,
+  hasCall?: boolean,
+  latestCallStatus?: CallStatus | null,
+): RowStatus => {
+  /**
+   * กติกา call_status:
+   *
+   * 1 = ปกติ ไม่ต้องเข้าหน้างาน
+   *     => ปิดงานทันที แสดง ตรวจแล้ว(โทร)
+   *
+   * 2 = ผิดปกติ ไม่ต้องเข้าหน้างาน
+   *     => ปิดงานทันที แสดง ผิดปกติ(โทร)
+   *
+   * 3 = ผิดปกติ ต้องเข้าหน้างาน
+   *     => ยังไม่ปิดงานทันที ต้องเข้าตรวจต่อ
+   *
+   * Flow ข้อ 3:
+   * - pending     => รอดำเนินการเข้าตรวจ
+   * - in_progress => อยู่ระหว่างการเข้าตรวจ
+   * - completed   => ตรวจแล้ว(โทร)
+   */
+
+  if (!hasCall) {
+    return mapAssignmentStatusOnly(status);
+  }
+
+  if (latestCallStatus === 1) {
+    return "doneCall";
+  }
+
+  if (latestCallStatus === 2) {
+    return "abnormalCall";
+  }
+
+  if (latestCallStatus === 3) {
+    if (status === "completed") {
+      return "doneCall";
+    }
+
+    return mapAssignmentStatusOnly(status);
+  }
+
+  /**
+   * fallback กรณี backend ยังไม่ส่ง latest_call_status กลับมา
+   *
+   * - ถ้า completed แล้ว และมี call log ให้แสดง ตรวจแล้ว(โทร)
+   * - ถ้ายัง pending / in_progress ให้ยึด assignment_status เป็นหลัก
+   */
+  if (status === "completed") {
+    return "doneCall";
+  }
+
+  return mapAssignmentStatusOnly(status);
+};
+
+const getRowShiftId = (item: CheckpointDailyRow): number | null => {
+  const row = item as CheckpointDailyRowWithExtra;
+
+  return normalizeShiftId(row.shift_id);
+};
+
 const mapDailyRowsToCheckRows = (rows: CheckpointDailyRow[]): CheckRow[] => {
   return rows.map((item) => {
+    const row = item as CheckpointDailyRowWithExtra;
     const hasCall = Boolean(item.has_call);
+    const latestCallStatus = getLatestCallStatus(row);
 
     return {
       assignmentId: item.assignment_id,
       unitName: item.unit_name,
+      shiftId: getRowShiftId(item),
       plan: `${item.plan_day} วัน`,
+      assignmentStatus: item.assignment_status,
       requireCall: Boolean(item.require_call),
       hasCall,
-      status: mapAssignmentStatusToRowStatus(item.assignment_status, hasCall),
+      latestCallStatus,
+      status: mapAssignmentStatusToRowStatus(
+        item.assignment_status,
+        hasCall,
+        latestCallStatus,
+      ),
     };
   });
 };
@@ -288,6 +431,11 @@ export default function Checkpoint({
   const [checkRows, setCheckRows] = useState<CheckRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+
+  const [setting, setSetting] = useState<AttendanceLocationSetting | null>(
+    null,
+  );
+  const [settingLoading, setSettingLoading] = useState(true);
 
   const [isCallModalOpen, setIsCallModalOpen] = useState(false);
   const [selectedRow, setSelectedRow] = useState<CheckRow | null>(null);
@@ -336,6 +484,39 @@ export default function Checkpoint({
       setIsLoading(false);
     }
   }, [selectedShift]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSetting() {
+      setSettingLoading(true);
+
+      try {
+        const data = await getAttendanceLocationSetting();
+
+        if (!cancelled) {
+          setSetting(data);
+        }
+      } catch (error) {
+        logDevError("load checkpoint location setting error:", error);
+
+        if (!cancelled) {
+          setSetting(null);
+          setErrorMessage("โหลดค่าตรวจสอบตำแหน่งไม่สำเร็จ");
+        }
+      } finally {
+        if (!cancelled) {
+          setSettingLoading(false);
+        }
+      }
+    }
+
+    void loadSetting();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -399,26 +580,62 @@ export default function Checkpoint({
       return null;
     }
 
+    if (!setting) {
+      logDevError("[Checkpoint] LOCATION SETTING NOT FOUND", {
+        assignmentId: row.assignmentId,
+        unitName: row.unitName,
+        shiftId: row.shiftId,
+        row,
+      });
+
+      openOutOfAreaModal("ยังไม่พบค่าตั้งค่าการตรวจสอบตำแหน่ง");
+      return null;
+    }
+
     try {
       setIsCheckingLocation(true);
       setOutOfAreaHint("");
       setOutOfAreaOpen(false);
 
       const pos = await getBestPositionAsync({
-        desiredAccuracyM: GEO.desiredAccuracyM,
-        watchWindowMs: GEO.watchWindowMs,
-        hardTimeoutMs: GEO.hardTimeoutMs,
+        desiredAccuracyM: setting.geo.desiredAccuracyM,
+        watchWindowMs: setting.geo.watchWindowMs,
+        hardTimeoutMs: setting.geo.hardTimeoutMs,
       });
 
       const currentLatitude = pos.coords.latitude;
       const currentLongitude = pos.coords.longitude;
-      const accuracy = pos.coords.accuracy ?? 999999;
-      const roundedAccuracy = Math.round(accuracy);
 
-      if (accuracy > GEO.maxAccuracyM) {
-        openOutOfAreaModal(
-          `สัญญาณ GPS ยังไม่ดี ค่าความคลาดเคลื่อนประมาณ ${roundedAccuracy} เมตร กรุณาไปที่โล่งหรือเปิด Wi-Fi แล้วตรวจสอบตำแหน่งอีกครั้ง`,
-        );
+      const currentAccuracy = Number.isFinite(pos.coords.accuracy)
+        ? pos.coords.accuracy
+        : Number.POSITIVE_INFINITY;
+
+      const roundedAccuracy = Number.isFinite(currentAccuracy)
+        ? Math.round(currentAccuracy)
+        : 999999;
+
+      const currentLocation = {
+        latitude: currentLatitude,
+        longitude: currentLongitude,
+        accuracy: roundedAccuracy,
+      };
+
+      if (currentAccuracy > setting.geo.maxAccuracyM) {
+        const message = `สัญญาณ GPS ยังไม่ดี ค่าความคลาดเคลื่อนประมาณ ${roundedAccuracy} เมตร กรุณาไปที่โล่งหรือเปิด Wi-Fi แล้วตรวจสอบตำแหน่งอีกครั้ง`;
+
+        logDevError("[Checkpoint] GPS ACCURACY TOO HIGH", {
+          message,
+          assignmentId: row.assignmentId,
+          unitName: row.unitName,
+          shiftId: row.shiftId,
+          currentLocation,
+          currentAccuracy,
+          roundedAccuracy,
+          geoSetting: setting.geo,
+          maxAccuracyM: setting.geo.maxAccuracyM,
+        });
+
+        openOutOfAreaModal(message);
         return null;
       }
 
@@ -430,28 +647,48 @@ export default function Checkpoint({
         accuracy: roundedAccuracy,
       };
 
-      if (import.meta.env.DEV) {
-        console.log("VERIFY CHECKPOINT LOCATION PAYLOAD", verifyPayload);
-      }
+      logDev("VERIFY CHECKPOINT LOCATION PAYLOAD", verifyPayload);
 
       const verifyResult = await verifyCheckpointLocation(verifyPayload);
 
-      if (import.meta.env.DEV) {
-        console.log("VERIFY CHECKPOINT LOCATION RESULT", verifyResult);
-      }
+      logDev("VERIFY CHECKPOINT LOCATION RESULT", verifyResult);
 
       if (!verifyResult.allowed) {
-        const distanceText =
+        const distanceMeter =
           typeof verifyResult.distance_meter === "number"
+            ? verifyResult.distance_meter
+            : null;
+
+        const distanceText =
+          distanceMeter !== null
             ? ` ระยะห่างประมาณ ${formatDistanceMeter(
-                verifyResult.distance_meter,
+                distanceMeter,
               )} จากจุดตรวจที่เลือก`
             : "";
 
-        openOutOfAreaModal(
-          verifyResult.message ||
-            `คุณอยู่นอกพื้นที่ที่กำหนด${distanceText}`,
-        );
+        const baseMessage =
+          verifyResult.message || "คุณอยู่นอกพื้นที่ที่กำหนด";
+
+        const message =
+          distanceText && !baseMessage.includes("ระยะห่าง")
+            ? `${baseMessage}${distanceText}`
+            : baseMessage;
+
+        logDevError("[Checkpoint] OUT OF AREA", {
+          message,
+          assignmentId: row.assignmentId,
+          unitName: row.unitName,
+          shiftId: row.shiftId,
+          currentLocation,
+          geoSetting: setting.geo,
+          distanceMeter,
+          distanceText:
+            distanceMeter !== null ? formatDistanceMeter(distanceMeter) : null,
+          verifyPayload,
+          verifyResult,
+        });
+
+        openOutOfAreaModal(message);
 
         return null;
       }
@@ -464,6 +701,15 @@ export default function Checkpoint({
     } catch (error: any) {
       const status = getRequestErrorStatus(error);
       const message = getRequestErrorMessage(error);
+
+      logDevError("[Checkpoint] VERIFY LOCATION ERROR", {
+        assignmentId: row.assignmentId,
+        unitName: row.unitName,
+        shiftId: row.shiftId,
+        status,
+        message,
+        error,
+      });
 
       if (status === 405 || message.includes("405")) {
         openOutOfAreaModal(
@@ -508,6 +754,19 @@ export default function Checkpoint({
       return;
     }
 
+    if (!row.shiftId) {
+      logDevError("[Checkpoint] SHIFT ID NOT FOUND", {
+        assignmentId: row.assignmentId,
+        unitName: row.unitName,
+        row,
+      });
+
+      openOutOfAreaModal(
+        "ไม่พบข้อมูลผลัดของตารางงานสายตรวจ กรุณาติดต่อผู้ดูแลระบบ",
+      );
+      return;
+    }
+
     const passedLocation = await checkLocationBeforeGoCheckInOut(row);
 
     if (!passedLocation) {
@@ -517,28 +776,73 @@ export default function Checkpoint({
     onGoCheckInOut({
       assignmentId: row.assignmentId,
       unitName: row.unitName,
-      shiftId: SHIFT_ID_BY_TYPE[selectedShift],
+      shiftId: row.shiftId,
       mode,
       passedLocation,
     });
   };
 
-  const markRowAsDoneCall = (assignmentId: number) => {
+  const updateRowAfterSaveCall = (
+    assignmentId: number,
+    savedCallStatus: CallStatus,
+  ) => {
     setCheckRows((currentRows) =>
-      currentRows.map((row) =>
-        row.assignmentId === assignmentId
-          ? {
-              ...row,
-              hasCall: true,
-              status: "doneCall",
-            }
-          : row,
-      ),
+      currentRows.map((row) => {
+        if (row.assignmentId !== assignmentId) {
+          return row;
+        }
+
+        /**
+         * ข้อ 3 = ผิดปกติ ต้องเข้าหน้างาน
+         *
+         * ให้บันทึก call log ได้ แต่ไม่ปิดงานทันที
+         * เพื่อให้ยังสามารถกดเข้าตรวจ / ออกตรวจต่อได้
+         *
+         * Flow:
+         * - ถ้ายัง pending     => รอดำเนินการเข้าตรวจ
+         * - ถ้า in_progress    => อยู่ระหว่างการเข้าตรวจ
+         * - ถ้า completed แล้ว => ตรวจแล้ว(โทร)
+         */
+        if (savedCallStatus === 3) {
+          return {
+            ...row,
+            hasCall: true,
+            latestCallStatus: 3,
+            status:
+              row.assignmentStatus === "completed"
+                ? "doneCall"
+                : mapAssignmentStatusOnly(row.assignmentStatus),
+          };
+        }
+
+        /**
+         * ข้อ 1, 2 = ไม่ต้องเข้าหน้างาน
+         * ต้องปิดงานทันที และไม่ให้กดเข้าตรวจต่อ
+         */
+        return {
+          ...row,
+          assignmentStatus: "completed",
+          hasCall: true,
+          latestCallStatus: savedCallStatus,
+          status: savedCallStatus === 2 ? "abnormalCall" : "doneCall",
+        };
+      }),
     );
   };
 
   const handleSuccessOk = () => {
     setIsSuccessModalOpen(false);
+
+    /**
+     * ไม่ fetch ทันที เพื่อไม่ให้กรณี call_status = 3
+     * ถูก API ที่ยังไม่ส่ง latest_call_status กลับมาแปลงผิด
+     *
+     * ระยะยาว:
+     * - Backend daily API ควรส่ง latest_call_status กลับมา
+     * - Backend ควรอัปเดต assignment_status = completed เมื่อ call_status เป็น 1 หรือ 2
+     * - เมื่อ backend พร้อมแล้ว สามารถเปิด fetchCheckpointAssignments() ได้
+     */
+    // void fetchCheckpointAssignments();
   };
 
   const handleSaveCallDetail = async (
@@ -561,10 +865,12 @@ export default function Checkpoint({
         created_by: empCode,
       });
 
-      markRowAsDoneCall(assignmentId);
+      updateRowAfterSaveCall(assignmentId, payload.callStatus);
       closeCallModal();
       setIsSuccessModalOpen(true);
     } catch (error) {
+      logDevError("[Checkpoint] SAVE CALL ERROR", error);
+
       alert(
         error instanceof Error
           ? error.message
@@ -620,7 +926,12 @@ export default function Checkpoint({
                   type="button"
                   className={styles.refreshBtn}
                   onClick={handleRefresh}
-                  disabled={isLoading}
+                  disabled={
+                    isLoading ||
+                    settingLoading ||
+                    isCheckingLocation ||
+                    isSavingCall
+                  }
                   aria-label="รีเฟรชหน้าจอ"
                   title="รีเฟรชหน้าจอ"
                 >
@@ -703,16 +1014,30 @@ export default function Checkpoint({
                     const isPending = row.status === "pending";
                     const isProgress = row.status === "progress";
                     const canGoCheckInOut = isPending || isProgress;
-                    const showCallButton = row.requireCall;
+
+                    /**
+                     * ปิดปุ่มบันทึกการโทร เมื่อแถวปิดงานแล้ว
+                     * เช่น ตรวจแล้ว, ตรวจแล้ว(โทร), ผิดปกติ(โทร)
+                     */
+                    const showCallButton =
+                      row.requireCall && !isClosedRowStatus(row.status);
 
                     const statusClass =
                       row.status === "done"
                         ? styles.statusDone
-                        : row.status === "doneCall"
+                        : row.status === "doneCall" ||
+                            row.status === "abnormalCall"
                           ? styles.statusDoneCall
                           : row.status === "progress"
                             ? styles.statusProgress
                             : styles.statusPending;
+
+                    const isActionDisabled =
+                      !canGoCheckInOut ||
+                      settingLoading ||
+                      !setting ||
+                      isCheckingLocation ||
+                      isSavingCall;
 
                     return (
                       <div className={styles.dataRow} key={row.assignmentId}>
@@ -727,6 +1052,11 @@ export default function Checkpoint({
                                 type="button"
                                 className={styles.callBtn}
                                 onClick={() => openCallModal(row)}
+                                disabled={
+                                  isSavingCall ||
+                                  isCheckingLocation ||
+                                  settingLoading
+                                }
                               >
                                 <span className={styles.callBtnText}>
                                   <span>บันทึก</span>
@@ -746,7 +1076,7 @@ export default function Checkpoint({
                                 ? () => void handleGoCheckInOut(row)
                                 : undefined
                             }
-                            disabled={!canGoCheckInOut || isCheckingLocation}
+                            disabled={isActionDisabled}
                             aria-label={
                               canGoCheckInOut
                                 ? `ไปหน้าลงเวลาเข้าออกงาน หน่วยงาน ${row.unitName}`
@@ -763,7 +1093,11 @@ export default function Checkpoint({
             </div>
 
             <div className="guts-fv-bottom">
-              <BackButton onClick={onBack} className="guts-fv-backBtn" />
+              <BackButton
+                onClick={onBack}
+                disabled={isCheckingLocation || isSavingCall || settingLoading}
+                className="guts-fv-backBtn"
+              />
             </div>
           </section>
         </div>
@@ -785,11 +1119,13 @@ export default function Checkpoint({
       />
 
       <LoadingModal
-        isOpen={isSavingCall || isCheckingLocation}
+        isOpen={isSavingCall || isCheckingLocation || settingLoading}
         message={
-          isCheckingLocation
-            ? "กำลังตรวจสอบตำแหน่ง..."
-            : "กำลังบันทึกข้อมูล..."
+          settingLoading
+            ? "กำลังโหลดค่าตรวจสอบตำแหน่ง..."
+            : isCheckingLocation
+              ? "กำลังตรวจสอบตำแหน่ง..."
+              : "กำลังบันทึกข้อมูล..."
         }
       />
 
