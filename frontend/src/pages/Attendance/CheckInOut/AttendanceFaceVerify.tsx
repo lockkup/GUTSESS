@@ -11,6 +11,11 @@ import SuccessModal from "@/components/SuccessModal";
 import FaceNotFoundModal from "@/components/FaceNotFoundModal";
 import CheckInOutModal from "@/components/CheckInOutModal";
 
+import {
+  getAttendanceLocationSetting,
+  type AttendanceLocationSetting,
+} from "@/services/appSetting.service";
+
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faCamera,
@@ -38,7 +43,7 @@ type Props = {
 
   /**
    * เก็บไว้ก่อน เผื่ออนาคตเปิดใช้ตรวจใบหน้า
-   * ตอนนี้จะไม่ถูกเรียก ถ้า ENABLE_FACE_VERIFY = false
+   * ตอนนี้จะไม่ถูกเรียก ถ้า setting.enable_face_verify = false
    */
   onVerifyFace: (embedding: number[]) => Promise<void>;
 
@@ -62,17 +67,20 @@ type LocStatus =
   | "error";
 
 /**
- * false = ถ่ายรูป + ตรวจ GPS + บันทึกเวลา แต่ไม่ตรวจว่าเป็นใคร
- * true  = เปิดใช้ตรวจใบหน้าในอนาคต
+ * เปิด log ตลอด เพื่อให้เห็นใน Production Build / Caddy / Cloudflare Tunnel
+ * ถ้าไม่ต้องการ log ตอนใช้งานจริง ค่อยเปลี่ยนกลับไปครอบ import.meta.env.DEV ได้
+ *
+ * หมายเหตุ:
+ * - ห้าม log photoDataUrl/base64 เต็ม ๆ เพราะข้อมูลยาวมากและเป็นข้อมูลภาพพนักงาน
+ * - ให้ log แค่ hasPhoto / photoLength แทน
  */
-const ENABLE_FACE_VERIFY = false;
+function logDev(message: string, payload?: unknown) {
+  console.log(message, payload);
+}
 
-const GEO = {
-  desiredAccuracyM: 50,
-  maxAccuracyM: 10000,
-  watchWindowMs: 6000,
-  hardTimeoutMs: 15000,
-};
+function logDevError(message: string, error: unknown) {
+  console.error(message, error);
+}
 
 function getBestPositionAsync(opts: {
   desiredAccuracyM: number;
@@ -134,9 +142,16 @@ function getBestPositionAsync(opts: {
     }, watchWindowMs);
 
     const onPos = (pos: GeolocationPosition) => {
-      const acc = pos.coords.accuracy ?? 999999;
+      const acc = Number.isFinite(pos.coords.accuracy)
+        ? pos.coords.accuracy
+        : Number.POSITIVE_INFINITY;
 
-      if (!best || acc < (best.coords.accuracy ?? 999999)) {
+      const bestAcc =
+        best && Number.isFinite(best.coords.accuracy)
+          ? best.coords.accuracy
+          : Number.POSITIVE_INFINITY;
+
+      if (!best || acc < bestAcc) {
         best = pos;
       }
 
@@ -153,7 +168,7 @@ function getBestPositionAsync(opts: {
     watchId = navigator.geolocation.watchPosition(onPos, onErr, {
       enableHighAccuracy: true,
       maximumAge: 0,
-      timeout: Math.min(12000, hardTimeoutMs),
+      timeout: hardTimeoutMs,
     });
   });
 }
@@ -216,11 +231,87 @@ export default function AttendanceFaceVerify({
   const [faceEmbedding, setFaceEmbedding] = useState<number[] | null>(null);
   const [faceVerified, setFaceVerified] = useState(false);
 
+  const [setting, setSetting] = useState<AttendanceLocationSetting | null>(
+    null,
+  );
+  const [settingLoading, setSettingLoading] = useState(true);
+
   const locReqRef = useRef(0);
   const saveReqRef = useRef(0);
 
+  /**
+   * กันยิงบันทึกซ้ำจากการกดเร็ว / retry ซ้ำ
+   * ใช้ ref เพราะเปลี่ยนค่าทันที ไม่ต้องรอ React setState
+   */
+  const savingRef = useRef(false);
+
+  const enableFaceVerify = setting?.enable_face_verify === true;
+
   useEffect(() => {
-    if (!ENABLE_FACE_VERIFY) {
+    let cancelled = false;
+
+    async function loadSetting() {
+      setSettingLoading(true);
+
+      logDev("[AttendanceFaceVerify] LOAD LOCATION SETTING START", {
+        empCode,
+        punchType,
+      });
+
+      try {
+        const data = await getAttendanceLocationSetting();
+
+        logDev("[AttendanceFaceVerify] LOCATION SETTING LOADED", {
+          empCode,
+          punchType,
+          setting: data,
+        });
+
+        if (!cancelled) {
+          setSetting(data);
+          setErr("");
+        }
+      } catch (error) {
+        logDevError("[AttendanceFaceVerify] LOAD LOCATION SETTING ERROR", {
+          empCode,
+          punchType,
+          error,
+        });
+
+        if (!cancelled) {
+          setSetting(null);
+          setErr("โหลดค่าตรวจสอบตำแหน่งไม่สำเร็จ");
+        }
+      } finally {
+        if (!cancelled) {
+          setSettingLoading(false);
+        }
+      }
+    }
+
+    void loadSetting();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [empCode, punchType]);
+
+  useEffect(() => {
+    if (settingLoading || !setting) return;
+
+    logDev("[AttendanceFaceVerify] FACE VERIFY CONFIG", {
+      empCode,
+      punchType,
+      enableFaceVerify,
+      setting,
+    });
+
+    if (!enableFaceVerify) {
+      logDev("[AttendanceFaceVerify] FACE VERIFY DISABLED", {
+        empCode,
+        punchType,
+      });
+
       setModelsLoaded(true);
       return;
     }
@@ -228,6 +319,13 @@ export default function AttendanceFaceVerify({
     let cancelled = false;
 
     const loadModels = async () => {
+      setModelsLoaded(false);
+
+      logDev("[AttendanceFaceVerify] LOAD FACE MODELS START", {
+        empCode,
+        punchType,
+      });
+
       try {
         const MODEL_URL = "/models";
 
@@ -237,11 +335,20 @@ export default function AttendanceFaceVerify({
           faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
         ]);
 
+        logDev("[AttendanceFaceVerify] LOAD FACE MODELS SUCCESS", {
+          empCode,
+          punchType,
+        });
+
         if (!cancelled) {
           setModelsLoaded(true);
         }
       } catch (error) {
-        console.error("loadModels error:", error);
+        logDevError("[AttendanceFaceVerify] LOAD FACE MODELS ERROR", {
+          empCode,
+          punchType,
+          error,
+        });
 
         if (!cancelled) {
           setErr("โหลดโมเดลตรวจจับใบหน้าไม่สำเร็จ");
@@ -255,11 +362,17 @@ export default function AttendanceFaceVerify({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [settingLoading, setting, enableFaceVerify, empCode, punchType]);
 
   useEffect(() => {
+    logDev("[AttendanceFaceVerify] RESET PAGE STATE BY PUNCH TYPE", {
+      empCode,
+      punchType,
+    });
+
     locReqRef.current++;
     saveReqRef.current++;
+    savingRef.current = false;
 
     setPhoto("");
     setErr("");
@@ -280,37 +393,94 @@ export default function AttendanceFaceVerify({
     setVerifyErrorOpen(false);
     setFaceVerifyFailed(false);
     setCheckInOutModalOpen(false);
-  }, [punchType]);
+  }, [punchType, empCode]);
 
   async function checkLocationGate(): Promise<{
     ok: boolean;
     status: LocStatus;
     location?: AttendanceLocationCoords;
   }> {
+    if (!setting) {
+      logDevError("[AttendanceFaceVerify] LOCATION SETTING NOT FOUND", {
+        empCode,
+        punchType,
+        setting,
+      });
+
+      setLocStatus("error");
+      setLocHint("ยังไม่พบค่าตั้งค่าการตรวจสอบตำแหน่ง");
+      setOutModalOpen(true);
+
+      return { ok: false, status: "error" };
+    }
+
     const reqId = ++locReqRef.current;
 
     setLocStatus("checking");
     setLocHint("กำลังตรวจสอบตำแหน่ง GPS...");
 
+    logDev("[AttendanceFaceVerify] CHECK LOCATION START", {
+      empCode,
+      punchType,
+      reqId,
+      geoSetting: setting.geo,
+    });
+
     try {
       const pos = await getBestPositionAsync({
-        desiredAccuracyM: GEO.desiredAccuracyM,
-        watchWindowMs: GEO.watchWindowMs,
-        hardTimeoutMs: GEO.hardTimeoutMs,
+        desiredAccuracyM: setting.geo.desiredAccuracyM,
+        watchWindowMs: setting.geo.watchWindowMs,
+        hardTimeoutMs: setting.geo.hardTimeoutMs,
       });
 
       if (reqId !== locReqRef.current) {
+        logDev("[AttendanceFaceVerify] CHECK LOCATION IGNORED OLD REQUEST", {
+          empCode,
+          punchType,
+          reqId,
+          currentReqId: locReqRef.current,
+        });
+
         return { ok: false, status: "error" };
       }
 
       const { latitude, longitude, accuracy } = pos.coords;
-      const roundedAccuracy = Math.round(accuracy ?? 0);
 
-      if ((accuracy ?? 999999) > GEO.maxAccuracyM) {
+      logDev("[AttendanceFaceVerify] GPS POSITION RESULT", {
+        empCode,
+        punchType,
+        reqId,
+        latitude,
+        longitude,
+        accuracy,
+      });
+
+      const currentAccuracy = Number.isFinite(accuracy)
+        ? accuracy
+        : Number.POSITIVE_INFINITY;
+
+      const roundedAccuracy = Number.isFinite(currentAccuracy)
+        ? Math.round(currentAccuracy)
+        : 999999;
+
+      if (currentAccuracy > setting.geo.maxAccuracyM) {
+        const message = `สัญญาณ GPS ยังไม่แม่นยำ ค่าความคลาดเคลื่อนประมาณ ${roundedAccuracy} เมตร ระบบอนุญาตไม่เกิน ${setting.geo.maxAccuracyM} เมตร กรุณาไปที่โล่งหรือเปิด Wi-Fi แล้วตรวจสอบตำแหน่งอีกครั้ง`;
+
+        logDevError("[AttendanceFaceVerify] GPS ACCURACY TOO HIGH", {
+          empCode,
+          punchType,
+          reqId,
+          message,
+          currentAccuracy,
+          roundedAccuracy,
+          maxAccuracyM: setting.geo.maxAccuracyM,
+          geoSetting: setting.geo,
+          latitude,
+          longitude,
+        });
+
         setLocStatus("error");
-        setLocHint(
-          "สัญญาณ GPS ยังไม่ดี กรุณาไปที่โล่งหรือเปิด Wi-Fi แล้วตรวจสอบตำแหน่งอีกครั้ง",
-        );
+        setLocHint(message);
         setOutModalOpen(true);
 
         return { ok: false, status: "error" };
@@ -333,6 +503,13 @@ export default function AttendanceFaceVerify({
       setLocHint("");
       setOutModalOpen(false);
 
+      logDev("[AttendanceFaceVerify] LOCATION ALLOWED", {
+        empCode,
+        punchType,
+        reqId,
+        location,
+      });
+
       return {
         ok: true,
         status: "allowed",
@@ -340,8 +517,28 @@ export default function AttendanceFaceVerify({
       };
     } catch (e: any) {
       if (reqId !== locReqRef.current) {
+        logDev(
+          "[AttendanceFaceVerify] CHECK LOCATION ERROR IGNORED OLD REQUEST",
+          {
+            empCode,
+            punchType,
+            reqId,
+            currentReqId: locReqRef.current,
+            error: e,
+          },
+        );
+
         return { ok: false, status: "error" };
       }
+
+      logDevError("[AttendanceFaceVerify] CHECK LOCATION ERROR", {
+        empCode,
+        punchType,
+        reqId,
+        error: e,
+        code: e?.code,
+        message: e?.message,
+      });
 
       if (e?.code === 1) {
         setLocStatus("blocked");
@@ -370,9 +567,23 @@ export default function AttendanceFaceVerify({
   }
 
   async function extractFaceEmbedding(dataUrl: string): Promise<number[] | null> {
-    if (!ENABLE_FACE_VERIFY || !modelsLoaded) {
+    if (!enableFaceVerify || !modelsLoaded) {
+      logDev("[AttendanceFaceVerify] SKIP EXTRACT FACE EMBEDDING", {
+        empCode,
+        punchType,
+        enableFaceVerify,
+        modelsLoaded,
+      });
+
       return null;
     }
+
+    logDev("[AttendanceFaceVerify] EXTRACT FACE EMBEDDING START", {
+      empCode,
+      punchType,
+      hasPhoto: Boolean(dataUrl),
+      photoLength: dataUrl.length,
+    });
 
     return new Promise((resolve) => {
       const img = new Image();
@@ -392,18 +603,43 @@ export default function AttendanceFaceVerify({
             .withFaceDescriptor();
 
           if (!result) {
+            logDev("[AttendanceFaceVerify] FACE NOT FOUND", {
+              empCode,
+              punchType,
+            });
+
             resolve(null);
             return;
           }
 
-          resolve(Array.from(result.descriptor));
+          const embedding = Array.from(result.descriptor);
+
+          logDev("[AttendanceFaceVerify] EXTRACT FACE EMBEDDING SUCCESS", {
+            empCode,
+            punchType,
+            embeddingLength: embedding.length,
+          });
+
+          resolve(embedding);
         } catch (error) {
-          console.error("extractFaceEmbedding error:", error);
+          logDevError("[AttendanceFaceVerify] EXTRACT FACE EMBEDDING ERROR", {
+            empCode,
+            punchType,
+            error,
+          });
+
           resolve(null);
         }
       };
 
-      img.onerror = () => resolve(null);
+      img.onerror = () => {
+        logDevError("[AttendanceFaceVerify] IMAGE LOAD ERROR", {
+          empCode,
+          punchType,
+        });
+
+        resolve(null);
+      };
     });
   }
 
@@ -412,20 +648,74 @@ export default function AttendanceFaceVerify({
     embeddingToSave: number[],
     location: AttendanceLocationCoords,
   ) {
+    if (savingRef.current) {
+      logDev("[AttendanceFaceVerify] SAVE TIME RECORD SKIPPED DUPLICATE", {
+        empCode,
+        punchType,
+      });
+
+      return;
+    }
+
+    savingRef.current = true;
+
     const saveId = ++saveReqRef.current;
 
+    setBusy(true);
     setErr("");
+    setLocStatus("allowed");
+    setLocHint("กำลังบันทึก...");
+
+    logDev("[AttendanceFaceVerify] SAVE TIME RECORD START", {
+      empCode,
+      punchType,
+      saveId,
+      location,
+      hasPhoto: Boolean(photoDataUrl),
+      photoLength: photoDataUrl.length,
+      embeddingLength: embeddingToSave.length,
+    });
 
     try {
       await onConfirm(photoDataUrl, punchType, embeddingToSave, location);
 
-      if (saveId !== saveReqRef.current) return;
+      logDev("[AttendanceFaceVerify] SAVE TIME RECORD SUCCESS", {
+        empCode,
+        punchType,
+        saveId,
+      });
+
+      if (saveId !== saveReqRef.current) {
+        logDev("[AttendanceFaceVerify] SAVE SUCCESS IGNORED OLD REQUEST", {
+          empCode,
+          punchType,
+          saveId,
+          currentSaveId: saveReqRef.current,
+        });
+
+        return;
+      }
 
       setSuccessOpen(true);
     } catch (error) {
-      console.error("saveAndShowSuccess error:", error);
+      logDevError("[AttendanceFaceVerify] SAVE TIME RECORD ERROR", {
+        empCode,
+        punchType,
+        saveId,
+        location,
+        error,
+      });
 
-      if (saveId !== saveReqRef.current) return;
+      if (saveId !== saveReqRef.current) {
+        logDev("[AttendanceFaceVerify] SAVE ERROR IGNORED OLD REQUEST", {
+          empCode,
+          punchType,
+          saveId,
+          currentSaveId: saveReqRef.current,
+        });
+
+        return;
+      }
 
       const message =
         error instanceof Error
@@ -433,6 +723,13 @@ export default function AttendanceFaceVerify({
           : "บันทึกเวลาไม่สำเร็จ กรุณาลองใหม่";
 
       if (isPendingCheckinMessage(message)) {
+        logDev("[AttendanceFaceVerify] PENDING CHECKIN MESSAGE DETECTED", {
+          empCode,
+          punchType,
+          saveId,
+          message,
+        });
+
         setLocStatus("idle");
         setLocHint("");
         setErr("");
@@ -442,6 +739,13 @@ export default function AttendanceFaceVerify({
       }
 
       if (isOutOfAreaMessage(message)) {
+        logDevError("[AttendanceFaceVerify] OUT OF AREA MESSAGE DETECTED", {
+          empCode,
+          punchType,
+          saveId,
+          message,
+        });
+
         setLocStatus("outside");
         setLocHint(message);
         setOutModalOpen(true);
@@ -450,7 +754,20 @@ export default function AttendanceFaceVerify({
         return;
       }
 
+      setLocStatus("allowed");
+      setLocHint("");
       setErr(message);
+    } finally {
+      if (saveId === saveReqRef.current) {
+        savingRef.current = false;
+        setBusy(false);
+
+        logDev("[AttendanceFaceVerify] SAVE TIME RECORD FINISH", {
+          empCode,
+          punchType,
+          saveId,
+        });
+      }
     }
   }
 
@@ -458,8 +775,19 @@ export default function AttendanceFaceVerify({
     setLocStatus("checking");
     setLocHint("กำลังตรวจสอบใบหน้ากับข้อมูลในระบบ...");
 
+    logDev("[AttendanceFaceVerify] VERIFY FACE START", {
+      empCode,
+      punchType,
+      embeddingLength: embedding.length,
+    });
+
     try {
       await onVerifyFace(embedding);
+
+      logDev("[AttendanceFaceVerify] VERIFY FACE SUCCESS", {
+        empCode,
+        punchType,
+      });
 
       setFaceVerified(true);
       setFaceVerifyFailed(false);
@@ -468,11 +796,21 @@ export default function AttendanceFaceVerify({
 
       const res = await checkLocationGate();
 
+      logDev("[AttendanceFaceVerify] LOCATION RESULT AFTER FACE VERIFY", {
+        empCode,
+        punchType,
+        result: res,
+      });
+
       if (res.ok && res.location) {
         await saveAndShowSuccess(dataUrl, embedding, res.location);
       }
     } catch (error) {
-      console.error("verifyFaceAndContinue error:", error);
+      logDevError("[AttendanceFaceVerify] VERIFY FACE ERROR", {
+        empCode,
+        punchType,
+        error,
+      });
 
       setFaceVerified(false);
       setFaceVerifyFailed(true);
@@ -485,6 +823,26 @@ export default function AttendanceFaceVerify({
   }
 
   async function processCapturedImage(dataUrl: string) {
+    logDev("[AttendanceFaceVerify] PROCESS CAPTURED IMAGE START", {
+      empCode,
+      punchType,
+      hasPhoto: Boolean(dataUrl),
+      photoLength: dataUrl.length,
+      enableFaceVerify,
+      modelsLoaded,
+    });
+
+    if (!setting) {
+      logDevError("[AttendanceFaceVerify] PROCESS IMAGE WITHOUT SETTING", {
+        empCode,
+        punchType,
+        setting,
+      });
+
+      setErr("โหลดค่าตรวจสอบตำแหน่งไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+      return;
+    }
+
     setFaceNotFoundOpen(false);
     setVerifyErrorOpen(false);
     setFaceVerifyFailed(false);
@@ -500,8 +858,13 @@ export default function AttendanceFaceVerify({
     setLocFix(null);
     setOutModalOpen(false);
 
-    if (!ENABLE_FACE_VERIFY) {
+    if (!enableFaceVerify) {
       const emptyEmbedding: number[] = [];
+
+      logDev("[AttendanceFaceVerify] FACE VERIFY DISABLED - GO LOCATION CHECK", {
+        empCode,
+        punchType,
+      });
 
       setFaceEmbedding(emptyEmbedding);
       setFaceVerified(true);
@@ -511,6 +874,12 @@ export default function AttendanceFaceVerify({
       setLocStatus("checking");
 
       const res = await checkLocationGate();
+
+      logDev("[AttendanceFaceVerify] LOCATION RESULT WITHOUT FACE VERIFY", {
+        empCode,
+        punchType,
+        result: res,
+      });
 
       if (res.ok && res.location) {
         await saveAndShowSuccess(dataUrl, emptyEmbedding, res.location);
@@ -525,6 +894,11 @@ export default function AttendanceFaceVerify({
     const embedding = await extractFaceEmbedding(dataUrl);
 
     if (!embedding) {
+      logDev("[AttendanceFaceVerify] PROCESS IMAGE FACE NOT FOUND", {
+        empCode,
+        punchType,
+      });
+
       setLocStatus("idle");
       setLocHint("");
       setFaceEmbedding(null);
@@ -538,10 +912,59 @@ export default function AttendanceFaceVerify({
   }
 
   async function onPickFile(file?: File | null) {
-    if (!file) return;
+    if (!file) {
+      logDev("[AttendanceFaceVerify] PICK FILE SKIPPED NO FILE", {
+        empCode,
+        punchType,
+      });
 
-    if (ENABLE_FACE_VERIFY && !modelsLoaded) {
+      return;
+    }
+
+    logDev("[AttendanceFaceVerify] PICK FILE START", {
+      empCode,
+      punchType,
+      fileName: file.name,
+      fileType: file.type,
+      fileSize: file.size,
+      enableFaceVerify,
+      modelsLoaded,
+      settingLoading,
+      hasSetting: Boolean(setting),
+      busy,
+      saving: savingRef.current,
+    });
+
+    if (enableFaceVerify && !modelsLoaded) {
+      logDev("[AttendanceFaceVerify] PICK FILE BLOCKED MODELS NOT LOADED", {
+        empCode,
+        punchType,
+      });
+
       setErr("ระบบ AI ยังโหลดไม่เสร็จ กรุณารอสักครู่");
+      return;
+    }
+
+    if (settingLoading || !setting) {
+      logDev("[AttendanceFaceVerify] PICK FILE BLOCKED SETTING LOADING", {
+        empCode,
+        punchType,
+        settingLoading,
+        hasSetting: Boolean(setting),
+      });
+
+      setErr("ระบบกำลังโหลดค่าตรวจสอบตำแหน่ง กรุณารอสักครู่");
+      return;
+    }
+
+    if (busy || savingRef.current) {
+      logDev("[AttendanceFaceVerify] PICK FILE BLOCKED BUSY", {
+        empCode,
+        punchType,
+        busy,
+        saving: savingRef.current,
+      });
+
       return;
     }
 
@@ -557,24 +980,77 @@ export default function AttendanceFaceVerify({
         reader.readAsDataURL(file);
       });
 
+      logDev("[AttendanceFaceVerify] PICK FILE READ SUCCESS", {
+        empCode,
+        punchType,
+        photoLength: dataUrl.length,
+      });
+
       await processCapturedImage(dataUrl);
-    } catch {
+    } catch (error) {
+      logDevError("[AttendanceFaceVerify] PICK FILE ERROR", {
+        empCode,
+        punchType,
+        error,
+      });
+
       setErr("อัปโหลดรูปไม่สำเร็จ กรุณาลองใหม่");
     } finally {
-      setBusy(false);
+      if (!savingRef.current) {
+        setBusy(false);
+      }
     }
   }
 
   async function recheckAndAutoConfirm() {
+    if (busy || savingRef.current) {
+      logDev("[AttendanceFaceVerify] RECHECK BLOCKED BUSY", {
+        empCode,
+        punchType,
+        busy,
+        saving: savingRef.current,
+      });
+
+      return;
+    }
+
     if (!photo) {
+      logDev("[AttendanceFaceVerify] RECHECK BLOCKED NO PHOTO", {
+        empCode,
+        punchType,
+      });
+
       setErr("กรุณาถ่ายรูปใหม่เพื่อบันทึกเวลา");
       return;
     }
 
-    if (ENABLE_FACE_VERIFY && (!faceEmbedding || !faceVerified)) {
+    if (enableFaceVerify && (!faceEmbedding || !faceVerified)) {
+      logDev("[AttendanceFaceVerify] RECHECK BLOCKED FACE NOT VERIFIED", {
+        empCode,
+        punchType,
+        hasFaceEmbedding: Boolean(faceEmbedding),
+        faceVerified,
+      });
+
       setErr("กรุณาถ่ายใหม่เพื่อยืนยันตัวตน");
       return;
     }
+
+    if (!setting) {
+      logDevError("[AttendanceFaceVerify] RECHECK BLOCKED SETTING NOT FOUND", {
+        empCode,
+        punchType,
+        setting,
+      });
+
+      setErr("โหลดค่าตรวจสอบตำแหน่งไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+      return;
+    }
+
+    logDev("[AttendanceFaceVerify] RECHECK START", {
+      empCode,
+      punchType,
+    });
 
     setBusy(true);
     setErr("");
@@ -587,29 +1063,70 @@ export default function AttendanceFaceVerify({
     try {
       const res = await checkLocationGate();
 
+      logDev("[AttendanceFaceVerify] RECHECK LOCATION RESULT", {
+        empCode,
+        punchType,
+        result: res,
+      });
+
       if (res.ok && res.location) {
         await saveAndShowSuccess(
           photo,
-          ENABLE_FACE_VERIFY ? faceEmbedding ?? [] : [],
+          enableFaceVerify ? faceEmbedding ?? [] : [],
           res.location,
         );
       }
     } finally {
-      setBusy(false);
+      if (!savingRef.current) {
+        setBusy(false);
+      }
     }
   }
 
   function retrySaveWithLastLocation() {
-    if (!photo || !locFix) return;
+    if (busy || savingRef.current) {
+      logDev("[AttendanceFaceVerify] RETRY SAVE BLOCKED BUSY", {
+        empCode,
+        punchType,
+        busy,
+        saving: savingRef.current,
+      });
 
-    if (ENABLE_FACE_VERIFY && (!faceEmbedding || !faceVerified)) {
+      return;
+    }
+
+    if (!photo || !locFix) {
+      logDev("[AttendanceFaceVerify] RETRY SAVE BLOCKED NO PHOTO OR LOCATION", {
+        empCode,
+        punchType,
+        hasPhoto: Boolean(photo),
+        hasLocFix: Boolean(locFix),
+      });
+
+      return;
+    }
+
+    if (enableFaceVerify && (!faceEmbedding || !faceVerified)) {
+      logDev("[AttendanceFaceVerify] RETRY SAVE BLOCKED FACE NOT VERIFIED", {
+        empCode,
+        punchType,
+        hasFaceEmbedding: Boolean(faceEmbedding),
+        faceVerified,
+      });
+
       setErr("กรุณาถ่ายใหม่เพื่อยืนยันตัวตน");
       return;
     }
 
+    logDev("[AttendanceFaceVerify] RETRY SAVE WITH LAST LOCATION", {
+      empCode,
+      punchType,
+      locFix,
+    });
+
     void saveAndShowSuccess(
       photo,
-      ENABLE_FACE_VERIFY ? faceEmbedding ?? [] : [],
+      enableFaceVerify ? faceEmbedding ?? [] : [],
       {
         latitude: locFix.lat,
         longitude: locFix.lng,
@@ -619,8 +1136,25 @@ export default function AttendanceFaceVerify({
   }
 
   function retake() {
+    if (busy || savingRef.current) {
+      logDev("[AttendanceFaceVerify] RETAKE BLOCKED BUSY", {
+        empCode,
+        punchType,
+        busy,
+        saving: savingRef.current,
+      });
+
+      return;
+    }
+
+    logDev("[AttendanceFaceVerify] RETAKE", {
+      empCode,
+      punchType,
+    });
+
     locReqRef.current++;
     saveReqRef.current++;
+    savingRef.current = false;
 
     setSuccessOpen(false);
     setFaceNotFoundOpen(false);
@@ -644,34 +1178,67 @@ export default function AttendanceFaceVerify({
   }
 
   function handleSuccessOk() {
+    logDev("[AttendanceFaceVerify] SUCCESS OK", {
+      empCode,
+      punchType,
+    });
+
     setSuccessOpen(false);
     onGoCheckInOut();
   }
 
-  const title = ENABLE_FACE_VERIFY
+  const title = enableFaceVerify
     ? "กรุณาถ่ายภาพใบหน้าเพื่อยืนยันตัวตน"
     : "กรุณาถ่ายภาพเพื่อบันทึกเวลา";
 
   const canOpenCamera =
-    !busy && step === "capture" && (!ENABLE_FACE_VERIFY || modelsLoaded);
+    !!setting &&
+    !settingLoading &&
+    !busy &&
+    !savingRef.current &&
+    step === "capture" &&
+    (!enableFaceVerify || modelsLoaded);
 
   const shouldShowRecheckButton =
-    (ENABLE_FACE_VERIFY ? faceVerified : true) &&
+    (enableFaceVerify ? faceVerified : true) &&
     !outModalOpen &&
     ["outside", "blocked", "unavailable", "error"].includes(locStatus);
 
-  const shouldShowRetakeButton = ENABLE_FACE_VERIFY
-    ? faceVerifyFailed && !verifyErrorOpen
-    : step === "confirm" && !busy && !successOpen && !checkInOutModalOpen;
-
   /**
-   * ล็อกปุ่มย้อนกลับระหว่างระบบกำลังทำงาน
-   * โดยเฉพาะตอนกำลังตรวจสอบตำแหน่ง GPS
+   * ซ่อนปุ่ม "ถ่ายใหม่" เมื่อปิดระบบตรวจใบหน้า
+   *
+   * เหตุผล:
+   * - ตอนนี้ enable_face_verify = false
+   * - รูปภาพใช้ประกอบการบันทึกเวลาเท่านั้น
+   * - ถ้า GPS ไม่ผ่าน ให้ผู้ใช้กด "ตรวจสอบตำแหน่งอีกครั้ง" แทน
+   *
+   * ถ้าอนาคตเปิดตรวจใบหน้าอีกครั้ง:
+   * - จะแสดงปุ่มถ่ายใหม่เฉพาะกรณียืนยันใบหน้าไม่ผ่าน
    */
-  const isNavigationLocked = busy || locStatus === "checking";
+  const shouldShowRetakeButton = enableFaceVerify
+    ? faceVerifyFailed && !verifyErrorOpen
+    : false;
+
+  const isNavigationLocked =
+    busy || savingRef.current || locStatus === "checking";
 
   function handleBackClick() {
-    if (isNavigationLocked) return;
+    if (isNavigationLocked) {
+      logDev("[AttendanceFaceVerify] BACK BLOCKED", {
+        empCode,
+        punchType,
+        busy,
+        saving: savingRef.current,
+        locStatus,
+      });
+
+      return;
+    }
+
+    logDev("[AttendanceFaceVerify] BACK", {
+      empCode,
+      punchType,
+    });
 
     onBack();
   }
@@ -691,7 +1258,13 @@ export default function AttendanceFaceVerify({
           <div className={`guts-fv-card ${styles.fvCard}`}>
             <div className={styles.fvTitle}>{title}</div>
 
-            {ENABLE_FACE_VERIFY && !modelsLoaded ? (
+            {settingLoading ? (
+              <div className={styles.fvLocHint}>
+                กำลังโหลดค่าตรวจสอบตำแหน่ง...
+              </div>
+            ) : null}
+
+            {enableFaceVerify && !modelsLoaded ? (
               <div className={styles.fvLocHint}>
                 กำลังโหลดระบบตรวจจับใบหน้า...
               </div>
@@ -706,9 +1279,7 @@ export default function AttendanceFaceVerify({
                   className={`guts-fv-img ${styles.fvImg}`}
                   src={photo}
                   alt={
-                    ENABLE_FACE_VERIFY
-                      ? "รูปยืนยันตัวตน"
-                      : "รูปบันทึกเวลา"
+                    enableFaceVerify ? "รูปยืนยันตัวตน" : "รูปบันทึกเวลา"
                   }
                 />
               ) : (
@@ -739,7 +1310,7 @@ export default function AttendanceFaceVerify({
               <div className={styles.fvLocHint}>
                 {locStatus === "checking"
                   ? locHint || "กำลังตรวจสอบข้อมูล..."
-                  : "กำลังบันทึก..."}
+                  : locHint || "กำลังบันทึก..."}
               </div>
             ) : null}
 
@@ -747,7 +1318,14 @@ export default function AttendanceFaceVerify({
               <button
                 type="button"
                 className={`guts-fv-primary ${styles.fvPrimary}`}
-                onClick={() => setCamOpen(true)}
+                onClick={() => {
+                  logDev("[AttendanceFaceVerify] OPEN CAMERA", {
+                    empCode,
+                    punchType,
+                  });
+
+                  setCamOpen(true);
+                }}
                 disabled={!canOpenCamera}
                 style={{
                   background: !canOpenCamera
@@ -762,11 +1340,13 @@ export default function AttendanceFaceVerify({
                   icon={faCamera}
                   className={styles.fvPrimaryIcon}
                 />
-                {!modelsLoaded
-                  ? "กำลังโหลด AI..."
-                  : ENABLE_FACE_VERIFY
-                    ? "ถ่ายภาพและยืนยัน"
-                    : "ถ่ายภาพและบันทึก"}
+                {settingLoading
+                  ? "กำลังโหลดค่าระบบ..."
+                  : !modelsLoaded
+                    ? "กำลังโหลด AI..."
+                    : enableFaceVerify
+                      ? "ถ่ายภาพและยืนยัน"
+                      : "ถ่ายภาพและบันทึก"}
               </button>
             ) : (
               <>
@@ -775,7 +1355,7 @@ export default function AttendanceFaceVerify({
                     type="button"
                     className={`guts-fv-primary ${styles.fvPrimary}`}
                     onClick={() => void recheckAndAutoConfirm()}
-                    disabled={busy}
+                    disabled={busy || savingRef.current}
                   >
                     ตรวจสอบตำแหน่งอีกครั้ง
                   </button>
@@ -784,7 +1364,7 @@ export default function AttendanceFaceVerify({
                     type="button"
                     className={`guts-fv-primary ${styles.fvPrimary}`}
                     onClick={retrySaveWithLastLocation}
-                    disabled={busy || !locFix}
+                    disabled={busy || savingRef.current || !locFix}
                   >
                     ลองบันทึกอีกครั้ง
                   </button>
@@ -804,7 +1384,7 @@ export default function AttendanceFaceVerify({
                     type="button"
                     className={`guts-fv-secondary ${styles.fvSecondary}`}
                     onClick={retake}
-                    disabled={busy}
+                    disabled={busy || savingRef.current}
                   >
                     <FontAwesomeIcon icon={faRotateLeft} />
                     ถ่ายใหม่
@@ -826,10 +1406,75 @@ export default function AttendanceFaceVerify({
 
       <CameraModal
         open={camOpen}
-        onClose={() => setCamOpen(false)}
+        onClose={() => {
+          if (busy || savingRef.current) {
+            logDev("[AttendanceFaceVerify] CLOSE CAMERA BLOCKED BUSY", {
+              empCode,
+              punchType,
+              busy,
+              saving: savingRef.current,
+            });
+
+            return;
+          }
+
+          logDev("[AttendanceFaceVerify] CLOSE CAMERA", {
+            empCode,
+            punchType,
+          });
+
+          setCamOpen(false);
+        }}
         onCaptured={async (dataUrl) => {
-          if (ENABLE_FACE_VERIFY && !modelsLoaded) {
+          logDev("[AttendanceFaceVerify] CAMERA CAPTURED", {
+            empCode,
+            punchType,
+            hasPhoto: Boolean(dataUrl),
+            photoLength: dataUrl.length,
+            enableFaceVerify,
+            modelsLoaded,
+            settingLoading,
+            hasSetting: Boolean(setting),
+            busy,
+            saving: savingRef.current,
+          });
+
+          if (enableFaceVerify && !modelsLoaded) {
+            logDev(
+              "[AttendanceFaceVerify] CAMERA CAPTURE BLOCKED MODELS NOT LOADED",
+              {
+                empCode,
+                punchType,
+              },
+            );
+
             setErr("ระบบ AI ยังโหลดไม่เสร็จ กรุณารอสักครู่");
+            return;
+          }
+
+          if (settingLoading || !setting) {
+            logDev(
+              "[AttendanceFaceVerify] CAMERA CAPTURE BLOCKED SETTING LOADING",
+              {
+                empCode,
+                punchType,
+                settingLoading,
+                hasSetting: Boolean(setting),
+              },
+            );
+
+            setErr("ระบบกำลังโหลดค่าตรวจสอบตำแหน่ง กรุณารอสักครู่");
+            return;
+          }
+
+          if (busy || savingRef.current) {
+            logDev("[AttendanceFaceVerify] CAMERA CAPTURE BLOCKED BUSY", {
+              empCode,
+              punchType,
+              busy,
+              saving: savingRef.current,
+            });
+
             return;
           }
 
@@ -840,7 +1485,9 @@ export default function AttendanceFaceVerify({
           try {
             await processCapturedImage(dataUrl);
           } finally {
-            setBusy(false);
+            if (!savingRef.current) {
+              setBusy(false);
+            }
           }
         }}
       />
@@ -848,26 +1495,56 @@ export default function AttendanceFaceVerify({
       <OutOfAreaModal
         open={outModalOpen}
         locHint={locHint}
-        onClose={() => setOutModalOpen(false)}
+        onClose={() => {
+          logDev("[AttendanceFaceVerify] OUT OF AREA MODAL CLOSE", {
+            empCode,
+            punchType,
+            locStatus,
+            locHint,
+          });
+
+          setOutModalOpen(false);
+        }}
       />
 
       <FaceNotFoundModal
         open={faceNotFoundOpen}
         title="ไม่พบใบหน้าในรูปภาพ"
         message="กรุณาถ่ายใหม่ให้เห็นใบหน้าชัดเจน"
-        onClose={() => setFaceNotFoundOpen(false)}
+        onClose={() => {
+          logDev("[AttendanceFaceVerify] FACE NOT FOUND MODAL CLOSE", {
+            empCode,
+            punchType,
+          });
+
+          setFaceNotFoundOpen(false);
+        }}
       />
 
       <FaceNotFoundModal
         open={verifyErrorOpen}
         title="ใบหน้าไม่ตรงกับข้อมูลพนักงาน"
         message="กรุณาถ่ายใหม่ หรือตรวจสอบข้อมูลพนักงานในระบบ"
-        onClose={() => setVerifyErrorOpen(false)}
+        onClose={() => {
+          logDev("[AttendanceFaceVerify] VERIFY ERROR MODAL CLOSE", {
+            empCode,
+            punchType,
+          });
+
+          setVerifyErrorOpen(false);
+        }}
       />
 
       <CheckInOutModal
         open={checkInOutModalOpen}
-        onClose={() => setCheckInOutModalOpen(false)}
+        onClose={() => {
+          logDev("[AttendanceFaceVerify] CHECK IN OUT MODAL CLOSE", {
+            empCode,
+            punchType,
+          });
+
+          setCheckInOutModalOpen(false);
+        }}
       />
 
       <SuccessModal
