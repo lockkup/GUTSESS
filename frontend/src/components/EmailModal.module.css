@@ -1,0 +1,120 @@
+.backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    background: rgba(0, 0, 0, 0.55);
+    display: grid;
+    place-items: center;
+}
+
+.modal {
+    width: min(520px, 94vw);
+    border-radius: 16px;
+    background: linear-gradient(180deg, var(--cardTop), var(--cardBottom));
+    box-shadow: 0 22px 60px rgba(0, 0, 0, 0.35);
+    overflow: hidden;
+}
+
+.header {
+    position: relative;
+    padding: 15px 18px 9px 18px;
+    border-bottom: 0.5px solid var(--blueText);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    justify-content: flex-start; /* icon + title aligned to left */
+}
+
+.badge {
+    width: 48px;
+    height: 48px;
+    border-radius: 999px;
+    display: grid;
+    place-items: center;
+    /* use theme blue for badge background and icon color (match ForgotPasswordModal.title) */
+    background: rgba(2, 75, 118, 0.08);
+    border: none;
+    color: var(--blueText);
+    font-size: 18px;
+    font-weight: 900;
+}
+
+.title {
+    margin: 0;
+    font-weight: 900;
+    /* use the same theme title color as ForgotPasswordModal */
+    color: var(--blueText);
+    flex: 1; /* take remaining space */
+    text-align: left; /* align title to left */
+    font-size: clamp(18px, 2.5vw, 22px);
+    padding-right: 42px; /* avoid overlap with close button */
+}
+
+.body {
+    padding: 14px 16px 24px;
+    text-align: center;
+    color: var(--red);
+    font-weight: 900;
+    font-size: clamp(15px, 1.8vw, 18px);
+    line-height: 1.35;
+}
+
+.contacts {
+    margin-top: 12px;
+    text-align: left;
+    display: grid;
+    gap: 8px;
+}
+
+/* Neutral contact card styling: no red background or red text */
+.contact {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px;
+    border-radius: 10px;
+    /* subtle blue tint taken from the theme (fallback to hard-coded blue if variable missing) */
+    background: rgba(2, 75, 118, 0.04);
+    border: 1px solid rgba(2, 75, 118, 0.06);
+}
+
+.contactLabel {
+    font-weight: 700;
+    color: var(--testblue, #024b76); /* use theme variable `--testblue` */
+}
+
+.contactValue {
+    color: var(--testblue, #024b76);
+    font-weight: 800;
+}
+
+.contactEmail {
+    color: var(--testblue, #024b76);
+    font-size: 0.95rem;
+}
+
+.closeBtn {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    font-size: 22px;
+    font-weight: 900;
+    color: rgba(0, 0, 0, 0.65);
+    line-height: 1;
+    padding: 6px 10px;
+    border-radius: 10px;
+}
+.closeBtn:hover {
+    background: rgba(0, 0, 0, 0.06);
+}
+
+/* Ensure the lucide svg inside the badge sizes correctly and uses the badge color */
+.badge svg {
+    width: 24px;
+    height: 24px;
+    display: block;
+    stroke: currentColor;
+}

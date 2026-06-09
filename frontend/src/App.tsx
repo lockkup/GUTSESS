@@ -1,6 +1,5 @@
 // src/App.tsx
-
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import Login from "./pages/Login";
 import Home from "./pages/Home";
 import Dashboard from "./pages/Dashboard";
@@ -11,7 +10,7 @@ import FaceVerify from "./pages/Attendance/FaceVerify";
 import AttendanceFaceVerify from "./pages/Attendance/CheckInOut/AttendanceFaceVerify";
 import Shifts from "./pages/Shifts";
 import FaceProfiles from "./pages/FaceProfiles";
-import FirstLoginModal from "./components/FirstLoginModal";
+import { useStore } from "./store/store";
 import { timeRecordService } from "./services/timeRecord.service";
 import { faceVerifyService } from "./services/faceVerify.service";
 import type { TimeRecordResponse } from "./types/timeRecord";
@@ -31,13 +30,6 @@ type Route =
 type PunchType = "in" | "out";
 
 type CheckpointActionMode = "checkin" | "checkout";
-
-type EmployeesResponse = {
-  employee_code: string;
-  first_name: string;
-  last_name: string;
-  is_active: boolean;
-};
 
 type PassedLocation = {
   latitude: number;
@@ -90,30 +82,11 @@ type OpenAttendanceTimeRecordParams = {
   work_date: string;
 };
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
-
-const FIRST_LOGIN_EMPLOYEE_CODES = new Set(["632071"]);
-
 /**
  * false = ถ่ายรูป + เช็กพิกัด + บันทึกเวลา แต่ไม่เทียบใบหน้า
  * true  = เปิดใช้การเทียบใบหน้ากับข้อมูลพนักงานในอนาคต
  */
 const ENABLE_FACE_VERIFY = false;
-
-async function getEmployeeData(employeeCode: string) {
-  const response = await fetch(`${API_BASE_URL}/api/employees/${employeeCode}`);
-
-  if (!response.ok) {
-    throw new Error("ไม่พบข้อมูลพนักงานในฐานข้อมูล");
-  }
-
-  const employee = (await response.json()) as EmployeesResponse;
-
-  return {
-    displayName: `${employee.first_name} ${employee.last_name}`.trim(),
-  };
-}
 
 function formatCheckTime(date = new Date()) {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -151,14 +124,8 @@ export default function App() {
   const route = stack[stack.length - 1];
 
   const [empCode, setEmpCode] = useState("");
-  const [pin, setPin] = useState("");
-  const [firstLoginOpen, setFirstLoginOpen] = useState(false);
-
-  const empValid = useMemo(() => /^\d{6}$/.test(empCode), [empCode]);
-  const pinValid = useMemo(() => /^\d{6}$/.test(pin), [pin]);
-  const canSubmit = empValid && pinValid;
-
   const [displayName, setDisplayName] = useState("");
+
   const [lastInAt, setLastInAt] = useState<string | null>(null);
   const [lastOutAt, setLastOutAt] = useState<string | null>(null);
   const [punchType, setPunchType] = useState<PunchType>("in");
@@ -185,14 +152,6 @@ export default function App() {
 
   const back = () => setStack((s) => (s.length > 1 ? s.slice(0, -1) : s));
 
-  function onlyDigits6(v: string) {
-    return v.replace(/\D/g, "").slice(0, 6);
-  }
-
-  function isFirstTimeUser(code: string) {
-    return FIRST_LOGIN_EMPLOYEE_CODES.has(code);
-  }
-
   function clearCheckInOutTimeState() {
     setOpenTimeRecord(null);
     setLastInAt(null);
@@ -218,6 +177,23 @@ export default function App() {
     return {
       workDate: params?.workDate ?? formatWorkDate(date),
     };
+  }
+
+  function handleLoginSuccess(loginEmpCode: string, loginDisplayName: string) {
+    const cleanEmpCode = loginEmpCode.replace(/\D/g, "").slice(0, 6);
+    const safeDisplayName = loginDisplayName.trim() || cleanEmpCode;
+
+    setEmpCode(cleanEmpCode);
+    setDisplayName(safeDisplayName);
+
+    const context = makeAttendanceTimeContext();
+
+    setAttendanceTimeContext(context);
+    clearCheckInOutTimeState();
+    setSelectedCheckpoint(null);
+    setPunchType("in");
+
+    reset("home");
   }
 
   async function loadOpenAttendanceTimeRecord(
@@ -272,46 +248,26 @@ export default function App() {
     }
   }
 
-  async function onLogin() {
-    if (!canSubmit) return;
+  async function onLogout() {
+    const logoutCode = empCode || localStorage.getItem("emp_code") || "";
 
-    if (isFirstTimeUser(empCode)) {
-      setDisplayName("");
-      setPin("");
-      setFirstLoginOpen(true);
-      return;
+    if (logoutCode) {
+      try {
+        await useStore.getState().logout(logoutCode);
+      } catch (error) {
+        console.error("logout error:", error);
+      }
     }
 
-    try {
-      const employeeData = await getEmployeeData(empCode);
+    localStorage.removeItem("emp_code");
 
-      setDisplayName(employeeData.displayName);
-
-      const context = makeAttendanceTimeContext();
-
-      setAttendanceTimeContext(context);
-      clearCheckInOutTimeState();
-    } catch (error) {
-      alert(error instanceof Error ? error.message : "โหลดชื่อพนักงานไม่สำเร็จ");
-      return;
-    }
-
-    reset("home");
-  }
-
-  async function onRequestPassword() {
-    if (!empValid) return;
-    alert("ส่งรหัสไปอีเมลแล้ว (ตัวอย่าง)");
-  }
-
-  function onLogout() {
     setEmpCode("");
-    setPin("");
     setDisplayName("");
     setAttendanceTimeContext(null);
     clearCheckInOutTimeState();
     setSelectedCheckpoint(null);
     setPunchType("in");
+
     reset("login");
   }
 
@@ -815,31 +771,7 @@ export default function App() {
 
   return (
     <>
-      {route === "login" && (
-        <>
-          <Login
-            empCode={empCode}
-            pin={pin}
-            onChangeEmp={(v) => setEmpCode(onlyDigits6(v))}
-            onChangePin={(v) => setPin(onlyDigits6(v))}
-            onSubmit={onLogin}
-            onSendForgot={onRequestPassword}
-          />
-
-          <FirstLoginModal
-            open={firstLoginOpen}
-            empCode={empCode}
-            onClose={() => {
-              setPin("");
-              setFirstLoginOpen(false);
-            }}
-            onRequestPassword={() => {
-              void onRequestPassword();
-              setFirstLoginOpen(false);
-            }}
-          />
-        </>
-      )}
+      {route === "login" && <Login onLoginSuccess={handleLoginSuccess} />}
 
       {route === "home" && (
         <Home

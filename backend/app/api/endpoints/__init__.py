@@ -1,7 +1,8 @@
 from fastapi import APIRouter
 
 from .app_setting import router as app_setting_router
-from .audit_log import router as audit_log_router
+from .audit_logs import router as audit_logs_router
+from .auth import router as auth_router
 from .checkpoint_assignment import router as checkpoint_assignment_router
 from .checkpoint_assignment_call import router as checkpoint_assignment_call_router
 from .checkpoint_assignment_change import router as checkpoint_assignment_change_router
@@ -13,6 +14,7 @@ from .divisions import router as divisions_router
 from .employees import router as employees_router
 from .face_profile import router as face_profile_router
 from .face_profile_change import router as face_profile_change_router
+from .password import router as password_router
 from .patrol_report import router as patrol_report_router
 from .route import router as route_router
 from .route_site_location import router as route_site_location_router
@@ -25,6 +27,9 @@ from .time_record import router as time_record_router
 
 api_router = APIRouter()
 
+api_router.include_router(auth_router)
+api_router.include_router(password_router)
+
 api_router.include_router(
     app_setting_router,
     prefix="/app-settings",
@@ -32,7 +37,7 @@ api_router.include_router(
 )
 
 api_router.include_router(
-    audit_log_router,
+    audit_logs_router,
     prefix="/audit-logs",
     tags=["audit_logs"],
 )

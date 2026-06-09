@@ -1,3 +1,4 @@
+# backend/app/schemas/audit_logs.py
 from __future__ import annotations
 
 from datetime import datetime
@@ -50,3 +51,25 @@ class AuditLogResponse(AuditLogBase):
 
     log_id: int
     timestamp: datetime
+
+
+# ============================================================
+# Compatibility schema สำหรับโค้ด Login ของทีม
+# ทีมใช้ชื่อ AuditLogRead
+# ของโปรเจกต์เราใช้ชื่อ AuditLogResponse
+# ให้ AuditLogRead สืบทอดจาก AuditLogResponse เพื่อใช้ได้ทั้งสองแบบ
+# ============================================================
+
+
+class AuditLogRead(AuditLogResponse):
+    pass
+
+
+class AuditLogListResponse(BaseModel):
+    model_config = ConfigDict(
+        from_attributes=True,
+        extra="forbid",
+    )
+
+    total: int
+    items: list[AuditLogRead]

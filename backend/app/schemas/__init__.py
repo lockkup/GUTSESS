@@ -1,4 +1,4 @@
-from app.schemas.audit_log import (
+from app.schemas.audit_logs import (
     AuditLogBase,
     AuditLogCreate,
     AuditLogResponse,
@@ -46,8 +46,26 @@ from app.schemas.checkpoint_schedule_item_change import (
     CheckpointScheduleItemChangeCreate,
     CheckpointScheduleItemChangeResponse,
 )
+from app.schemas.departments import (
+    DepartmentBase,
+    DepartmentCreate,
+    DepartmentResponse,
+    DepartmentUpdate,
+)
 from app.schemas.divisions import DivisionResponse
-from app.schemas.employees import EmployeesResponse
+from app.schemas.employee_permissions import (
+    EmployeePermissionBase,
+    EmployeePermissionCreate,
+    EmployeePermissionResponse,
+    EmployeePermissionUpdate,
+)
+from app.schemas.employees import (
+    EmployeeBase,
+    EmployeeCreate,
+    EmployeeResponse,
+    EmployeeUpdate,
+    EmployeesResponse,
+)
 from app.schemas.face_profile import (
     FaceProfileBase,
     FaceProfileCreate,
@@ -60,9 +78,27 @@ from app.schemas.face_profile_change import (
     FaceProfileChangeCreate,
     FaceProfileChangeResponse,
 )
+from app.schemas.name_prefixs import (
+    NamePrefixBase,
+    NamePrefixCreate,
+    NamePrefixResponse,
+    NamePrefixUpdate,
+)
 from app.schemas.patrol_report import (
     PatrolReportResponse,
     PatrolStatus,
+)
+from app.schemas.positions import (
+    PositionBase,
+    PositionCreate,
+    PositionResponse,
+    PositionUpdate,
+)
+from app.schemas.roles import (
+    RoleBase,
+    RoleCreate,
+    RoleResponse,
+    RoleUpdate,
 )
 from app.schemas.route import (
     RouteBase,
@@ -109,6 +145,27 @@ from app.schemas.time_record import (
     TimeRecordResponse,
 )
 
+# ============================================================
+# Auth schemas ของระบบ Login ทีม
+# ใช้ alias เพื่อไม่ให้ชื่อ EmployeeResponse ชนกับ employees.py
+# ============================================================
+
+try:
+    from app.schemas.auth.auth import (
+        EmployeeLogin,
+        EmployeeRegister,
+        EmployeeResponse as AuthEmployeeResponse,
+        LoginResponse,
+        LogoutResponse,
+    )
+except Exception:
+    EmployeeLogin = None
+    EmployeeRegister = None
+    AuthEmployeeResponse = None
+    LoginResponse = None
+    LogoutResponse = None
+
+
 __all__ = [
     "AuditLogBase",
     "AuditLogCreate",
@@ -140,7 +197,19 @@ __all__ = [
     "CheckpointScheduleItemChangeBase",
     "CheckpointScheduleItemChangeCreate",
     "CheckpointScheduleItemChangeResponse",
+    "DepartmentBase",
+    "DepartmentCreate",
+    "DepartmentUpdate",
+    "DepartmentResponse",
     "DivisionResponse",
+    "EmployeePermissionBase",
+    "EmployeePermissionCreate",
+    "EmployeePermissionUpdate",
+    "EmployeePermissionResponse",
+    "EmployeeBase",
+    "EmployeeCreate",
+    "EmployeeUpdate",
+    "EmployeeResponse",
     "EmployeesResponse",
     "FaceProfileBase",
     "FaceProfileCreate",
@@ -150,8 +219,20 @@ __all__ = [
     "FaceProfileChangeBase",
     "FaceProfileChangeCreate",
     "FaceProfileChangeResponse",
+    "NamePrefixBase",
+    "NamePrefixCreate",
+    "NamePrefixUpdate",
+    "NamePrefixResponse",
     "PatrolReportResponse",
     "PatrolStatus",
+    "PositionBase",
+    "PositionCreate",
+    "PositionUpdate",
+    "PositionResponse",
+    "RoleBase",
+    "RoleCreate",
+    "RoleUpdate",
+    "RoleResponse",
     "RouteBase",
     "RouteResponse",
     "RouteSiteLocationBase",
@@ -180,4 +261,9 @@ __all__ = [
     "TimeRecordCheckOut",
     "TimeRecordListItemResponse",
     "TimeRecordResponse",
+    "EmployeeLogin",
+    "EmployeeRegister",
+    "AuthEmployeeResponse",
+    "LoginResponse",
+    "LogoutResponse",
 ]

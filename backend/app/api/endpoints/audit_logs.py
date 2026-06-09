@@ -5,8 +5,8 @@ from sqlalchemy.orm import Session
 
 from app.core import get_db
 from app.core.constants import DBConstants
-from app.schemas.audit_log import AuditLogCreate, AuditLogResponse
-from app.services.audit_log import AuditLogService
+from app.schemas.audit_logs import AuditLogCreate, AuditLogResponse
+from app.services.audit_logs import AuditLogService
 
 router = APIRouter()
 

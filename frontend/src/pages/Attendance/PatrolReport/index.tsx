@@ -131,6 +131,22 @@ type EmptyReportStateProps = {
   hint?: string;
 };
 
+type EmptyReportReason = "need_filter" | "no_data" | "error";
+
+type ApiErrorLike = {
+  message?: string;
+  detail?: unknown;
+  data?: {
+    detail?: unknown;
+  };
+  response?: {
+    status?: number;
+    data?: {
+      detail?: unknown;
+    };
+  };
+};
+
 const EMPTY_FILTER_OPTIONS: PatrolReportFilterOptions = {
   departments: [],
   divisions: [],
@@ -262,6 +278,91 @@ function toPositiveNumber(value: string) {
   }
 
   return numberValue;
+}
+
+function getApiErrorStatus(error: unknown) {
+  const errorLike = error as ApiErrorLike;
+
+  return errorLike?.response?.status;
+}
+
+function stringifyErrorDetail(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => stringifyErrorDetail(item)).join(" ");
+  }
+
+  if (typeof value === "object") {
+    const detailObject = value as {
+      detail?: unknown;
+      message?: unknown;
+      error?: unknown;
+      msg?: unknown;
+    };
+
+    return (
+      stringifyErrorDetail(detailObject.detail) ||
+      stringifyErrorDetail(detailObject.message) ||
+      stringifyErrorDetail(detailObject.error) ||
+      stringifyErrorDetail(detailObject.msg)
+    );
+  }
+
+  return String(value);
+}
+
+function getApiErrorDetail(error: unknown) {
+  const errorLike = error as ApiErrorLike;
+
+  return (
+    stringifyErrorDetail(errorLike?.response?.data?.detail) ||
+    stringifyErrorDetail(errorLike?.data?.detail) ||
+    stringifyErrorDetail(errorLike?.detail) ||
+    stringifyErrorDetail(errorLike?.message)
+  );
+}
+
+function isNeedFilterApiError(error: unknown) {
+  const status = getApiErrorStatus(error);
+  const detail = getApiErrorDetail(error);
+
+  return (
+    status === 400 &&
+    (detail.includes("กรุณาเลือก ภาค") ||
+      detail.includes("เลือก ภาค และ เขต") ||
+      detail.includes("ก่อนค้นหา"))
+  );
+}
+
+function getEmptyStateText(
+  reason: EmptyReportReason,
+  errorMessage: string | null,
+) {
+  if (reason === "need_filter") {
+    return {
+      title: "โปรดเลือก ภาค เขต เส้นทาง รายหน่วยงาน",
+      hint: "เลือก ภาค+เขต หรือเลือกเส้นทาง แล้วกดค้นหา",
+    };
+  }
+
+  if (reason === "error") {
+    return {
+      title: errorMessage || "ไม่สามารถโหลดข้อมูลได้",
+      hint: "กรุณาลองค้นหาอีกครั้ง",
+    };
+  }
+
+  return {
+    title: "ไม่พบข้อมูลรายงานสายตรวจ",
+    hint: "กรุณาตรวจสอบเงื่อนไขการค้นหาอีกครั้ง",
+  };
 }
 
 function makeReactKey(...values: Array<string | number | null | undefined>) {
@@ -692,26 +793,24 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
   const endDatePickerWrapRef = useRef<HTMLDivElement | null>(null);
 
   const [loading, setLoading] = useState(false);
-  const [hasSearched, setHasSearched] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [emptyReason, setEmptyReason] =
+    useState<EmptyReportReason>("need_filter");
+  const [emptyErrorMessage, setEmptyErrorMessage] = useState<string | null>(
+    null,
+  );
 
   const selectedDepartmentId = toPositiveNumber(departmentIdText);
   const selectedDivisionId = toPositiveNumber(divisionIdText);
   const selectedRouteId = toPositiveNumber(routeIdText);
+  const selectedLocationId = toPositiveNumber(locationIdText);
   const todayText = getTodayYYYYMMDD();
 
-  const hasAnyReportFilter =
-    departmentIdText.trim() !== "" ||
-    divisionIdText.trim() !== "" ||
-    routeIdText.trim() !== "" ||
-    locationIdText.trim() !== "" ||
+  const hasRequiredReportScope =
+    (selectedDepartmentId !== undefined && selectedDivisionId !== undefined) ||
+    selectedRouteId !== undefined ||
+    selectedLocationId !== undefined ||
     employeeCodeText.trim() !== "" ||
-    searchText.trim() !== "" ||
-    shiftValue !== DEFAULT_SHIFT_VALUE ||
-    Boolean(planMode) ||
-    statusValue !== DEFAULT_STATUS_VALUE ||
-    startDateValue !== todayText ||
-    endDateValue !== todayText;
+    searchText.trim() !== "";
 
   const fetchFilterOptions = useCallback(async () => {
     try {
@@ -721,7 +820,9 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
     } catch (err) {
       console.error(err);
       setFilterOptions(EMPTY_FILTER_OPTIONS);
-      setError("ไม่สามารถดึงตัวเลือกตัวกรองรายงานได้");
+      setPatrolRows([]);
+      setEmptyReason("error");
+      setEmptyErrorMessage("ไม่สามารถโหลดตัวเลือกตัวกรองรายงานได้");
     }
   }, []);
 
@@ -739,8 +840,7 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
       employeeCodeText,
     }: FetchPatrolReportOptions) => {
       setLoading(true);
-      setHasSearched(true);
-      setError(null);
+      setEmptyErrorMessage(null);
 
       try {
         const requestParams = {
@@ -792,10 +892,18 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
 
         setPatrolRows(rows as PatrolReportDisplayRow[]);
         setExpandedId(null);
+        setEmptyReason("no_data");
       } catch (err) {
         console.error(err);
         setPatrolRows([]);
-        setError("ไม่สามารถดึงข้อมูลรายงานสายตรวจได้");
+
+        if (isNeedFilterApiError(err)) {
+          setEmptyReason("need_filter");
+          setEmptyErrorMessage(null);
+        } else {
+          setEmptyReason("error");
+          setEmptyErrorMessage("ไม่สามารถโหลดข้อมูลรายงานสายตรวจได้");
+        }
       } finally {
         setLoading(false);
       }
@@ -920,28 +1028,33 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
 
   const reportCountText = getReportCountText(filteredRows.length);
 
-  const emptyTitle = hasSearched
-    ? "ไม่พบข้อมูลรายงานสายตรวจ"
-    : "โปรดเลือก ภาค เขต เส้นทาง รายหน่วยงาน";
+  const displayEmptyReason: EmptyReportReason =
+    patrolRows.length > 0 && filteredRows.length === 0
+      ? "no_data"
+      : emptyReason;
 
-  const emptyHint = hasSearched
-    ? "กรุณาตรวจสอบเงื่อนไขการค้นหาอีกครั้ง"
-    : "เลือกตัวกรองอย่างน้อย 1 รายการ แล้วกดค้นหา";
+  const emptyStateText = useMemo(
+    () => getEmptyStateText(displayEmptyReason, emptyErrorMessage),
+    [displayEmptyReason, emptyErrorMessage],
+  );
+
+  const emptyTitle = emptyStateText.title;
+  const emptyHint = emptyStateText.hint;
 
   const handlePlanModeChange = (value: ReportPlanMode) => {
     setPlanMode(value);
     setPatrolRows([]);
     setExpandedId(null);
-    setHasSearched(false);
-    setError(null);
+    setEmptyReason("need_filter");
+    setEmptyErrorMessage(null);
   };
 
   const handleSearch = () => {
-    if (!hasAnyReportFilter) {
+    if (!hasRequiredReportScope) {
       setPatrolRows([]);
       setExpandedId(null);
-      setHasSearched(false);
-      setError(null);
+      setEmptyReason("need_filter");
+      setEmptyErrorMessage(null);
       return;
     }
 
@@ -951,8 +1064,8 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
     if (startDate && endDate && startDate > endDate) {
       setPatrolRows([]);
       setExpandedId(null);
-      setHasSearched(false);
-      setError("วันที่เริ่มต้นต้องไม่มากกว่าวันที่สิ้นสุด");
+      setEmptyReason("error");
+      setEmptyErrorMessage("วันที่เริ่มต้นต้องไม่มากกว่าวันที่สิ้นสุด");
       return;
     }
 
@@ -992,8 +1105,8 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
     setActiveDatePicker(null);
 
     setPatrolRows([]);
-    setHasSearched(false);
-    setError(null);
+    setEmptyReason("need_filter");
+    setEmptyErrorMessage(null);
   };
 
   const handleOpenDatePicker = (field: DatePickerField) => {
@@ -1031,7 +1144,7 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
     }
 
     setActiveDatePicker(null);
-    setError(null);
+    setEmptyErrorMessage(null);
   };
 
   const handleSelectToday = (field: DatePickerField) => {
@@ -1191,7 +1304,8 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                 setLocationIdText(DEFAULT_LOCATION_ID_TEXT);
                 setEmployeeCodeText(DEFAULT_EMPLOYEE_CODE_TEXT);
                 setPatrolRows([]);
-                setHasSearched(false);
+                setEmptyReason("need_filter");
+                setEmptyErrorMessage(null);
               }}
               className={styles.select}
             >
@@ -1224,7 +1338,8 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                 setLocationIdText(DEFAULT_LOCATION_ID_TEXT);
                 setEmployeeCodeText(DEFAULT_EMPLOYEE_CODE_TEXT);
                 setPatrolRows([]);
-                setHasSearched(false);
+                setEmptyReason("need_filter");
+                setEmptyErrorMessage(null);
               }}
               className={styles.select}
             >
@@ -1252,7 +1367,8 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                 setLocationIdText(DEFAULT_LOCATION_ID_TEXT);
                 setEmployeeCodeText(DEFAULT_EMPLOYEE_CODE_TEXT);
                 setPatrolRows([]);
-                setHasSearched(false);
+                setEmptyReason("need_filter");
+                setEmptyErrorMessage(null);
               }}
               className={styles.select}
             >
@@ -1276,7 +1392,8 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                 setLocationIdText(event.target.value);
                 setEmployeeCodeText(DEFAULT_EMPLOYEE_CODE_TEXT);
                 setPatrolRows([]);
-                setHasSearched(false);
+                setEmptyReason("need_filter");
+                setEmptyErrorMessage(null);
               }}
               className={styles.select}
             >
@@ -1447,20 +1564,6 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
           </div>
         </section>
 
-        {error && (
-          <p
-            role="alert"
-            style={{
-              margin: "10px 0 0",
-              color: "#dc2626",
-              fontSize: 13,
-              fontWeight: 800,
-              textAlign: "center",
-            }}
-          >
-            {error}
-          </p>
-        )}
 
         <section className={styles.desktopSection} aria-label="รายการรายงาน">
           <div className={styles.reportCard}>

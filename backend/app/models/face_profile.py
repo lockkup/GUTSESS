@@ -11,7 +11,7 @@ from app.core.constants import DBConstants
 from app.core.orm import Base
 
 if TYPE_CHECKING:
-    from app.models.employees import Employees
+    from backend.app.models.employees import Employees
 
 
 FACE_EMBEDDING_TYPE = Text().with_variant(LONGTEXT(), "mysql")

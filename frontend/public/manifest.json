@@ -1,0 +1,19 @@
+{
+  "name": "GUTS ESS",
+  "short_name": "ESS",
+  "description": "GUTS ESS Employee Self Service",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#024B76",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/iconapp.svg?v=1",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

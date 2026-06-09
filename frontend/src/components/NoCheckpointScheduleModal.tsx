@@ -6,14 +6,18 @@ import styles from "./NoCheckpointScheduleModal.module.css";
 
 type NoCheckpointScheduleModalProps = {
   open: boolean;
+  message?: string;
   shiftText?: string;
   onClose: () => void;
+  onBack?: () => void;
 };
 
 export default function NoCheckpointScheduleModal({
   open,
+  message = "ไม่พบตารางงานสายตรวจของวันนี้",
   shiftText,
   onClose,
+  onBack,
 }: NoCheckpointScheduleModalProps) {
   useEffect(() => {
     if (!open) return;
@@ -38,6 +42,14 @@ export default function NoCheckpointScheduleModal({
   if (!open) {
     return null;
   }
+
+  const handleOk = () => {
+    onClose();
+
+    if (onBack) {
+      onBack();
+    }
+  };
 
   return createPortal(
     <div className={styles.backdrop} role="presentation">
@@ -73,7 +85,7 @@ export default function NoCheckpointScheduleModal({
         </div>
 
         <h2 id="no-checkpoint-schedule-title" className={styles.title}>
-          ไม่พบตารางงานสายตรวจของวันนี้
+          {message}
         </h2>
 
         {shiftText && <div className={styles.shiftPill}>{shiftText}</div>}
@@ -90,7 +102,7 @@ export default function NoCheckpointScheduleModal({
           <span>กรุณาติดต่อผู้ดูแลระบบ</span>
         </div>
 
-        <button type="button" className={styles.okBtn} onClick={onClose}>
+        <button type="button" className={styles.okBtn} onClick={handleOk}>
           ตกลง
         </button>
       </section>

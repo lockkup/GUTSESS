@@ -58,6 +58,17 @@ export type GoCheckInOutPayload = {
 type Props = {
   empCode: string;
   displayName?: string;
+
+  /**
+   * ยังรับ props ชุดนี้ไว้ เพื่อไม่ให้ App.tsx ที่ส่ง props เดิมเข้ามา error
+   * แต่หน้า Checkpoint ไม่ใช้ข้อมูลชุดนี้บล็อกการโหลดแล้ว
+   * ตอนนี้ให้ Backend กรองจาก employeeCode เป็นหลัก
+   */
+  divisionId?: number | string | null;
+  routeId?: number | string | null;
+  routesId?: number | string | null;
+  zoneId?: number | string | null;
+
   onBack: () => void;
   onGoCheckInOut: (payload: GoCheckInOutPayload) => void;
 };
@@ -82,21 +93,8 @@ type CheckRow = {
 };
 
 type CheckpointDailyRowWithExtra = CheckpointDailyRow & {
-  /**
-   * Backend ควรส่ง field นี้กลับมา
-   * เพื่อไม่ต้อง hardcode day=1 / night=2 ใน frontend
-   */
   shift_id?: number | string | null;
-
-  /**
-   * Backend ควรส่ง field นี้กลับมาด้วย
-   * เพื่อให้ frontend แยกได้ว่า call_status ล่าสุดเป็น 1, 2 หรือ 3
-   */
   latest_call_status?: number | string | null;
-
-  /**
-   * fallback เผื่อ backend ใช้ชื่อ call_status แทน latest_call_status
-   */
   call_status?: number | string | null;
 };
 
@@ -116,10 +114,6 @@ const statusOrder: Record<RowStatus, number> = {
   abnormalCall: 4,
 };
 
-/**
- * เปิด log ตลอด เพื่อให้เห็นใน Production Build / Caddy / Cloudflare Tunnel
- * ถ้าไม่ต้องการ log ตอนใช้งานจริง ค่อยเปลี่ยนกลับไปครอบ import.meta.env.DEV ได้
- */
 function logDev(message: string, payload?: unknown) {
   console.log(message, payload);
 }
@@ -329,24 +323,6 @@ const mapAssignmentStatusToRowStatus = (
   hasCall?: boolean,
   latestCallStatus?: CallStatus | null,
 ): RowStatus => {
-  /**
-   * กติกา call_status:
-   *
-   * 1 = ปกติ ไม่ต้องเข้าหน้างาน
-   *     => ปิดงานทันที แสดง ตรวจแล้ว(โทร)
-   *
-   * 2 = ผิดปกติ ไม่ต้องเข้าหน้างาน
-   *     => ปิดงานทันที แสดง ผิดปกติ(โทร)
-   *
-   * 3 = ผิดปกติ ต้องเข้าหน้างาน
-   *     => ยังไม่ปิดงานทันที ต้องเข้าตรวจต่อ
-   *
-   * Flow ข้อ 3:
-   * - pending     => รอดำเนินการเข้าตรวจ
-   * - in_progress => อยู่ระหว่างการเข้าตรวจ
-   * - completed   => ตรวจแล้ว(โทร)
-   */
-
   if (!hasCall) {
     return mapAssignmentStatusOnly(status);
   }
@@ -367,12 +343,6 @@ const mapAssignmentStatusToRowStatus = (
     return mapAssignmentStatusOnly(status);
   }
 
-  /**
-   * fallback กรณี backend ยังไม่ส่ง latest_call_status กลับมา
-   *
-   * - ถ้า completed แล้ว และมี call log ให้แสดง ตรวจแล้ว(โทร)
-   * - ถ้ายัง pending / in_progress ให้ยึด assignment_status เป็นหลัก
-   */
   if (status === "completed") {
     return "doneCall";
   }
@@ -461,6 +431,14 @@ export default function Checkpoint({
   }, [checkRows]);
 
   const fetchCheckpointAssignments = useCallback(async () => {
+    const normalizedEmpCode = empCode.trim();
+
+    if (!normalizedEmpCode) {
+      setCheckRows([]);
+      setErrorMessage("ไม่พบรหัสพนักงาน กรุณาเข้าสู่ระบบใหม่");
+      return;
+    }
+
     try {
       setIsLoading(true);
       setErrorMessage("");
@@ -470,6 +448,7 @@ export default function Checkpoint({
       const data = await getDailyCheckpointAssignments({
         workDate,
         shiftType: selectedShift,
+        employeeCode: normalizedEmpCode,
       });
 
       setCheckRows(mapDailyRowsToCheckRows(data));
@@ -483,7 +462,7 @@ export default function Checkpoint({
     } finally {
       setIsLoading(false);
     }
-  }, [selectedShift]);
+  }, [empCode, selectedShift]);
 
   useEffect(() => {
     let cancelled = false;
@@ -792,17 +771,6 @@ export default function Checkpoint({
           return row;
         }
 
-        /**
-         * ข้อ 3 = ผิดปกติ ต้องเข้าหน้างาน
-         *
-         * ให้บันทึก call log ได้ แต่ไม่ปิดงานทันที
-         * เพื่อให้ยังสามารถกดเข้าตรวจ / ออกตรวจต่อได้
-         *
-         * Flow:
-         * - ถ้ายัง pending     => รอดำเนินการเข้าตรวจ
-         * - ถ้า in_progress    => อยู่ระหว่างการเข้าตรวจ
-         * - ถ้า completed แล้ว => ตรวจแล้ว(โทร)
-         */
         if (savedCallStatus === 3) {
           return {
             ...row,
@@ -815,10 +783,6 @@ export default function Checkpoint({
           };
         }
 
-        /**
-         * ข้อ 1, 2 = ไม่ต้องเข้าหน้างาน
-         * ต้องปิดงานทันที และไม่ให้กดเข้าตรวจต่อ
-         */
         return {
           ...row,
           assignmentStatus: "completed",
@@ -832,17 +796,6 @@ export default function Checkpoint({
 
   const handleSuccessOk = () => {
     setIsSuccessModalOpen(false);
-
-    /**
-     * ไม่ fetch ทันที เพื่อไม่ให้กรณี call_status = 3
-     * ถูก API ที่ยังไม่ส่ง latest_call_status กลับมาแปลงผิด
-     *
-     * ระยะยาว:
-     * - Backend daily API ควรส่ง latest_call_status กลับมา
-     * - Backend ควรอัปเดต assignment_status = completed เมื่อ call_status เป็น 1 หรือ 2
-     * - เมื่อ backend พร้อมแล้ว สามารถเปิด fetchCheckpointAssignments() ได้
-     */
-    // void fetchCheckpointAssignments();
   };
 
   const handleSaveCallDetail = async (
@@ -995,6 +948,7 @@ export default function Checkpoint({
                     <h3 className={styles.emptyTitle}>
                       ไม่พบตารางงานสายตรวจของวันนี้
                     </h3>
+
                     <div className={styles.emptyDivider} />
 
                     <div className={styles.emptyHint}>
@@ -1015,10 +969,6 @@ export default function Checkpoint({
                     const isProgress = row.status === "progress";
                     const canGoCheckInOut = isPending || isProgress;
 
-                    /**
-                     * ปิดปุ่มบันทึกการโทร เมื่อแถวปิดงานแล้ว
-                     * เช่น ตรวจแล้ว, ตรวจแล้ว(โทร), ผิดปกติ(โทร)
-                     */
                     const showCallButton =
                       row.requireCall && !isClosedRowStatus(row.status);
 

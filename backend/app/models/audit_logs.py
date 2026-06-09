@@ -1,3 +1,4 @@
+# backend/app/models/audit_log.py
 from __future__ import annotations
 
 from datetime import datetime
@@ -34,6 +35,7 @@ class AuditLog(Base):
         DateTime,
         nullable=False,
         server_default=func.current_timestamp(),
+        index=True,
     )
 
     ip_address: Mapped[str] = mapped_column(

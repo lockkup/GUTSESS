@@ -84,6 +84,7 @@ def get_checkpoint_assignments(
 def get_daily_checkpoint_assignments(
     work_date: date = Query(...),
     shift_type: ShiftType | None = Query(default=None),
+    employee_code: str | None = Query(default=None, min_length=1),
     is_active: bool | None = Query(default=True),
     include_deleted: bool = Query(default=False),
     db: Session = Depends(get_db),
@@ -92,6 +93,7 @@ def get_daily_checkpoint_assignments(
         db=db,
         work_date=work_date,
         shift_type=shift_type,
+        employee_code=employee_code,
         is_active=is_active,
         include_deleted=include_deleted,
     )

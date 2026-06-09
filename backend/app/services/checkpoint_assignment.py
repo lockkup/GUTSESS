@@ -227,6 +227,26 @@ class CheckpointAssignmentService:
         )
 
     @staticmethod
+    def _get_active_employee_for_daily_filter(
+        db: Session,
+        employee_code: str,
+    ) -> Employees | None:
+        clean_employee_code = employee_code.strip()
+
+        if not clean_employee_code:
+            return None
+
+        stmt = select(Employees).where(
+            Employees.employee_code == clean_employee_code
+        )
+
+        employee_is_active_column = getattr(Employees, "is_active", None)
+        if employee_is_active_column is not None:
+            stmt = stmt.where(employee_is_active_column.is_(True))
+
+        return db.scalar(stmt)
+
+    @staticmethod
     def _ensure_schedule_item_exists(
         db: Session,
         schedule_item_id: int,
@@ -417,6 +437,7 @@ class CheckpointAssignmentService:
         db: Session,
         work_date: date,
         shift_type: ShiftType | None = None,
+        employee_code: str | None = None,
         is_active: bool | None = True,
         include_deleted: bool = False,
     ) -> list[CheckpointAssignmentDailyResponse]:
@@ -495,6 +516,19 @@ class CheckpointAssignmentService:
             )
         )
 
+        # แสดงเฉพาะ mapping เส้นทาง-หน่วยงาน ที่มีผลใช้งานตาม work_date ของ assignment
+        # ป้องกันรายการเก่าหรือรายการที่ยังไม่ถึงวันเริ่มใช้งานถูกแสดงบนหน้า daily
+        stmt = stmt.where(
+            or_(
+                RouteSiteLocation.effective_from.is_(None),
+                RouteSiteLocation.effective_from <= CheckpointAssignment.work_date,
+            ),
+            or_(
+                RouteSiteLocation.effective_to.is_(None),
+                RouteSiteLocation.effective_to >= CheckpointAssignment.work_date,
+            ),
+        )
+
         if not include_deleted:
             stmt = stmt.where(
                 CheckpointAssignment.mark_flag.is_(False),
@@ -510,6 +544,55 @@ class CheckpointAssignmentService:
                 RouteSiteLocation.is_active.is_(is_active),
                 SiteLocation.is_active.is_(is_active),
             )
+
+        if employee_code is not None:
+            clean_employee_code = employee_code.strip()
+
+            if clean_employee_code:
+                employee = (
+                    CheckpointAssignmentService
+                    ._get_active_employee_for_daily_filter(
+                        db=db,
+                        employee_code=clean_employee_code,
+                    )
+                )
+
+                if employee is None:
+                    return []
+
+                route_division_column = getattr(RouteSiteLocation, "division_id", None)
+                route_routes_column = getattr(RouteSiteLocation, "routes_id", None)
+
+                employee_division_id = getattr(employee, "division_id", None)
+                employee_routes_id = getattr(employee, "routes_id", None)
+
+                # สำคัญ:
+                # ใช้ division_id เป็นตัวกรองหลัก
+                # เพราะข้อมูลจริงของคุณ:
+                # - กลางวัน division_id=15, routes_id=1
+                # - กลางคืน division_id=15, routes_id=3
+                #
+                # ถ้ากรอง division_id และ routes_id พร้อมกันด้วย AND
+                # พนักงานที่ผูก routes_id=1 จะไม่เห็นงานกลางคืน routes_id=3
+                if (
+                    route_division_column is not None
+                    and employee_division_id is not None
+                ):
+                    stmt = stmt.where(
+                        route_division_column == employee_division_id
+                    )
+
+                # fallback:
+                # ใช้ routes_id เฉพาะกรณี Employees ไม่มี division_id เท่านั้น
+                elif route_routes_column is not None and employee_routes_id is not None:
+                    stmt = stmt.where(
+                        route_routes_column == employee_routes_id
+                    )
+
+                # ถ้าไม่มีทั้ง division_id และ routes_id ให้ไม่แสดงอะไรเลย
+                # เพื่อกันตารางสายตรวจหลุดมาเยอะเกินจริง
+                else:
+                    return []
 
         if shift_type is not None:
             target_shift_id = 1 if shift_type == "day" else 2
