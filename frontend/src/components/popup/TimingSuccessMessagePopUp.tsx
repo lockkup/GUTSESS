@@ -21,6 +21,8 @@ export default function TimingSuccessMessagePopUp({
   closeOnEsc = true,
   onClose,
 }: Props) {
+  void contacts;
+
   const [shouldRender, setShouldRender] = useState(open);
   const [closing, setClosing] = useState(false);
 
@@ -31,17 +33,21 @@ export default function TimingSuccessMessagePopUp({
       setShouldRender(true);
     } else if (shouldRender) {
       setClosing(true);
+
       const timer = setTimeout(() => {
         setShouldRender(false);
         setClosing(false);
       }, EXIT_ANIMATION_DURATION);
+
       return () => clearTimeout(timer);
     }
   }, [open, shouldRender]);
 
   const startClosing = useCallback(() => {
     if (closing) return;
+
     setClosing(true);
+
     setTimeout(() => {
       setShouldRender(false);
       setClosing(false);
@@ -52,19 +58,28 @@ export default function TimingSuccessMessagePopUp({
   // Listen for Escape key to close
   useEffect(() => {
     if (!shouldRender || !closeOnEsc || closing) return;
+
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") startClosing();
+      if (e.key === "Escape") {
+        startClosing();
+      }
     };
+
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
   }, [shouldRender, closeOnEsc, closing, startClosing]);
 
-  // Auto-close after 3.5 seconds
+  // Auto-close after 3 seconds
   useEffect(() => {
     if (!shouldRender || closing) return;
+
     const timer = setTimeout(() => {
       startClosing();
     }, 3000);
+
     return () => clearTimeout(timer);
   }, [shouldRender, closing, startClosing]);
 
@@ -97,7 +112,12 @@ export default function TimingSuccessMessagePopUp({
           <div className={styles.contacts}>
             <div className={styles.contactEmail}>( hr0008@gmail.com )</div>
           </div>
-          {/*{contacts && contacts.length > 0 && (
+
+          {/* 
+          ถ้าต้องการแสดง contacts จริงภายหลัง 
+          ให้ลบ void contacts; ด้านบน แล้วเปิด block นี้กลับมาใช้
+
+          {contacts && contacts.length > 0 && (
             <div className={styles.contacts}>
               {contacts.map((c, idx) => (
                 <div key={idx} className={styles.contact}>
@@ -107,13 +127,15 @@ export default function TimingSuccessMessagePopUp({
                       {c.team || "ไม่ระบุ"}
                     </span>
                   </div>
+
                   {c.email && (
                     <div className={styles.contactEmail}>อีเมล: {c.email}</div>
                   )}
                 </div>
               ))}
             </div>
-          )}*/}
+          )}
+          */}
         </div>
       </div>
     </div>

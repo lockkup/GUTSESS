@@ -16,6 +16,7 @@ from app.schemas.checkpoint_assignment import (
     CheckpointAssignmentRecheck,
     CheckpointAssignmentResponse,
     CheckpointAssignmentUpdate,
+    CheckpointMapLocationResponse,
 )
 from app.schemas.checkpoint_location import (
     VerifyCheckpointLocationRequest,
@@ -96,6 +97,23 @@ def get_daily_checkpoint_assignments(
         employee_code=employee_code,
         is_active=is_active,
         include_deleted=include_deleted,
+    )
+
+
+@router.get(
+    "/map-location",
+    response_model=CheckpointMapLocationResponse,
+    status_code=status.HTTP_200_OK,
+)
+def get_checkpoint_map_location(
+    contract_code: str = Query(..., min_length=1),
+    location_name: str = Query(..., min_length=1),
+    db: Session = Depends(get_db),
+) -> CheckpointMapLocationResponse:
+    return CheckpointAssignmentService.get_checkpoint_map_location(
+        db=db,
+        contract_code=contract_code,
+        location_name=location_name,
     )
 
 

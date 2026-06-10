@@ -8,6 +8,9 @@ import BackButton from "@/components/BackButton";
 import LoadingModal from "@/components/LoadingModal";
 import SuccessModal from "@/components/SuccessModal";
 import OutOfAreaModal from "@/components/OutOfAreaModal";
+import CheckpointMapModal, {
+  type CheckpointMapLocation,
+} from "@/components/CheckpointMapModal";
 import CheckpointCallModal, {
   type CallStatus,
   type CheckpointCallModalSavePayload,
@@ -18,7 +21,10 @@ import {
   type AttendanceLocationSetting,
 } from "@/services/appSetting.service";
 
-import { getDailyCheckpointAssignments } from "@/services/checkpointAssignmentService";
+import {
+  getDailyCheckpointAssignments,
+  getCheckpointMapLocation,
+} from "@/services/checkpointAssignmentService";
 import { createCheckpointAssignmentCall } from "@/services/checkpointAssignmentCallService";
 import { verifyCheckpointLocation } from "@/services/checkpointLocationService";
 
@@ -78,7 +84,8 @@ type RowStatus =
   | "pending"
   | "done"
   | "doneCall"
-  | "abnormalCall";
+  | "abnormalCall"
+  | "cancelled";
 
 type CheckRow = {
   assignmentId: number;
@@ -90,12 +97,30 @@ type CheckRow = {
   requireCall: boolean;
   hasCall: boolean;
   latestCallStatus: CallStatus | null;
+
+  /**
+   * Backend ส่งมาจาก /api/checkpoint-assignments/daily
+   * ใช้ปิดปุ่มเมื่อยังไม่ถึงช่วงเวลากะ / หมดช่วงเวลากะ
+   */
+  canAction: boolean;
+  actionDisabledReason: string | null;
+  isShiftTimeAllowed: boolean;
+  shiftStartTime: string | null;
+  shiftEndTime: string | null;
+  crossesMidnight: boolean | null;
 };
 
 type CheckpointDailyRowWithExtra = CheckpointDailyRow & {
   shift_id?: number | string | null;
   latest_call_status?: number | string | null;
   call_status?: number | string | null;
+
+  can_action?: boolean | number | string | null;
+  action_disabled_reason?: string | null;
+  is_shift_time_allowed?: boolean | number | string | null;
+  shift_start_time?: string | null;
+  shift_end_time?: string | null;
+  crosses_midnight?: boolean | number | string | null;
 };
 
 const statusText: Record<RowStatus, string> = {
@@ -104,6 +129,7 @@ const statusText: Record<RowStatus, string> = {
   done: "ตรวจแล้ว",
   doneCall: "ตรวจแล้ว(โทร)",
   abnormalCall: "ผิดปกติ(โทร)",
+  cancelled: "ยกเลิก",
 };
 
 const statusOrder: Record<RowStatus, number> = {
@@ -112,6 +138,7 @@ const statusOrder: Record<RowStatus, number> = {
   done: 3,
   doneCall: 4,
   abnormalCall: 4,
+  cancelled: 5,
 };
 
 function logDev(message: string, payload?: unknown) {
@@ -264,6 +291,25 @@ const formatApiDate = (date: Date) => {
   return `${year}-${month}-${day}`;
 };
 
+const getCurrentShiftTypeByTime = (date: Date): ShiftType => {
+  const totalMinutes = date.getHours() * 60 + date.getMinutes();
+
+  // ผลัดกลางวัน 08:01:00 - 20:00:00
+  const dayStartMinutes = 8 * 60 + 1;
+  const dayEndMinutes = 20 * 60;
+
+  if (totalMinutes >= dayStartMinutes && totalMinutes <= dayEndMinutes) {
+    return "day";
+  }
+
+  // ผลัดกลางคืน 20:01:00 - 08:00:00 ข้ามวัน
+  return "night";
+};
+
+const getShiftText = (shift: ShiftType): string => {
+  return shift === "day" ? "ผลัดกลางวัน" : "ผลัดกลางคืน";
+};
+
 const mapAssignmentStatusOnly = (
   status: CheckpointAssignmentStatus,
 ): RowStatus => {
@@ -273,6 +319,10 @@ const mapAssignmentStatusOnly = (
 
   if (status === "completed") {
     return "done";
+  }
+
+  if (status === "cancelled") {
+    return "cancelled";
   }
 
   return "pending";
@@ -308,6 +358,40 @@ const normalizeShiftId = (value: unknown): number | null => {
   return null;
 };
 
+const normalizeBoolean = (value: unknown, fallback: boolean): boolean => {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "number") {
+    return value === 1;
+  }
+
+  if (typeof value === "string") {
+    const cleanValue = value.trim().toLowerCase();
+
+    if (["1", "true", "t", "yes", "y"].includes(cleanValue)) {
+      return true;
+    }
+
+    if (["0", "false", "f", "no", "n"].includes(cleanValue)) {
+      return false;
+    }
+  }
+
+  return fallback;
+};
+
+const normalizeNullableText = (value: unknown): string | null => {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const cleanValue = value.trim();
+
+  return cleanValue ? cleanValue : null;
+};
+
 const getLatestCallStatus = (
   item: CheckpointDailyRowWithExtra,
 ): CallStatus | null => {
@@ -315,7 +399,12 @@ const getLatestCallStatus = (
 };
 
 const isClosedRowStatus = (status: RowStatus): boolean => {
-  return status === "done" || status === "doneCall" || status === "abnormalCall";
+  return (
+    status === "done" ||
+    status === "doneCall" ||
+    status === "abnormalCall" ||
+    status === "cancelled"
+  );
 };
 
 const mapAssignmentStatusToRowStatus = (
@@ -323,6 +412,10 @@ const mapAssignmentStatusToRowStatus = (
   hasCall?: boolean,
   latestCallStatus?: CallStatus | null,
 ): RowStatus => {
+  if (status === "cancelled") {
+    return "cancelled";
+  }
+
   if (!hasCall) {
     return mapAssignmentStatusOnly(status);
   }
@@ -361,6 +454,7 @@ const mapDailyRowsToCheckRows = (rows: CheckpointDailyRow[]): CheckRow[] => {
     const row = item as CheckpointDailyRowWithExtra;
     const hasCall = Boolean(item.has_call);
     const latestCallStatus = getLatestCallStatus(row);
+    const canAction = normalizeBoolean(row.can_action, true);
 
     return {
       assignmentId: item.assignment_id,
@@ -376,6 +470,16 @@ const mapDailyRowsToCheckRows = (rows: CheckpointDailyRow[]): CheckRow[] => {
         hasCall,
         latestCallStatus,
       ),
+
+      canAction,
+      actionDisabledReason: normalizeNullableText(row.action_disabled_reason),
+      isShiftTimeAllowed: normalizeBoolean(row.is_shift_time_allowed, canAction),
+      shiftStartTime: normalizeNullableText(row.shift_start_time),
+      shiftEndTime: normalizeNullableText(row.shift_end_time),
+      crossesMidnight:
+        row.crosses_midnight === null || row.crosses_midnight === undefined
+          ? null
+          : normalizeBoolean(row.crosses_midnight, false),
     };
   });
 };
@@ -390,6 +494,17 @@ function getRequestErrorMessage(error: unknown): string {
   }
 
   return "";
+}
+
+function splitUnitName(unitName: string) {
+  const parts = unitName.split("-");
+  const contractCode = parts.shift()?.trim() || unitName.trim();
+  const locationName = parts.join("-").trim();
+
+  return {
+    contractCode,
+    locationName: locationName || contractCode,
+  };
 }
 
 export default function Checkpoint({
@@ -422,7 +537,25 @@ export default function Checkpoint({
   const [outOfAreaOpen, setOutOfAreaOpen] = useState(false);
   const [outOfAreaHint, setOutOfAreaHint] = useState("");
 
-  const shiftText = selectedShift === "day" ? "ผลัดกลางวัน" : "ผลัดกลางคืน";
+  const [isMapModalOpen, setIsMapModalOpen] = useState(false);
+  const [mapLocation, setMapLocation] = useState<CheckpointMapLocation | null>(
+    null,
+  );
+  const [mapLoading, setMapLoading] = useState(false);
+  const [mapErrorMessage, setMapErrorMessage] = useState<string | null>(null);
+
+  const currentShift = useMemo(
+    () => getCurrentShiftTypeByTime(currentDate),
+    [currentDate],
+  );
+
+  const shiftText = getShiftText(selectedShift);
+  const currentShiftText = getShiftText(currentShift);
+  const isSelectedCurrentShift = selectedShift === currentShift;
+
+  const selectedShiftMismatchMessage = !isSelectedCurrentShift
+    ? `ไม่ใช่ผลัดปัจจุบัน ทำรายการไม่ได้ ขณะนี้เป็น${currentShiftText}`
+    : "";
 
   const orderedCheckRows = useMemo(() => {
     return [...checkRows].sort(
@@ -531,7 +664,24 @@ export default function Checkpoint({
     setCallStatus(1);
   };
 
+  const openOutOfAreaModal = (message: string) => {
+    setOutOfAreaHint(message);
+    setOutOfAreaOpen(true);
+  };
+
   const openCallModal = (row: CheckRow) => {
+    if (!isSelectedCurrentShift) {
+      openOutOfAreaModal(selectedShiftMismatchMessage);
+      return;
+    }
+
+    if (!row.canAction) {
+      openOutOfAreaModal(
+        row.actionDisabledReason || "ยังไม่ถึงช่วงเวลาที่อนุญาตให้ดำเนินการ",
+      );
+      return;
+    }
+
     setSelectedRow(row);
     resetCallForm();
     setIsCallModalOpen(true);
@@ -547,9 +697,61 @@ export default function Checkpoint({
     void fetchCheckpointAssignments();
   };
 
-  const openOutOfAreaModal = (message: string) => {
-    setOutOfAreaHint(message);
-    setOutOfAreaOpen(true);
+  const openCheckpointMapModal = async (row: CheckRow) => {
+    const { contractCode, locationName } = splitUnitName(row.unitName);
+
+    setIsMapModalOpen(true);
+    setMapLoading(true);
+    setMapErrorMessage(null);
+
+    try {
+      const data = await getCheckpointMapLocation({
+        contractCode,
+        locationName,
+      });
+
+      logDev("[Checkpoint] MAP LOCATION RESULT", {
+        row,
+        contractCode,
+        locationName,
+        data,
+      });
+
+      setMapLocation({
+        contractCode: data.contract_code,
+        locationName: data.location_name,
+        latitude: data.latitude,
+        longitude: data.longitude,
+        radiusMeter: data.radius_meter,
+        graceMeter: data.grace_meter,
+      });
+    } catch (error) {
+      logDevError("[Checkpoint] LOAD MAP LOCATION ERROR", error);
+
+      setMapLocation({
+        contractCode,
+        locationName,
+        latitude: null,
+        longitude: null,
+        radiusMeter: null,
+        graceMeter: null,
+      });
+
+      setMapErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "โหลดพิกัดหน่วยงานไม่สำเร็จ",
+      );
+    } finally {
+      setMapLoading(false);
+    }
+  };
+
+  const closeCheckpointMapModal = () => {
+    setIsMapModalOpen(false);
+    setMapLocation(null);
+    setMapErrorMessage(null);
+    setMapLoading(false);
   };
 
   const checkLocationBeforeGoCheckInOut = async (
@@ -733,6 +935,37 @@ export default function Checkpoint({
       return;
     }
 
+    if (!isSelectedCurrentShift) {
+      logDevError("[Checkpoint] SELECTED SHIFT IS NOT CURRENT SHIFT", {
+        selectedShift,
+        currentShift,
+        selectedShiftText: shiftText,
+        currentShiftText,
+        row,
+      });
+
+      openOutOfAreaModal(selectedShiftMismatchMessage);
+      return;
+    }
+
+    if (!row.canAction) {
+      logDevError("[Checkpoint] ACTION DISABLED BY SHIFT WINDOW", {
+        assignmentId: row.assignmentId,
+        unitName: row.unitName,
+        shiftId: row.shiftId,
+        reason: row.actionDisabledReason,
+        shiftStartTime: row.shiftStartTime,
+        shiftEndTime: row.shiftEndTime,
+        crossesMidnight: row.crossesMidnight,
+        row,
+      });
+
+      openOutOfAreaModal(
+        row.actionDisabledReason || "ยังไม่ถึงช่วงเวลาที่อนุญาตให้เข้าตรวจ",
+      );
+      return;
+    }
+
     if (!row.shiftId) {
       logDevError("[Checkpoint] SHIFT ID NOT FOUND", {
         assignmentId: row.assignmentId,
@@ -802,6 +1035,19 @@ export default function Checkpoint({
     payload: CheckpointCallModalSavePayload,
   ) => {
     if (!selectedRow?.assignmentId || isSavingCall) {
+      return;
+    }
+
+    if (!isSelectedCurrentShift) {
+      openOutOfAreaModal(selectedShiftMismatchMessage);
+      return;
+    }
+
+    if (!selectedRow.canAction) {
+      openOutOfAreaModal(
+        selectedRow.actionDisabledReason ||
+          "ยังไม่ถึงช่วงเวลาที่อนุญาตให้บันทึกการโทร",
+      );
       return;
     }
 
@@ -902,6 +1148,12 @@ export default function Checkpoint({
               <div className={styles.errorBox}>{errorMessage}</div>
             )}
 
+            {selectedShiftMismatchMessage && (
+              <div className={styles.errorBox} role="alert">
+                {selectedShiftMismatchMessage}
+              </div>
+            )}
+
             <div className={styles.tableCard}>
               <div className={styles.tableWrap}>
                 <div className={styles.headRow}>
@@ -967,13 +1219,17 @@ export default function Checkpoint({
                   orderedCheckRows.map((row) => {
                     const isPending = row.status === "pending";
                     const isProgress = row.status === "progress";
-                    const canGoCheckInOut = isPending || isProgress;
+                    const canGoCheckInOutByStatus = isPending || isProgress;
+                    const canGoCheckInOut =
+                      canGoCheckInOutByStatus &&
+                      row.canAction &&
+                      isSelectedCurrentShift;
 
                     const showCallButton =
                       row.requireCall && !isClosedRowStatus(row.status);
 
                     const statusClass =
-                      row.status === "done"
+                      row.status === "done" || row.status === "cancelled"
                         ? styles.statusDone
                         : row.status === "doneCall" ||
                             row.status === "abnormalCall"
@@ -982,17 +1238,40 @@ export default function Checkpoint({
                             ? styles.statusProgress
                             : styles.statusPending;
 
+                    const disabledReason = selectedShiftMismatchMessage
+                      ? selectedShiftMismatchMessage
+                      : !row.canAction && row.actionDisabledReason
+                        ? row.actionDisabledReason
+                        : undefined;
+
                     const isActionDisabled =
-                      !canGoCheckInOut ||
+                      !canGoCheckInOutByStatus ||
+                      !isSelectedCurrentShift ||
+                      !row.canAction ||
                       settingLoading ||
                       !setting ||
                       isCheckingLocation ||
                       isSavingCall;
 
+                    const isCallDisabled =
+                      !isSelectedCurrentShift ||
+                      !row.canAction ||
+                      isSavingCall ||
+                      isCheckingLocation ||
+                      settingLoading;
+
                     return (
                       <div className={styles.dataRow} key={row.assignmentId}>
                         <div className={`${styles.cell} ${styles.unitCell}`}>
-                          {row.unitName}
+                          <button
+                            type="button"
+                            className={styles.unitMapButton}
+                            onClick={() => void openCheckpointMapModal(row)}
+                            aria-label={`ดูพิกัดหน่วยงาน ${row.unitName}`}
+                            title="ดูพิกัดหน่วยงาน"
+                          >
+                            <span>{row.unitName}</span>
+                          </button>
                         </div>
 
                         <div className={`${styles.cell} ${styles.planCell}`}>
@@ -1002,10 +1281,12 @@ export default function Checkpoint({
                                 type="button"
                                 className={styles.callBtn}
                                 onClick={() => openCallModal(row)}
-                                disabled={
-                                  isSavingCall ||
-                                  isCheckingLocation ||
-                                  settingLoading
+                                disabled={isCallDisabled}
+                                title={disabledReason}
+                                aria-label={
+                                  disabledReason
+                                    ? `${disabledReason} หน่วยงาน ${row.unitName}`
+                                    : `บันทึกการโทร หน่วยงาน ${row.unitName}`
                                 }
                               >
                                 <span className={styles.callBtnText}>
@@ -1027,10 +1308,13 @@ export default function Checkpoint({
                                 : undefined
                             }
                             disabled={isActionDisabled}
+                            title={disabledReason}
                             aria-label={
-                              canGoCheckInOut
-                                ? `ไปหน้าลงเวลาเข้าออกงาน หน่วยงาน ${row.unitName}`
-                                : `${statusText[row.status]} หน่วยงาน ${row.unitName}`
+                              disabledReason
+                                ? `${disabledReason} หน่วยงาน ${row.unitName}`
+                                : canGoCheckInOut
+                                  ? `ไปหน้าลงเวลาเข้าออกงาน หน่วยงาน ${row.unitName}`
+                                  : `${statusText[row.status]} หน่วยงาน ${row.unitName}`
                             }
                           >
                             {statusText[row.status]}
@@ -1093,6 +1377,14 @@ export default function Checkpoint({
         onOk={handleSuccessOk}
         closeOnBackdrop={false}
         closeOnEsc={false}
+      />
+
+      <CheckpointMapModal
+        open={isMapModalOpen}
+        location={mapLocation}
+        loading={mapLoading}
+        errorMessage={mapErrorMessage}
+        onClose={closeCheckpointMapModal}
       />
     </>
   );

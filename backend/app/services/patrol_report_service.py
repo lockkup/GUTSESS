@@ -1322,20 +1322,11 @@ def get_patrol_report_rows(
         f"""
         ORDER BY
             v.{PatrolReportConstants.COLUMN_WORKDAY} DESC,
-            CASE
-                WHEN v.{PatrolReportConstants.COLUMN_ASSIGNMENT_STATUS}
-                    = '{PatrolReportConstants.STATUS_IN_PROGRESS}'
-                    THEN {PatrolReportConstants.STATUS_ORDER_IN_PROGRESS}
-                WHEN v.{PatrolReportConstants.COLUMN_ASSIGNMENT_STATUS}
-                    = '{PatrolReportConstants.STATUS_PENDING}'
-                    THEN {PatrolReportConstants.STATUS_ORDER_PENDING}
-                WHEN v.{PatrolReportConstants.COLUMN_ASSIGNMENT_STATUS}
-                    = '{PatrolReportConstants.STATUS_COMPLETED}'
-                    THEN {PatrolReportConstants.STATUS_ORDER_COMPLETED}
-                ELSE {PatrolReportConstants.STATUS_ORDER_OTHER}
-            END,
-            v.{PatrolReportConstants.COLUMN_CONTRACT_CODE},
-            v.{PatrolReportConstants.COLUMN_LOCATION_NAME}
+            v.{PatrolReportConstants.COLUMN_SHIFT_ID} ASC,
+            v.{PatrolReportConstants.COLUMN_DIVISION_ID} ASC,
+            v.{PatrolReportConstants.COLUMN_ROUTE_ID} ASC,
+            v.{PatrolReportConstants.COLUMN_CONTRACT_CODE} ASC,
+            v.{PatrolReportConstants.COLUMN_LOCATION_NAME} ASC
         """
     )
 

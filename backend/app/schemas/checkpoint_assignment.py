@@ -12,6 +12,7 @@ AssignmentStatus = Literal[
     "pending",
     "in_progress",
     "completed",
+    "cancelled",
     "repaired",
 ]
 
@@ -194,3 +195,46 @@ class CheckpointAssignmentDailyResponse(BaseModel):
     contract_code: str | None = None
 
     location_name: str | None = None
+
+    # ใช้ให้ frontend ปิด/เปิดปุ่มดำเนินการตามช่วงเวลาของกะ
+    # true = กดปุ่มเข้าตรวจ/ออกตรวจได้
+    # false = ห้ามกด และให้แสดง action_disabled_reason
+    can_action: bool = False
+
+    # เหตุผลที่ปุ่มถูกปิด เช่น
+    # "ยังไม่ถึงช่วงเวลาของผลัดกลางคืน"
+    # "หมดช่วงเวลาของผลัดกลางวันแล้ว"
+    # "ไม่พบข้อมูลผลัดของตารางงานสายตรวจ"
+    action_disabled_reason: str | None = None
+
+    # true = เวลาปัจจุบันอยู่ในช่วง start_time - end_time ของกะนี้
+    is_shift_time_allowed: bool = False
+
+    # เวลาเริ่มกะจากตาราง shifts เช่น "08:01:00"
+    shift_start_time: str | None = None
+
+    # เวลาสิ้นสุดกะจากตาราง shifts เช่น "20:00:00"
+    shift_end_time: str | None = None
+
+    # true = กะข้ามวัน เช่น 20:01 - 08:00
+    crosses_midnight: bool | None = None
+
+
+class CheckpointMapLocationResponse(BaseModel):
+    model_config = ConfigDict(
+        from_attributes=True,
+        extra="forbid",
+        str_strip_whitespace=True,
+    )
+
+    contract_code: str
+
+    location_name: str
+
+    latitude: float | None = None
+
+    longitude: float | None = None
+
+    radius_meter: int | None = None
+
+    grace_meter: int | None = None

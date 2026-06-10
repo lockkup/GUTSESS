@@ -19,17 +19,26 @@ export default function EmailModal({
   message,
   contacts,
   onOk,
-  closeOnBackdrop = false,
+  closeOnBackdrop = true,
   closeOnEsc = true,
   onClose,
 }: Props) {
+  void onOk;
+
   useEffect(() => {
     if (!open || !closeOnEsc) return;
+
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose?.();
+      if (e.key === "Escape") {
+        onClose?.();
+      }
     };
+
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
   }, [open, closeOnEsc, onClose]);
 
   if (!open) return null;
@@ -70,7 +79,6 @@ export default function EmailModal({
         </div>
 
         <div className={styles.body}>
-          {/* Render message as a single line like TimingMessagePopUp */}
           <div>{message ? message.replace(/\s*\n\s*/g, " ") : ""}</div>
 
           {!success && contacts && contacts.length > 0 && (
@@ -78,9 +86,11 @@ export default function EmailModal({
               {contacts.map((c, idx) => (
                 <div key={idx} className={styles.contact}>
                   <div className={styles.contactLabel}>ติดต่อ:</div>
+
                   <div className={styles.contactValue}>
                     {c.team || "ไม่ระบุ"}
                   </div>
+
                   <div className={styles.contactEmail}>
                     {c.email || "ไม่ระบุ"}
                   </div>

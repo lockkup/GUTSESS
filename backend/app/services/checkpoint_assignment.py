@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, time, timedelta
 from math import atan2, cos, radians, sin, sqrt
 from typing import Any, ClassVar, Final, Literal
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
-from sqlalchemy import and_, exists, func, or_, select
+from sqlalchemy import and_, exists, func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -34,6 +34,7 @@ from app.schemas.checkpoint_assignment import (
     CheckpointAssignmentDailyResponse,
     CheckpointAssignmentRecheck,
     CheckpointAssignmentUpdate,
+    CheckpointMapLocationResponse,
 )
 from app.schemas.checkpoint_location import (
     VerifyCheckpointLocationRequest,
@@ -51,6 +52,14 @@ _OVERDUE_STATUSES: Final[frozenset[str]] = frozenset(
     {
         "pending",
         "in_progress",
+    }
+)
+
+_CLOSED_STATUSES: Final[frozenset[str]] = frozenset(
+    {
+        "completed",
+        "cancelled",
+        "repaired",
     }
 )
 
@@ -75,6 +84,56 @@ class CheckpointAssignmentService:
         return parent_assignment_id or _PARENT_ASSIGNMENT_ROOT_KEY
 
     @staticmethod
+    def _as_bool(value: Any) -> bool:
+        if isinstance(value, bool):
+            return value
+
+        if isinstance(value, int):
+            return value == 1
+
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "t", "yes", "y"}
+
+        return bool(value)
+
+    @staticmethod
+    def _normalize_time(value: Any) -> time | None:
+        if value is None:
+            return None
+
+        if isinstance(value, time):
+            return value.replace(tzinfo=None)
+
+        if isinstance(value, datetime):
+            return value.time().replace(tzinfo=None)
+
+        if isinstance(value, timedelta):
+            total_seconds = int(value.total_seconds()) % 86400
+            hour = total_seconds // 3600
+            minute = (total_seconds % 3600) // 60
+            second = total_seconds % 60
+            return time(hour=hour, minute=minute, second=second)
+
+        value_text = str(value).strip()
+        if not value_text:
+            return None
+
+        for fmt in ("%H:%M:%S", "%H:%M"):
+            try:
+                return datetime.strptime(value_text, fmt).time()
+            except ValueError:
+                continue
+
+        return None
+
+    @staticmethod
+    def _format_time(value: time | None) -> str | None:
+        if value is None:
+            return None
+
+        return value.strftime("%H:%M:%S")
+
+    @staticmethod
     def _build_unit_name(
         contract_code: str | None,
         location_name: str | None,
@@ -89,6 +148,269 @@ class CheckpointAssignmentService:
             return clean_contract_code
 
         return clean_location_name
+
+    @staticmethod
+    def _build_shift_name_for_message(
+        shift_id: int | None,
+        shift_name_th: str | None,
+    ) -> str:
+        clean_shift_name = (shift_name_th or "").strip()
+
+        if clean_shift_name:
+            if clean_shift_name.startswith("ผลัด"):
+                return clean_shift_name
+
+            return f"ผลัด{clean_shift_name}"
+
+        if shift_id == 1:
+            return "ผลัดกลางวัน"
+
+        if shift_id == 2:
+            return "ผลัดกลางคืน"
+
+        return "ผลัดนี้"
+
+    @staticmethod
+    def _get_shift_window_info(
+        db: Session,
+        shift_id: int | None,
+    ) -> dict[str, Any] | None:
+        if shift_id is None:
+            return None
+
+        stmt = text(
+            """
+            SELECT
+                shift_id,
+                shift_name_th,
+                start_time,
+                end_time,
+                crosses_midnight
+            FROM shifts
+            WHERE shift_id = :shift_id
+              AND COALESCE(mark_flag, 0) = 0
+              AND COALESCE(is_active, 1) = 1
+            LIMIT 1
+            """
+        )
+
+        row = db.execute(stmt, {"shift_id": shift_id}).mappings().first()
+
+        if row is None:
+            return None
+
+        start_time = CheckpointAssignmentService._normalize_time(row["start_time"])
+        end_time = CheckpointAssignmentService._normalize_time(row["end_time"])
+
+        if start_time is None or end_time is None:
+            return None
+
+        crosses_midnight = CheckpointAssignmentService._as_bool(
+            row["crosses_midnight"]
+        )
+
+        return {
+            "shift_id": int(row["shift_id"]),
+            "shift_name_th": row["shift_name_th"],
+            "start_time": start_time,
+            "end_time": end_time,
+            "crosses_midnight": crosses_midnight,
+        }
+
+    @staticmethod
+    def _build_shift_datetime_window(
+        work_date: date,
+        start_time: time,
+        end_time: time,
+        crosses_midnight: bool,
+    ) -> tuple[datetime, datetime]:
+        start_datetime = datetime.combine(work_date, start_time)
+        end_datetime = datetime.combine(work_date, end_time)
+
+        if crosses_midnight or end_time <= start_time:
+            end_datetime = end_datetime + timedelta(days=1)
+
+        return start_datetime, end_datetime
+
+    @staticmethod
+    def _is_now_in_shift_window(
+        now: datetime,
+        work_date: date,
+        start_time: time,
+        end_time: time,
+        crosses_midnight: bool,
+    ) -> bool:
+        start_datetime, end_datetime = (
+            CheckpointAssignmentService._build_shift_datetime_window(
+                work_date=work_date,
+                start_time=start_time,
+                end_time=end_time,
+                crosses_midnight=crosses_midnight,
+            )
+        )
+
+        return start_datetime <= now <= end_datetime
+
+    @staticmethod
+    def _build_shift_time_reason(
+        now: datetime,
+        work_date: date,
+        shift_id: int | None,
+        shift_name_th: str | None,
+        start_time: time,
+        end_time: time,
+        crosses_midnight: bool,
+    ) -> str:
+        start_datetime, end_datetime = (
+            CheckpointAssignmentService._build_shift_datetime_window(
+                work_date=work_date,
+                start_time=start_time,
+                end_time=end_time,
+                crosses_midnight=crosses_midnight,
+            )
+        )
+
+        shift_name = CheckpointAssignmentService._build_shift_name_for_message(
+            shift_id=shift_id,
+            shift_name_th=shift_name_th,
+        )
+
+        if now < start_datetime:
+            return f"ยังไม่ถึงช่วงเวลาของ{shift_name}"
+
+        if now > end_datetime:
+            return f"หมดช่วงเวลาของ{shift_name}แล้ว"
+
+        return f"ไม่อยู่ในช่วงเวลาของ{shift_name}"
+
+    @staticmethod
+    def _build_action_state_for_shift(
+        db: Session,
+        work_date: date,
+        shift_id: int | None,
+        assignment_status: str | None,
+        is_active: bool,
+        now: datetime,
+    ) -> dict[str, Any]:
+        default_state: dict[str, Any] = {
+            "can_action": False,
+            "action_disabled_reason": None,
+            "is_shift_time_allowed": False,
+            "shift_start_time": None,
+            "shift_end_time": None,
+            "crosses_midnight": None,
+        }
+
+        if assignment_status in _CLOSED_STATUSES:
+            return default_state
+
+        if not is_active:
+            default_state["action_disabled_reason"] = (
+                "ตารางงานสายตรวจนี้ถูกปิดใช้งานแล้ว"
+            )
+            return default_state
+
+        if assignment_status == "in_progress":
+            default_state["can_action"] = True
+            default_state["is_shift_time_allowed"] = True
+            return default_state
+
+        if assignment_status != "pending":
+            return default_state
+
+        if shift_id is None:
+            default_state["action_disabled_reason"] = (
+                "ไม่พบข้อมูลผลัดของตารางงานสายตรวจ"
+            )
+            return default_state
+
+        shift_info = CheckpointAssignmentService._get_shift_window_info(
+            db=db,
+            shift_id=shift_id,
+        )
+
+        if shift_info is None:
+            default_state["action_disabled_reason"] = (
+                "ไม่พบข้อมูลช่วงเวลาของผลัดนี้"
+            )
+            return default_state
+
+        start_time = shift_info["start_time"]
+        end_time = shift_info["end_time"]
+        crosses_midnight = bool(shift_info["crosses_midnight"])
+
+        default_state["shift_start_time"] = CheckpointAssignmentService._format_time(
+            start_time
+        )
+        default_state["shift_end_time"] = CheckpointAssignmentService._format_time(
+            end_time
+        )
+        default_state["crosses_midnight"] = crosses_midnight
+
+        is_shift_time_allowed = CheckpointAssignmentService._is_now_in_shift_window(
+            now=now,
+            work_date=work_date,
+            start_time=start_time,
+            end_time=end_time,
+            crosses_midnight=crosses_midnight,
+        )
+
+        default_state["is_shift_time_allowed"] = is_shift_time_allowed
+
+        if is_shift_time_allowed:
+            default_state["can_action"] = True
+            default_state["action_disabled_reason"] = None
+            return default_state
+
+        default_state["can_action"] = False
+        default_state["action_disabled_reason"] = (
+            CheckpointAssignmentService._build_shift_time_reason(
+                now=now,
+                work_date=work_date,
+                shift_id=shift_id,
+                shift_name_th=shift_info.get("shift_name_th"),
+                start_time=start_time,
+                end_time=end_time,
+                crosses_midnight=crosses_midnight,
+            )
+        )
+
+        return default_state
+
+    @staticmethod
+    def _ensure_start_in_shift_window(
+        db: Session,
+        checkpoint_assignment: CheckpointAssignment,
+    ) -> None:
+        stmt = (
+            select(CheckpointScheduleItem.shift_id)
+            .where(
+                CheckpointScheduleItem.schedule_item_id
+                == checkpoint_assignment.schedule_item_id
+            )
+            .limit(1)
+        )
+
+        shift_id_raw = db.scalar(stmt)
+        shift_id = int(shift_id_raw) if shift_id_raw is not None else None
+
+        now = CheckpointAssignmentService._now_bangkok_naive()
+
+        action_state = CheckpointAssignmentService._build_action_state_for_shift(
+            db=db,
+            work_date=checkpoint_assignment.work_date,
+            shift_id=shift_id,
+            assignment_status=checkpoint_assignment.assignment_status,
+            is_active=bool(checkpoint_assignment.is_active),
+            now=now,
+        )
+
+        if not bool(action_state["can_action"]):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=action_state["action_disabled_reason"]
+                or "ไม่สามารถดำเนินการนอกช่วงเวลาของผลัดนี้ได้",
+            )
 
     @staticmethod
     def _is_overdue(
@@ -358,6 +680,77 @@ class CheckpointAssignmentService:
         setattr(checkpoint_assignment, by_field, employee_code)
 
     @staticmethod
+    def get_checkpoint_map_location(
+        db: Session,
+        contract_code: str,
+        location_name: str,
+    ) -> CheckpointMapLocationResponse:
+        clean_contract_code = contract_code.strip()
+        clean_location_name = location_name.strip()
+
+        if not clean_contract_code or not clean_location_name:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="กรุณาระบุรหัสสัญญาและชื่อหน่วยงาน",
+            )
+
+        stmt = (
+            select(
+                SiteLocation.contract_code.label("contract_code"),
+                SiteLocation.location_name.label("location_name"),
+                SiteLocation.latitude.label("latitude"),
+                SiteLocation.longitude.label("longitude"),
+                SiteLocation.radius_meter.label("radius_meter"),
+                SiteLocation.grace_meter.label("grace_meter"),
+            )
+            .where(
+                func.trim(SiteLocation.contract_code) == clean_contract_code,
+                func.trim(SiteLocation.location_name) == clean_location_name,
+                SiteLocation.mark_flag.is_(False),
+                SiteLocation.is_active.is_(True),
+            )
+            .order_by(SiteLocation.location_id.desc())
+            .limit(1)
+        )
+
+        row = db.execute(stmt).mappings().first()
+
+        if row is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="ไม่พบพิกัดของหน่วยงานนี้",
+            )
+
+        latitude_raw = row["latitude"]
+        longitude_raw = row["longitude"]
+
+        latitude = float(latitude_raw) if latitude_raw is not None else None
+        longitude = float(longitude_raw) if longitude_raw is not None else None
+
+        radius_meter_raw = row["radius_meter"]
+        grace_meter_raw = row["grace_meter"]
+
+        radius_meter = (
+            int(radius_meter_raw)
+            if radius_meter_raw is not None
+            else None
+        )
+        grace_meter = (
+            int(grace_meter_raw)
+            if grace_meter_raw is not None
+            else None
+        )
+
+        return CheckpointMapLocationResponse(
+            contract_code=str(row["contract_code"] or "").strip(),
+            location_name=str(row["location_name"] or "").strip(),
+            latitude=latitude,
+            longitude=longitude,
+            radius_meter=radius_meter,
+            grace_meter=grace_meter,
+        )
+
+    @staticmethod
     def get_checkpoint_assignment(
         db: Session,
         assignment_id: int,
@@ -461,12 +854,7 @@ class CheckpointAssignmentService:
                 CheckpointAssignment.assignment_id.label("assignment_id"),
                 CheckpointAssignment.work_date.label("work_date"),
                 CheckpointAssignment.schedule_item_id.label("schedule_item_id"),
-
-                # สำคัญ:
-                # ส่ง shift_id ออกไปให้ Frontend
-                # เพื่อไม่ต้อง hardcode day=1 / night=2 ที่หน้า Checkpoint
                 CheckpointScheduleItem.shift_id.label("shift_id"),
-
                 CheckpointAssignment.time_record_id.label("time_record_id"),
                 CheckpointAssignment.assignment_status.label("assignment_status"),
                 CheckpointAssignment.due_datetime.label("due_datetime"),
@@ -501,9 +889,7 @@ class CheckpointAssignmentService:
             )
             .where(
                 or_(
-                    # งานของวันที่หน้าเว็บเลือก
                     CheckpointAssignment.work_date == work_date,
-                    # งานเก่าที่ยังค้าง และยังไม่พ้น due_datetime
                     and_(
                         CheckpointAssignment.work_date < work_date,
                         CheckpointAssignment.assignment_status.in_(
@@ -516,8 +902,6 @@ class CheckpointAssignmentService:
             )
         )
 
-        # แสดงเฉพาะ mapping เส้นทาง-หน่วยงาน ที่มีผลใช้งานตาม work_date ของ assignment
-        # ป้องกันรายการเก่าหรือรายการที่ยังไม่ถึงวันเริ่มใช้งานถูกแสดงบนหน้า daily
         stmt = stmt.where(
             or_(
                 RouteSiteLocation.effective_from.is_(None),
@@ -566,14 +950,6 @@ class CheckpointAssignmentService:
                 employee_division_id = getattr(employee, "division_id", None)
                 employee_routes_id = getattr(employee, "routes_id", None)
 
-                # สำคัญ:
-                # ใช้ division_id เป็นตัวกรองหลัก
-                # เพราะข้อมูลจริงของคุณ:
-                # - กลางวัน division_id=15, routes_id=1
-                # - กลางคืน division_id=15, routes_id=3
-                #
-                # ถ้ากรอง division_id และ routes_id พร้อมกันด้วย AND
-                # พนักงานที่ผูก routes_id=1 จะไม่เห็นงานกลางคืน routes_id=3
                 if (
                     route_division_column is not None
                     and employee_division_id is not None
@@ -581,16 +957,10 @@ class CheckpointAssignmentService:
                     stmt = stmt.where(
                         route_division_column == employee_division_id
                     )
-
-                # fallback:
-                # ใช้ routes_id เฉพาะกรณี Employees ไม่มี division_id เท่านั้น
                 elif route_routes_column is not None and employee_routes_id is not None:
                     stmt = stmt.where(
                         route_routes_column == employee_routes_id
                     )
-
-                # ถ้าไม่มีทั้ง division_id และ routes_id ให้ไม่แสดงอะไรเลย
-                # เพื่อกันตารางสายตรวจหลุดมาเยอะเกินจริง
                 else:
                     return []
 
@@ -628,9 +998,21 @@ class CheckpointAssignmentService:
                 else None
             )
 
+            shift_id_raw = data.get("shift_id")
+            shift_id = int(shift_id_raw) if shift_id_raw is not None else None
+
             is_overdue = CheckpointAssignmentService._is_overdue(
                 assignment_status=assignment_status,
                 due_datetime=due_datetime,
+                now=now,
+            )
+
+            action_state = CheckpointAssignmentService._build_action_state_for_shift(
+                db=db,
+                work_date=data["work_date"],
+                shift_id=shift_id,
+                assignment_status=assignment_status,
+                is_active=bool(data.get("is_active")),
                 now=now,
             )
 
@@ -645,6 +1027,8 @@ class CheckpointAssignmentService:
                 assignment_status=assignment_status,
                 is_overdue=is_overdue,
             )
+
+            data.update(action_state)
 
             result.append(
                 CheckpointAssignmentDailyResponse.model_validate(data)
@@ -883,6 +1267,11 @@ class CheckpointAssignmentService:
         )
 
         CheckpointAssignmentService._ensure_active_for_start(
+            checkpoint_assignment=checkpoint_assignment,
+        )
+
+        CheckpointAssignmentService._ensure_start_in_shift_window(
+            db=db,
             checkpoint_assignment=checkpoint_assignment,
         )
 

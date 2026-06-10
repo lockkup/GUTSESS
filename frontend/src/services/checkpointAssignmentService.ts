@@ -3,6 +3,8 @@
 import api from "@/lib/api";
 import type {
   CheckpointDailyRow,
+  CheckpointMapLocationResponse,
+  GetCheckpointMapLocationParams,
   ShiftType,
 } from "@/types/checkpointAssignment";
 
@@ -28,7 +30,7 @@ export function getDailyCheckpointAssignments({
   workDate,
   shiftType,
   employeeCode,
-}: GetDailyCheckpointAssignmentsParams) {
+}: GetDailyCheckpointAssignmentsParams): Promise<CheckpointDailyRow[]> {
   const normalizedEmployeeCode = employeeCode.trim();
 
   // กันกรณีไม่มีรหัสพนักงาน แล้ว backend อาจคืนข้อมูลทั้งหมด
@@ -43,4 +45,26 @@ export function getDailyCheckpointAssignments({
     is_active: true,
     include_deleted: false,
   });
+}
+
+export function getCheckpointMapLocation({
+  contractCode,
+  locationName,
+}: GetCheckpointMapLocationParams): Promise<CheckpointMapLocationResponse> {
+  const normalizedContractCode = contractCode.trim();
+  const normalizedLocationName = locationName.trim();
+
+  if (!normalizedContractCode || !normalizedLocationName) {
+    return Promise.reject(
+      new Error("กรุณาระบุรหัสสัญญาและชื่อหน่วยงาน"),
+    );
+  }
+
+  return api.get<CheckpointMapLocationResponse>(
+    "/api/checkpoint-assignments/map-location",
+    {
+      contract_code: normalizedContractCode,
+      location_name: normalizedLocationName,
+    },
+  );
 }
