@@ -1,4 +1,21 @@
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
+const rawApiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? "").trim();
+
+/**
+ * VITE_API_BASE_URL options:
+ * - "same-origin" หรือเว้นว่าง = ใช้ domain ปัจจุบัน เช่น
+ *   http://localhost:8090
+ *   https://xxxxx.trycloudflare.com
+ *
+ * - URL เต็ม = ใช้ URL นั้น เช่น
+ *   http://localhost:8090
+ */
+export const API_ORIGIN =
+  !rawApiBaseUrl || rawApiBaseUrl.toLowerCase() === "same-origin"
+    ? window.location.origin
+    : rawApiBaseUrl.replace(/\/+$/, "");
+
+// คงชื่อ API_BASE_URL ไว้ เพื่อไม่ให้ service เดิมที่ import ชื่อนี้พัง
+export const API_BASE_URL = API_ORIGIN;
 
 export type QueryParams = Record<
   string,
@@ -15,11 +32,7 @@ const IS_DEV = import.meta.env.DEV;
 function buildUrl(path: string, params?: QueryParams) {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
 
-  if (!API_BASE_URL) {
-    throw new Error("VITE_API_BASE_URL is not set");
-  }
-
-  const url = new URL(`${API_BASE_URL}${normalizedPath}`);
+  const url = new URL(`${API_ORIGIN}${normalizedPath}`);
 
   if (params) {
     Object.entries(params).forEach(([key, value]) => {
@@ -103,7 +116,8 @@ async function request<T>(
     requestHeaders.set("Content-Type", "application/json");
   }
 
-  if (API_BASE_URL.includes(".loca.lt")) {
+  // สำหรับ LocalTunnel เท่านั้น
+  if (API_ORIGIN.includes(".loca.lt")) {
     requestHeaders.set("bypass-tunnel-reminder", "1");
   }
 
@@ -188,4 +202,4 @@ const api = {
 };
 
 export default api;
-export { api, API_BASE_URL };
+export { api };

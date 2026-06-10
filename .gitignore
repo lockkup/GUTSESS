@@ -31,3 +31,8 @@ backend/uploads/*
 Thumbs.db
 *.log
 node_modules
+
+# GUTSESS local secrets / generated files
+frontend/.env.production
+caddy/Caddyfile.backup-*
+caddy/Caddyfile.backup*
