@@ -38,7 +38,7 @@ def send_plain_password_email(
         f"{password}\n\n"
         f"{emp_id_text}"
         f"หากคุณไม่ได้ร้องขอ โปรดติดต่อผู้ดูแลระบบ\n\n"
-        f"ด้วยความนับถือ,\nทีม GUTSESS\n"
+        f"ด้วยความนับถือ,\nทีม โครงการพัฒนาระบบ\n"
         f"ส่งจาก: {email_from}"
     )
 
@@ -51,7 +51,7 @@ def send_plain_password_email(
       <p>ตามคำขอ นี่คือรหัสผ่านบัญชีของคุณ:</p>
       <p style="font-size:42px;color:#0047b3;font-weight:700;">{password}</p>
       <p>หากคุณไม่ได้ร้องขอ โปรดติดต่อผู้ดูแลระบบ</p>
-      <p>ด้วยความนับถือ,<br/><strong>ทีม GUTSESS</strong></p>
+      <p>ด้วยความนับถือ,<br/><strong>ทีม โครงการพัฒนาระบบ</strong></p>
       <p style="font-size:12px; color:#666;">อีเมล: {email_from}</p>
     </div>
   </body>
