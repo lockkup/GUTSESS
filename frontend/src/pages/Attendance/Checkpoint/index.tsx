@@ -1051,6 +1051,14 @@ export default function Checkpoint({
       return;
     }
 
+    const contactDetailText = payload.contactDetail.trim();
+    const callNoteText = payload.callNote.trim();
+
+    if (!contactDetailText && !callNoteText) {
+      alert("โปรดระบุข้อมูลผู้มาติดต่อ หรือรายละเอียดการโทร");
+      return;
+    }
+
     const assignmentId = selectedRow.assignmentId;
 
     try {
@@ -1058,9 +1066,9 @@ export default function Checkpoint({
 
       await createCheckpointAssignmentCall({
         assignment_id: assignmentId,
-        contact_detail: payload.contactDetail,
+        contact_detail: contactDetailText || callNoteText,
         call_status: payload.callStatus,
-        call_note: payload.callNote,
+        call_note: callNoteText,
         created_by: empCode,
       });
 
@@ -1070,11 +1078,20 @@ export default function Checkpoint({
     } catch (error) {
       logDevError("[Checkpoint] SAVE CALL ERROR", error);
 
-      alert(
+      const errorMessage =
         error instanceof Error
           ? error.message
-          : "เกิดข้อผิดพลาดในการบันทึกการโทร",
-      );
+          : "เกิดข้อผิดพลาดในการบันทึกการโทร";
+
+      if (
+        errorMessage.includes("contact_detail") ||
+        errorMessage.includes("String should have at least 1 character")
+      ) {
+        alert("โปรดระบุข้อมูลผู้มาติดต่อ หรือรายละเอียดการโทร");
+        return;
+      }
+
+      alert(errorMessage);
     } finally {
       setIsSavingCall(false);
     }

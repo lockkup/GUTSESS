@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+
 import styles from "./CheckpointCallModal.module.css";
 
 export type CallStatus = 1 | 2 | 3;
@@ -50,20 +52,59 @@ export default function CheckpointCallModal({
   onClose,
   onSave,
 }: Props) {
+  const [formError, setFormError] = useState("");
+
+  useEffect(() => {
+    if (isOpen) {
+      setFormError("");
+    }
+  }, [isOpen, unitName]);
+
   if (!isOpen) return null;
 
   const displayShiftText = formatShiftText(shiftText);
 
+  const handleClose = () => {
+    setFormError("");
+    onClose();
+  };
+
+  const handleChangeContactDetail = (value: string) => {
+    if (formError) {
+      setFormError("");
+    }
+
+    onChangeContactDetail(value);
+  };
+
+  const handleChangeCallNote = (value: string) => {
+    if (formError) {
+      setFormError("");
+    }
+
+    onChangeCallNote(value);
+  };
+
   const handleSave = () => {
+    const cleanContactDetail = contactDetail.trim();
+    const cleanCallNote = callNote.trim();
+
+    if (!cleanContactDetail && !cleanCallNote) {
+      setFormError("โปรดระบุข้อมูลผู้มาติดต่อ หรือรายละเอียดการโทร");
+      return;
+    }
+
+    setFormError("");
+
     onSave({
-      contactDetail: contactDetail.trim(),
-      callNote: callNote.trim(),
+      contactDetail: cleanContactDetail,
+      callNote: cleanCallNote,
       callStatus,
     });
   };
 
   return (
-    <div className={styles.overlay} onClick={onClose}>
+    <div className={styles.overlay} onClick={handleClose}>
       <section
         className={styles.card}
         role="dialog"
@@ -77,7 +118,7 @@ export default function CheckpointCallModal({
           <button
             type="button"
             className={styles.closeBtn}
-            onClick={onClose}
+            onClick={handleClose}
             aria-label="ปิดหน้าต่างบันทึกการโทร"
           >
             ×
@@ -95,6 +136,25 @@ export default function CheckpointCallModal({
             </div>
           </div>
 
+          {formError && (
+            <div
+              role="alert"
+              style={{
+                margin: "0 0 12px",
+                padding: "10px 12px",
+                borderRadius: "12px",
+                background: "#fff1f2",
+                border: "1px solid #fecaca",
+                color: "#b91c1c",
+                fontSize: "14px",
+                fontWeight: 800,
+                lineHeight: 1.4,
+              }}
+            >
+              {formError}
+            </div>
+          )}
+
           <label className={styles.label} htmlFor="checkpoint-contact-detail">
             ข้อมูลผู้ติดต่อ
           </label>
@@ -103,7 +163,9 @@ export default function CheckpointCallModal({
             id="checkpoint-contact-detail"
             className={styles.contactTextarea}
             value={contactDetail}
-            onChange={(event) => onChangeContactDetail(event.target.value)}
+            onChange={(event) =>
+              handleChangeContactDetail(event.target.value)
+            }
             placeholder="กรอกข้อมูลผู้ติดต่อ เช่น ชื่อผู้ติดต่อ เบอร์โทร"
             rows={5}
           />
@@ -116,7 +178,7 @@ export default function CheckpointCallModal({
             id="checkpoint-call-note"
             className={styles.textarea}
             value={callNote}
-            onChange={(event) => onChangeCallNote(event.target.value)}
+            onChange={(event) => handleChangeCallNote(event.target.value)}
             placeholder="กรอกรายละเอียดการโทร"
             rows={5}
           />
@@ -163,7 +225,7 @@ export default function CheckpointCallModal({
             <button
               type="button"
               className={styles.cancelBtn}
-              onClick={onClose}
+              onClick={handleClose}
             >
               ยกเลิก
             </button>
