@@ -172,6 +172,10 @@
   grid-template-columns: 42% 18% 40%;
 }
 
+.dataRow {
+  position: relative;
+}
+
 .cell {
   min-height: 52px;
   display: flex;
@@ -219,6 +223,8 @@
 }
 
 .unitCell {
+  position: relative;
+  z-index: 1;
   justify-content: flex-start;
   padding: 8px 8px;
   color: #173f7a;
@@ -230,6 +236,9 @@
 }
 
 .planCell {
+  position: relative;
+  z-index: 3;
+  pointer-events: auto;
   justify-content: center;
   padding: 6px 4px;
   color: #0f2348;
@@ -239,6 +248,8 @@
 }
 
 .statusCell {
+  position: relative;
+  z-index: 1;
   justify-content: center;
   padding: 5px;
 }
@@ -262,6 +273,12 @@
 }
 
 .callBtn {
+  position: relative;
+  z-index: 10;
+  pointer-events: auto;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+
   width: var(--checkpoint-call-width);
   min-height: 32px;
   border: 0;
@@ -280,6 +297,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+.callBtn:active {
+  transform: translateY(1px);
 }
 
 .callBtnText {

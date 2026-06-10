@@ -1280,7 +1280,17 @@ export default function Checkpoint({
                               <button
                                 type="button"
                                 className={styles.callBtn}
-                                onClick={() => openCallModal(row)}
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  openCallModal(row);
+                                }}
+                                onPointerDown={(event) => {
+                                  event.stopPropagation();
+                                }}
+                                onTouchStart={(event) => {
+                                  event.stopPropagation();
+                                }}
                                 disabled={isCallDisabled}
                                 title={disabledReason}
                                 aria-label={
