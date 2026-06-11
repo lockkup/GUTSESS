@@ -398,15 +398,6 @@ const getLatestCallStatus = (
   return normalizeCallStatus(item.latest_call_status ?? item.call_status);
 };
 
-const isClosedRowStatus = (status: RowStatus): boolean => {
-  return (
-    status === "done" ||
-    status === "doneCall" ||
-    status === "abnormalCall" ||
-    status === "cancelled"
-  );
-};
-
 const mapAssignmentStatusToRowStatus = (
   status: CheckpointAssignmentStatus,
   hasCall?: boolean,
@@ -1243,7 +1234,7 @@ export default function Checkpoint({
                       isSelectedCurrentShift;
 
                     const showCallButton =
-                      row.requireCall && !isClosedRowStatus(row.status);
+                      row.requireCall && row.status !== "cancelled";
 
                     const statusClass =
                       row.status === "done" || row.status === "cancelled"
