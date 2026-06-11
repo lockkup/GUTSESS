@@ -347,8 +347,8 @@ function getEmptyStateText(
 ) {
   if (reason === "need_filter") {
     return {
-      title: "โปรดเลือก ภาค เขต เส้นทาง รายหน่วยงาน",
-      hint: "เลือก ภาค+เขต หรือเลือกเส้นทาง แล้วกดค้นหา",
+      title: "โปรดเลือก ภาค เขต",
+      hint: "เลือก ภาค และ เขต แล้วกดค้นหา",
     };
   }
 
@@ -385,23 +385,13 @@ const DEFAULT_ROUTE_ID_TEXT = "";
 const DEFAULT_LOCATION_ID_TEXT = "";
 const DEFAULT_EMPLOYEE_CODE_TEXT = "";
 
-/**
- * ซ่อนคอลัมน์:
- * - วันที่เริ่มสัญญา
- * - แจ้งเตือน
- * - ตามสัญญา
- *
- * ถ้าต้องการให้กลับมาแสดง ให้เปลี่ยนเป็น false
- */
 const HIDE_CONTRACT_COLUMNS = true;
 
 function getReportStatusSortOrder(status: ReportDisplayStatus) {
-  // ให้ "ตรวจแล้ว(โทร)" อยู่ล่างสุด
   if (status === "completed_call") {
     return 2;
   }
 
-  // สถานะอื่น ๆ คงลำดับเดิมไว้ก่อน
   return 1;
 }
 
@@ -802,15 +792,12 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
   const selectedDepartmentId = toPositiveNumber(departmentIdText);
   const selectedDivisionId = toPositiveNumber(divisionIdText);
   const selectedRouteId = toPositiveNumber(routeIdText);
-  const selectedLocationId = toPositiveNumber(locationIdText);
   const todayText = getTodayYYYYMMDD();
 
-  const hasRequiredReportScope =
-    (selectedDepartmentId !== undefined && selectedDivisionId !== undefined) ||
-    selectedRouteId !== undefined ||
-    selectedLocationId !== undefined ||
-    employeeCodeText.trim() !== "" ||
-    searchText.trim() !== "";
+  const hasSelectedDepartment = selectedDepartmentId !== undefined;
+  const hasSelectedDivision = selectedDivisionId !== undefined;
+
+  const hasRequiredReportScope = hasSelectedDepartment && hasSelectedDivision;
 
   const fetchFilterOptions = useCallback(async () => {
     try {
@@ -844,8 +831,6 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
 
       try {
         const requestParams = {
-          // คง workday ไว้เพื่อรองรับ backend เดิมที่รับวันที่เดียว
-          // และส่งช่วงวันที่เพิ่มให้ backend ใหม่ใช้กรองแบบ BETWEEN
           workday: startDate,
           workdayStart: startDate,
           workdayEnd: endDate,
@@ -966,7 +951,6 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
           return aOrder - bOrder;
         }
 
-        // สถานะเดียวกัน ให้คงลำดับเดิมจาก API
         return a.originalIndex - b.originalIndex;
       })
       .map(({ row }) => row);
@@ -982,9 +966,11 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
   }, [filterOptions.departments]);
 
   const divisionOptions = useMemo(() => {
-    return filterOptions.divisions.filter((division) => {
-      if (selectedDepartmentId === undefined) return true;
+    if (selectedDepartmentId === undefined) {
+      return [];
+    }
 
+    return filterOptions.divisions.filter((division) => {
       return division.departmentId === selectedDepartmentId;
     });
   }, [filterOptions.divisions, selectedDepartmentId]);
@@ -1304,12 +1290,13 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                 setLocationIdText(DEFAULT_LOCATION_ID_TEXT);
                 setEmployeeCodeText(DEFAULT_EMPLOYEE_CODE_TEXT);
                 setPatrolRows([]);
+                setExpandedId(null);
                 setEmptyReason("need_filter");
                 setEmptyErrorMessage(null);
               }}
               className={styles.select}
             >
-              <option value="">ทั้งหมด</option>
+              <option value="">โปรดเลือก</option>
               {departmentOptions.map((option, index) => (
                 <option
                   key={makeReactKey(
@@ -1338,12 +1325,14 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                 setLocationIdText(DEFAULT_LOCATION_ID_TEXT);
                 setEmployeeCodeText(DEFAULT_EMPLOYEE_CODE_TEXT);
                 setPatrolRows([]);
+                setExpandedId(null);
                 setEmptyReason("need_filter");
                 setEmptyErrorMessage(null);
               }}
               className={styles.select}
+              disabled={!hasSelectedDepartment}
             >
-              <option value="">ทั้งหมด</option>
+              <option value="">โปรดเลือก</option>
               {divisionOptions.map((option, index) => (
                 <option
                   key={makeReactKey("division", option.divisionId, index)}
@@ -1367,6 +1356,7 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                 setLocationIdText(DEFAULT_LOCATION_ID_TEXT);
                 setEmployeeCodeText(DEFAULT_EMPLOYEE_CODE_TEXT);
                 setPatrolRows([]);
+                setExpandedId(null);
                 setEmptyReason("need_filter");
                 setEmptyErrorMessage(null);
               }}
@@ -1392,6 +1382,7 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                 setLocationIdText(event.target.value);
                 setEmployeeCodeText(DEFAULT_EMPLOYEE_CODE_TEXT);
                 setPatrolRows([]);
+                setExpandedId(null);
                 setEmptyReason("need_filter");
                 setEmptyErrorMessage(null);
               }}
@@ -1417,7 +1408,13 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
             <span className={styles.fieldLabel}>รายสายตรวจ</span>
             <select
               value={employeeCodeText}
-              onChange={(event) => setEmployeeCodeText(event.target.value)}
+              onChange={(event) => {
+                setEmployeeCodeText(event.target.value);
+                setPatrolRows([]);
+                setExpandedId(null);
+                setEmptyReason("need_filter");
+                setEmptyErrorMessage(null);
+              }}
               className={styles.select}
             >
               <option value="">ทั้งหมด</option>
@@ -1525,7 +1522,13 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
             <div className={styles.control}>
               <input
                 value={searchText}
-                onChange={(event) => setSearchText(event.target.value)}
+                onChange={(event) => {
+                  setSearchText(event.target.value);
+                  setPatrolRows([]);
+                  setExpandedId(null);
+                  setEmptyReason("need_filter");
+                  setEmptyErrorMessage(null);
+                }}
                 placeholder="ค้นหารหัสสัญญา / จุดรักษาการณ์..."
                 className={styles.input}
                 onKeyDown={(event) => {
@@ -1563,7 +1566,6 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
             </button>
           </div>
         </section>
-
 
         <section className={styles.desktopSection} aria-label="รายการรายงาน">
           <div className={styles.reportCard}>
