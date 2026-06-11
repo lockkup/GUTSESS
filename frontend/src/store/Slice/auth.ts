@@ -44,6 +44,7 @@ type LoginResult = {
 export interface AuthSlice {
   // State
   authEmployee: AuthEmployee | null;
+  authToken: string | null;
   authLoading: boolean;
   authError: string | null;
   authErrorKey: string | null;
@@ -63,14 +64,113 @@ export interface AuthSlice {
   forgotPassword: (employee_code: string) => Promise<AuthActionResult>;
 }
 
+const AUTH_EMPLOYEE_KEY = "auth_employee";
+const AUTH_TOKEN_KEY = "auth_token";
+const ACCESS_TOKEN_KEY = "access_token";
+const AUTH_EXPIRES_AT_KEY = "auth_expires_at";
+const EMP_CODE_KEY = "emp_code";
+const DISPLAY_NAME_KEY = "display_name";
+
+// 2 ชั่วโมง
+const SESSION_TIMEOUT_MS = 2 * 60 * 60 * 1000;
+
 function isLoginData(data: unknown): data is LoginData {
   if (!data || typeof data !== "object") return false;
 
   return "employee" in data;
 }
 
+function getDisplayName(emp: AuthEmployee): string {
+  return `${emp.first_name} ${emp.last_name}`.trim() || emp.employee_code;
+}
+
+function isAuthSessionExpired(): boolean {
+  const rawExpiresAt = localStorage.getItem(AUTH_EXPIRES_AT_KEY);
+
+  if (!rawExpiresAt) return true;
+
+  const expiresAt = Number(rawExpiresAt);
+
+  if (!Number.isFinite(expiresAt)) return true;
+
+  return Date.now() > expiresAt;
+}
+
+function saveAuthSession(emp: AuthEmployee, token: string | null) {
+  const displayName = getDisplayName(emp);
+  const expiresAt = Date.now() + SESSION_TIMEOUT_MS;
+
+  localStorage.setItem(AUTH_EMPLOYEE_KEY, JSON.stringify(emp));
+  localStorage.setItem(EMP_CODE_KEY, emp.employee_code);
+  localStorage.setItem(DISPLAY_NAME_KEY, displayName);
+  localStorage.setItem(AUTH_EXPIRES_AT_KEY, String(expiresAt));
+
+  if (token) {
+    localStorage.setItem(AUTH_TOKEN_KEY, token);
+    localStorage.setItem(ACCESS_TOKEN_KEY, token);
+  } else {
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+    localStorage.removeItem(ACCESS_TOKEN_KEY);
+  }
+}
+
+function clearAuthSession() {
+  localStorage.removeItem(AUTH_EMPLOYEE_KEY);
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+  localStorage.removeItem(ACCESS_TOKEN_KEY);
+  localStorage.removeItem(AUTH_EXPIRES_AT_KEY);
+  localStorage.removeItem(DISPLAY_NAME_KEY);
+
+  // ตั้งใจไม่ลบ emp_code เพื่อให้ช่องรหัสพนักงานยังจำค่าเดิมได้
+  // ถ้าต้องการลบด้วย ให้เปิดบรรทัดนี้
+  // localStorage.removeItem(EMP_CODE_KEY);
+}
+
+function loadStoredEmployee(): AuthEmployee | null {
+  try {
+    if (isAuthSessionExpired()) {
+      clearAuthSession();
+      return null;
+    }
+
+    const raw = localStorage.getItem(AUTH_EMPLOYEE_KEY);
+
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw) as AuthEmployee;
+
+    if (!parsed.employee_code) {
+      clearAuthSession();
+      return null;
+    }
+
+    return parsed;
+  } catch (error) {
+    console.error("load auth employee error:", error);
+    clearAuthSession();
+    return null;
+  }
+}
+
+function loadStoredToken(): string | null {
+  if (isAuthSessionExpired()) {
+    clearAuthSession();
+    return null;
+  }
+
+  return (
+    localStorage.getItem(AUTH_TOKEN_KEY) ||
+    localStorage.getItem(ACCESS_TOKEN_KEY) ||
+    null
+  );
+}
+
+const storedEmployee = loadStoredEmployee();
+const storedToken = loadStoredToken();
+
 export const createAuthSlice: StateCreator<AuthSlice> = (set) => ({
-  authEmployee: null,
+  authEmployee: storedEmployee,
+  authToken: storedToken,
   authLoading: false,
   authError: null,
   authErrorKey: null,
@@ -92,15 +192,13 @@ export const createAuthSlice: StateCreator<AuthSlice> = (set) => ({
 
       if (result.success && isLoginData(result.data)) {
         const emp = result.data.employee;
+        const token = result.data.access_token || result.data.token || null;
 
-        const displayName =
-          `${emp.first_name} ${emp.last_name}`.trim() || emp.employee_code;
-
-        localStorage.setItem("emp_code", emp.employee_code);
-        localStorage.setItem("display_name", displayName);
+        saveAuthSession(emp, token);
 
         set({
           authEmployee: emp,
+          authToken: token,
           authLoading: false,
           authError: null,
           authErrorKey: null,
@@ -110,7 +208,11 @@ export const createAuthSlice: StateCreator<AuthSlice> = (set) => ({
         return true;
       }
 
+      clearAuthSession();
+
       set({
+        authEmployee: null,
+        authToken: null,
         authLoading: false,
         authError: result.message || "เข้าสู่ระบบไม่สำเร็จ",
         authErrorKey: result.error || null,
@@ -138,11 +240,11 @@ export const createAuthSlice: StateCreator<AuthSlice> = (set) => ({
     } catch (error) {
       console.error("logout error:", error);
     } finally {
-      localStorage.removeItem("emp_code");
-      localStorage.removeItem("display_name");
+      clearAuthSession();
 
       set({
         authEmployee: null,
+        authToken: null,
         authLoading: false,
         authError: null,
         authErrorKey: null,

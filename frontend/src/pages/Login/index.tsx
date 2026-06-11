@@ -13,6 +13,9 @@ type Props = {
   onLoginSuccess: (empCode: string, displayName: string) => void;
 };
 
+const USER_MANUAL_URL =
+  "https://sites.google.com/view/guts-ess/%E0%B8%A3%E0%B8%B0%E0%B8%9A%E0%B8%9A%E0%B8%A5%E0%B8%87%E0%B9%80%E0%B8%A7%E0%B8%A5%E0%B8%B2%E0%B9%80%E0%B8%82%E0%B8%B2%E0%B9%81%E0%B8%A5%E0%B8%B0%E0%B8%AD%E0%B8%AD%E0%B8%81%E0%B8%AB%E0%B8%99%E0%B8%A7%E0%B8%A2%E0%B8%87%E0%B8%B2%E0%B8%99";
+
 export default function Login({ onLoginSuccess }: Props) {
   const [empCode, setEmpCode] = useState(
     () => localStorage.getItem("emp_code") || "",
@@ -38,6 +41,10 @@ export default function Login({ onLoginSuccess }: Props) {
   useEffect(() => {
     setShowFailedModal(!!authError || !!localErrorMessage);
   }, [authError, localErrorMessage]);
+
+  const openUserManual = () => {
+    window.open(USER_MANUAL_URL, "_blank", "noopener,noreferrer");
+  };
 
   const handleSubmit = async () => {
     const cleanEmpCode = empCode.trim();
@@ -93,6 +100,7 @@ export default function Login({ onLoginSuccess }: Props) {
     }
 
     const { forgotPassword } = useStore.getState();
+
     return await forgotPassword(cleanEmpCode);
   };
 
@@ -107,6 +115,7 @@ export default function Login({ onLoginSuccess }: Props) {
     }
 
     const { changePassword } = useStore.getState();
+
     return await changePassword(cleanEmpCode, oldPin, newPin);
   };
 
@@ -126,7 +135,7 @@ export default function Login({ onLoginSuccess }: Props) {
           className={styles["guts-form"]}
           onSubmit={(e) => {
             e.preventDefault();
-            handleSubmit();
+            void handleSubmit();
           }}
         >
           <div>
@@ -222,7 +231,7 @@ export default function Login({ onLoginSuccess }: Props) {
             <button
               type="button"
               className={[styles["guts-link"], styles.secondary].join(" ")}
-              onClick={() => alert("TODO: คู่มือการใช้งาน")}
+              onClick={openUserManual}
             >
               คลิกอ่านคู่มือ
             </button>

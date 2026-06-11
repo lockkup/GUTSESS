@@ -1,5 +1,5 @@
 // src/App.tsx
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Login from "./pages/Login";
 import Home from "./pages/Home";
 import Dashboard from "./pages/Dashboard";
@@ -10,7 +10,7 @@ import FaceVerify from "./pages/Attendance/FaceVerify";
 import AttendanceFaceVerify from "./pages/Attendance/CheckInOut/AttendanceFaceVerify";
 import Shifts from "./pages/Shifts";
 import FaceProfiles from "./pages/FaceProfiles";
-import { useStore } from "./store/store";
+import { useStore, type AuthEmployee } from "./store/store";
 import { timeRecordService } from "./services/timeRecord.service";
 import { faceVerifyService } from "./services/faceVerify.service";
 import type { TimeRecordResponse } from "./types/timeRecord";
@@ -82,11 +82,91 @@ type OpenAttendanceTimeRecordParams = {
   work_date: string;
 };
 
+type InitialAppAuth = {
+  employeeCode: string;
+  displayName: string;
+};
+
 /**
  * false = ถ่ายรูป + เช็กพิกัด + บันทึกเวลา แต่ไม่เทียบใบหน้า
  * true  = เปิดใช้การเทียบใบหน้ากับข้อมูลพนักงานในอนาคต
  */
 const ENABLE_FACE_VERIFY = false;
+
+const AUTH_EMPLOYEE_KEY = "auth_employee";
+const AUTH_TOKEN_KEY = "auth_token";
+const ACCESS_TOKEN_KEY = "access_token";
+const AUTH_EXPIRES_AT_KEY = "auth_expires_at";
+const EMP_CODE_KEY = "emp_code";
+const DISPLAY_NAME_KEY = "display_name";
+
+function getEmployeeDisplayName(emp: AuthEmployee): string {
+  return `${emp.first_name} ${emp.last_name}`.trim() || emp.employee_code;
+}
+
+function isInitialAuthExpired(): boolean {
+  const rawExpiresAt = localStorage.getItem(AUTH_EXPIRES_AT_KEY);
+
+  if (!rawExpiresAt) return true;
+
+  const expiresAt = Number(rawExpiresAt);
+
+  if (!Number.isFinite(expiresAt)) return true;
+
+  return Date.now() > expiresAt;
+}
+
+function clearInitialAuthSession() {
+  localStorage.removeItem(AUTH_EMPLOYEE_KEY);
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+  localStorage.removeItem(ACCESS_TOKEN_KEY);
+  localStorage.removeItem(AUTH_EXPIRES_AT_KEY);
+  localStorage.removeItem(DISPLAY_NAME_KEY);
+
+  // ตั้งใจไม่ลบ emp_code เพื่อให้ช่องรหัสพนักงานยังจำค่าเดิมได้
+  // ถ้าต้องการลบด้วย ให้เปิดบรรทัดนี้
+  // localStorage.removeItem(EMP_CODE_KEY);
+}
+
+function loadInitialAppAuth(): InitialAppAuth | null {
+  try {
+    if (isInitialAuthExpired()) {
+      clearInitialAuthSession();
+      return null;
+    }
+
+    const rawEmployee = localStorage.getItem(AUTH_EMPLOYEE_KEY);
+
+    if (rawEmployee) {
+      const emp = JSON.parse(rawEmployee) as AuthEmployee;
+
+      if (emp?.employee_code) {
+        return {
+          employeeCode: emp.employee_code,
+          displayName:
+            localStorage.getItem(DISPLAY_NAME_KEY) ||
+            getEmployeeDisplayName(emp),
+        };
+      }
+    }
+
+    const storedEmpCode = localStorage.getItem(EMP_CODE_KEY);
+    const storedDisplayName = localStorage.getItem(DISPLAY_NAME_KEY);
+
+    if (storedEmpCode && storedDisplayName) {
+      return {
+        employeeCode: storedEmpCode,
+        displayName: storedDisplayName,
+      };
+    }
+
+    return null;
+  } catch (error) {
+    console.error("loadInitialAppAuth error:", error);
+    clearInitialAuthSession();
+    return null;
+  }
+}
 
 function formatCheckTime(date = new Date()) {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -120,11 +200,27 @@ function toOpenRecordParams(
 }
 
 export default function App() {
-  const [stack, setStack] = useState<Route[]>(["login"]);
+  const authEmployee = useStore((s) => s.authEmployee);
+
+  const initialAppAuth =
+    authEmployee !== null
+      ? {
+          employeeCode: authEmployee.employee_code,
+          displayName: getEmployeeDisplayName(authEmployee),
+        }
+      : loadInitialAppAuth();
+
+  const [stack, setStack] = useState<Route[]>(() =>
+    initialAppAuth ? ["home"] : ["login"],
+  );
   const route = stack[stack.length - 1];
 
-  const [empCode, setEmpCode] = useState("");
-  const [displayName, setDisplayName] = useState("");
+  const [empCode, setEmpCode] = useState(
+    () => initialAppAuth?.employeeCode ?? "",
+  );
+  const [displayName, setDisplayName] = useState(
+    () => initialAppAuth?.displayName ?? "",
+  );
 
   const [lastInAt, setLastInAt] = useState<string | null>(null);
   const [lastOutAt, setLastOutAt] = useState<string | null>(null);
@@ -178,6 +274,55 @@ export default function App() {
       workDate: params?.workDate ?? formatWorkDate(date),
     };
   }
+
+  useEffect(() => {
+    if (!authEmployee) return;
+
+    const cleanEmpCode = authEmployee.employee_code
+      .replace(/\D/g, "")
+      .slice(0, 6);
+    const safeDisplayName = getEmployeeDisplayName(authEmployee);
+
+    setEmpCode(cleanEmpCode);
+    setDisplayName(safeDisplayName);
+
+    setAttendanceTimeContext((current) => current ?? makeAttendanceTimeContext());
+
+    setStack((currentStack) => {
+      if (currentStack.length === 1 && currentStack[0] === "login") {
+        return ["home"];
+      }
+
+      return currentStack;
+    });
+  }, [authEmployee]);
+
+  useEffect(() => {
+    if (!empCode) return;
+
+    const rawExpiresAt = localStorage.getItem(AUTH_EXPIRES_AT_KEY);
+    const expiresAt = Number(rawExpiresAt);
+
+    if (!rawExpiresAt || !Number.isFinite(expiresAt)) {
+      void onLogout();
+      return;
+    }
+
+    const remainingMs = expiresAt - Date.now();
+
+    if (remainingMs <= 0) {
+      void onLogout();
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      void onLogout();
+    }, remainingMs);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [empCode]);
 
   function handleLoginSuccess(loginEmpCode: string, loginDisplayName: string) {
     const cleanEmpCode = loginEmpCode.replace(/\D/g, "").slice(0, 6);
@@ -301,7 +446,7 @@ export default function App() {
      * กรณีมาจากหน้า Checkpoint / ตารางงานสายตรวจ:
      * - ต้องเก็บ assignmentId
      * - ต้องเก็บ shiftId
-     * - ใช้ส่ง shift_id ไปบันทึก time_record
+     * - ใช้ส่ง shift_id ไปบันทึกลง time_record
      */
     setSelectedCheckpoint({
       assignmentId: payload.assignmentId,

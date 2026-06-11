@@ -1,10 +1,10 @@
 /* src/pages/Attendance/CheckInOut/CheckInOut.module.css */
 
 :root {
-  --checkinout-title-size: 23px;
+  --checkinout-title-size: 22px;
   --checkinout-unit-size: 16px;
 
-  --checkinout-summary-head-size: 22px;
+  --checkinout-summary-head-size: 21px;
   --checkinout-walk-size: 22px;
   --checkinout-time-size: 50px;
   --checkinout-date-size: 18px;

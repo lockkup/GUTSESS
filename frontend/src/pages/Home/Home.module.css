@@ -79,11 +79,11 @@
     0 10px 18px rgba(0, 0, 0, 0.08),
     0 2px 0 rgba(255, 255, 255, 0.65) inset;
 
-  height: 64px;
-  padding: 10px 14px;
+  min-height: 64px;
+  padding: 9px 14px;
 
   display: grid;
-  grid-template-columns: 52px 1fr;
+  grid-template-columns: 52px minmax(0, 1fr);
   align-items: center;
   gap: 12px;
 
@@ -132,12 +132,40 @@
 
 /* ข้อความ */
 .text {
+  min-width: 0;
   text-align: left;
   font-weight: 800;
   color: rgba(27, 43, 74, 0.92);
-  font-size: 20px;
-  line-height: 1.2;
+  font-size: 19px;
+  line-height: 1.15;
   letter-spacing: 0.2px;
+
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+/* บรรทัดหลักของเมนู เช่น ลงเวลา เข้า-ออกงาน */
+.menuMainLine {
+  display: block;
+  max-width: 100%;
+  white-space: nowrap;
+  font-size: 19px;
+  line-height: 1.15;
+  font-weight: 800;
+}
+
+/* บรรทัดวงเล็บ เช่น (นอกแผน) */
+.menuSubLine {
+  display: block;
+  max-width: 100%;
+  margin-top: 2px;
+  white-space: nowrap;
+  font-size: 18px;
+  line-height: 1.1;
+  font-weight: 800;
+  color: rgba(27, 43, 74, 0.92);
 }
 
 /* actions */
@@ -223,13 +251,21 @@
   }
 
   .text {
-    font-size: 18px;
+    font-size: 17px;
+  }
+
+  .menuMainLine {
+    font-size: 17px;
+  }
+
+  .menuSubLine {
+    font-size: 16px;
   }
 
   .menuBox {
-    height: 60px;
-    grid-template-columns: 48px 1fr;
-    padding: 10px 12px;
+    min-height: 60px;
+    grid-template-columns: 48px minmax(0, 1fr);
+    padding: 9px 12px;
   }
 
   .iconWrap {

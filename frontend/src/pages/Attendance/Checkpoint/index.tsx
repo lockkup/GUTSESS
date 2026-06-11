@@ -666,13 +666,6 @@ export default function Checkpoint({
       return;
     }
 
-    if (!row.canAction) {
-      openOutOfAreaModal(
-        row.actionDisabledReason || "ยังไม่ถึงช่วงเวลาที่อนุญาตให้ดำเนินการ",
-      );
-      return;
-    }
-
     setSelectedRow(row);
     resetCallForm();
     setIsCallModalOpen(true);
@@ -1034,14 +1027,6 @@ export default function Checkpoint({
       return;
     }
 
-    if (!selectedRow.canAction) {
-      openOutOfAreaModal(
-        selectedRow.actionDisabledReason ||
-          "ยังไม่ถึงช่วงเวลาที่อนุญาตให้บันทึกการโทร",
-      );
-      return;
-    }
-
     const contactDetailText = payload.contactDetail.trim();
     const callNoteText = payload.callNote.trim();
 
@@ -1252,6 +1237,10 @@ export default function Checkpoint({
                         ? row.actionDisabledReason
                         : undefined;
 
+                    const callDisabledReason = selectedShiftMismatchMessage
+                      ? selectedShiftMismatchMessage
+                      : undefined;
+
                     const isActionDisabled =
                       !canGoCheckInOutByStatus ||
                       !isSelectedCurrentShift ||
@@ -1261,12 +1250,15 @@ export default function Checkpoint({
                       isCheckingLocation ||
                       isSavingCall;
 
+                    /**
+                     * ปุ่มบันทึกการโทรต้องกดซ้ำได้ แม้เคยบันทึกแล้ว
+                     * จึงไม่ใช้ row.canAction และไม่ใช้ settingLoading
+                     * เพราะ row.canAction ใช้ควบคุมเฉพาะปุ่มเข้า/ออกตรวจ
+                     */
                     const isCallDisabled =
                       !isSelectedCurrentShift ||
-                      !row.canAction ||
                       isSavingCall ||
-                      isCheckingLocation ||
-                      settingLoading;
+                      isCheckingLocation;
 
                     return (
                       <div className={styles.dataRow} key={row.assignmentId}>
@@ -1300,10 +1292,10 @@ export default function Checkpoint({
                                   event.stopPropagation();
                                 }}
                                 disabled={isCallDisabled}
-                                title={disabledReason}
+                                title={callDisabledReason}
                                 aria-label={
-                                  disabledReason
-                                    ? `${disabledReason} หน่วยงาน ${row.unitName}`
+                                  callDisabledReason
+                                    ? `${callDisabledReason} หน่วยงาน ${row.unitName}`
                                     : `บันทึกการโทร หน่วยงาน ${row.unitName}`
                                 }
                               >

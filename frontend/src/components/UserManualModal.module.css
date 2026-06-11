@@ -1,0 +1,179 @@
+/* src/components/UserManualModal.module.css */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px;
+  background: rgba(0, 0, 0, 0.58);
+}
+
+.modal {
+  width: min(560px, 94vw);
+  overflow: hidden;
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+  font-family: "Sarabun", "Prompt", sans-serif;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, #0b63ce, #0f8ee8);
+  color: #ffffff;
+}
+
+.title {
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.subtitle {
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.95;
+}
+
+.closeButton {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.18);
+  cursor: pointer;
+}
+
+.closeButton:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.body {
+  padding: 28px 18px 22px;
+  background: #f6f8fb;
+}
+
+.contentBox {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.iconCircle {
+  width: 78px;
+  height: 78px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: #0b63ce;
+  background: #e8f2ff;
+  border: 1px solid #cfe4ff;
+}
+
+.contentTitle {
+  margin-top: 16px;
+  font-size: 20px;
+  font-weight: 800;
+  color: #111827;
+}
+
+.contentText {
+  max-width: 440px;
+  margin-top: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.65;
+  color: #4b5563;
+}
+
+.openManualButton {
+  min-height: 44px;
+  margin-top: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 20px;
+  border-radius: 999px;
+  color: #ffffff;
+  background: #0b63ce;
+  text-decoration: none;
+  font-size: 15px;
+  font-weight: 800;
+  box-shadow: 0 12px 24px rgba(11, 99, 206, 0.25);
+}
+
+.openManualButton:hover {
+  background: #084fa6;
+}
+
+.cancelButton {
+  min-height: 38px;
+  margin-top: 12px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  color: #4b5563;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.cancelButton:hover {
+  background: #e5e7eb;
+}
+
+@media (max-width: 640px) {
+  .overlay {
+    padding: 10px;
+  }
+
+  .modal {
+    width: 100%;
+    border-radius: 16px;
+  }
+
+  .header {
+    padding: 12px;
+  }
+
+  .title {
+    font-size: 16px;
+  }
+
+  .subtitle {
+    font-size: 12px;
+  }
+
+  .body {
+    padding: 24px 14px 18px;
+  }
+
+  .contentTitle {
+    font-size: 18px;
+  }
+
+  .contentText {
+    font-size: 14px;
+  }
+
+  .openManualButton {
+    width: 100%;
+  }
+}

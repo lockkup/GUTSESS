@@ -57,6 +57,27 @@ export default function Home({
           <h2 className={styles.title}>หน้าหลัก</h2>
 
           <div className={styles.menuStack}>
+            {/* 1) ตารางงานสายตรวจ (ตามแผน) */}
+            <button
+              type="button"
+              className={styles.menuBtn}
+              onClick={onGoCheckpoint}
+            >
+              <div className={styles.menuBox}>
+                <div className={styles.iconWrap} aria-hidden="true">
+                  <FontAwesomeIcon
+                    className={styles.fa}
+                    icon={faClipboardList}
+                  />
+                </div>
+                <div className={styles.text}>
+                  <span className={styles.menuMainLine}>ตารางงานสายตรวจ</span>
+                  <span className={styles.menuSubLine}>(ตามแผน)</span>
+                </div>
+              </div>
+            </button>
+
+            {/* 2) ลงเวลา เข้า-ออกงาน (นอกแผน) */}
             <button
               type="button"
               className={styles.menuBtn}
@@ -66,7 +87,26 @@ export default function Home({
                 <div className={styles.iconWrap} aria-hidden="true">
                   <FontAwesomeIcon className={styles.fa} icon={faClock} />
                 </div>
-                <div className={styles.text}>ลงเวลา เข้า-ออกงาน</div>
+                <div className={styles.text}>
+                  <span className={styles.menuMainLine}>
+                    ลงเวลา เข้า-ออกงาน
+                  </span>
+                  <span className={styles.menuSubLine}>(นอกแผน)</span>
+                </div>
+              </div>
+            </button>
+
+            {/* 3) รายงานสายตรวจ */}
+            <button
+              type="button"
+              className={styles.menuBtn}
+              onClick={onGoPatrolReport}
+            >
+              <div className={styles.menuBox}>
+                <div className={styles.iconWrap} aria-hidden="true">
+                  <FontAwesomeIcon className={styles.fa} icon={faFileLines} />
+                </div>
+                <div className={styles.text}>รายงานสายตรวจ</div>
               </div>
             </button>
 
@@ -97,52 +137,21 @@ export default function Home({
                     <div className={styles.text}>เพิ่มข้อมูลใบหน้าพนักงาน</div>
                   </div>
                 </button>
-              </>
-            ) : null}
 
-            <button
-              type="button"
-              className={styles.menuBtn}
-              onClick={onGoCheckpoint}
-            >
-              <div className={styles.menuBox}>
-                <div className={styles.iconWrap} aria-hidden="true">
-                  <FontAwesomeIcon
-                    className={styles.fa}
-                    icon={faClipboardList}
-                  />
-                </div>
-                <div className={styles.text}>ตารางงานสายตรวจ</div>
-              </div>
-            </button>
-
-            <button
-              type="button"
-              className={styles.menuBtn}
-              onClick={onGoPatrolReport}
-            >
-              <div className={styles.menuBox}>
-                <div className={styles.iconWrap} aria-hidden="true">
-                  <FontAwesomeIcon className={styles.fa} icon={faFileLines} />
-                </div>
-                <div className={styles.text}>รายงานสายตรวจ</div>
-              </div>
-            </button>
-
-            {isAdmin ? (
-              <button
-                type="button"
-                className={styles.menuBtn}
-                onClick={onGoOther}
-                disabled={!onGoOther}
-              >
-                <div className={styles.menuBox}>
-                  <div className={styles.iconWrap} aria-hidden="true">
-                    <FontAwesomeIcon className={styles.fa} icon={faEllipsis} />
+                <button
+                  type="button"
+                  className={styles.menuBtn}
+                  onClick={onGoOther}
+                  disabled={!onGoOther}
+                >
+                  <div className={styles.menuBox}>
+                    <div className={styles.iconWrap} aria-hidden="true">
+                      <FontAwesomeIcon className={styles.fa} icon={faEllipsis} />
+                    </div>
+                    <div className={styles.text}>อื่นๆ</div>
                   </div>
-                  <div className={styles.text}>อื่นๆ</div>
-                </div>
-              </button>
+                </button>
+              </>
             ) : null}
           </div>
 

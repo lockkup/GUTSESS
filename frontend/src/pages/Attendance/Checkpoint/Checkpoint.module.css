@@ -1,8 +1,8 @@
 /* src/pages/Attendance/Checkpoint/Checkpoint.module.css */
 
 :root {
-  --checkpoint-title-size: 23px;
-  --checkpoint-round-size: 16px;
+  --checkpoint-title-size: 22px;
+  --checkpoint-round-size: 15px;
   --checkpoint-shift-size: 16px;
 
   --checkpoint-head-size: 12px;

@@ -78,6 +78,31 @@ class PatrolReportResponse(BaseModel):
     checkInTime: str | None = None
     checkOutTime: str | None = None
 
+    # รูปภาพเวลาเข้า / เวลาออก
+    #
+    # Backend service จะอ่านค่าจาก vw_checkin_report เช่น:
+    # - images_checkin_1
+    # - images_checkin_2
+    # - images_checkout_1
+    # - images_checkout_2
+    #
+    # แล้ว map ออกมาเป็นชื่อกลางให้ Frontend ใช้:
+    # - checkInImageUrl
+    # - checkOutImageUrl
+    #
+    # ระยะสั้น:
+    # รองรับได้ทั้ง URL, path และ data:image/jpeg;base64,...
+    # เช่น:
+    # - /uploads/time-record/checkin/xxx.jpg
+    # - https://domain.com/uploads/time-record/checkin/xxx.jpg
+    # - data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ...
+    #
+    # ระยะยาว:
+    # แนะนำให้เก็บรูปเป็นไฟล์ แล้วส่ง URL/path มาแทน base64
+    # เพราะ base64 ทำให้ response ใหญ่และโหลดรายงานช้า
+    checkInImageUrl: str | None = None
+    checkOutImageUrl: str | None = None
+
     # employee_code / position_name ใช้แสดงผู้ดำเนินการ
     employeeCode: str | None = None
     positionName: str | None = None

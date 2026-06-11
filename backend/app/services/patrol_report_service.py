@@ -37,6 +37,38 @@ UNPLANNED_COLUMN_DEPARTMENT_NAME = "department_name"
 UNPLANNED_COLUMN_DIVISION_NAME = "division_name"
 
 
+CHECKIN_IMAGE_ALIAS = "checkin_image_url"
+CHECKOUT_IMAGE_ALIAS = "checkout_image_url"
+
+CHECKIN_IMAGE_COLUMN_CANDIDATES = (
+    # ชื่อ column จริงในตาราง time_record / view รายงาน
+    "images_checkin_1",
+    "images_checkin_2",
+
+    # ชื่อ alias/ชื่อเก่าที่เคยใช้ในระบบ
+    "checkin_image_url",
+    "check_in_image_url",
+    "checkin_picture",
+    "check_in_picture",
+    "first_in_picture",
+    "firstInPicture",
+)
+
+CHECKOUT_IMAGE_COLUMN_CANDIDATES = (
+    # ชื่อ column จริงในตาราง time_record / view รายงาน
+    "images_checkout_1",
+    "images_checkout_2",
+
+    # ชื่อ alias/ชื่อเก่าที่เคยใช้ในระบบ
+    "checkout_image_url",
+    "check_out_image_url",
+    "checkout_picture",
+    "check_out_picture",
+    "last_out_picture",
+    "lastOutPicture",
+)
+
+
 EN_MONTH_NAMES: dict[str, int] = {
     "january": 1,
     "jan": 1,
@@ -246,6 +278,19 @@ def _format_time(value: Any) -> str | None:
     return text_value
 
 
+def _get_first_existing_text(
+    row: Mapping[str, Any],
+    *column_names: str,
+) -> str | None:
+    for column_name in column_names:
+        value = _to_optional_text(row.get(column_name))
+
+        if value:
+            return value
+
+    return None
+
+
 def _normalize_status(value: Any) -> PatrolStatus:
     text_value = str(
         value or PatrolReportConstants.STATUS_PENDING,
@@ -392,7 +437,7 @@ def _get_view_column_names(db: Session, view_name: str) -> set[str]:
     """
     ใช้เช็กคอลัมน์ใน view ก่อน SELECT
     เพื่อกัน error กรณี view ยังไม่มีคอลัมน์ใหม่
-    เช่น plan_day, contact_detail, call_status, call_note
+    เช่น plan_day, contact_detail, call_status, call_note, image url
     """
     try:
         rows = db.execute(text(f"SHOW COLUMNS FROM {view_name}")).mappings().all()
@@ -417,9 +462,39 @@ def _select_view_column(
     alias_name = alias or column_name
 
     if column_name in column_names:
+        if alias and alias != column_name:
+            return f"v.{column_name} AS {alias_name}"
+
         return f"v.{column_name}"
 
     return f"NULL AS {alias_name}"
+
+
+def _select_first_view_column(
+    column_names: set[str],
+    *column_candidates: str,
+    alias: str,
+) -> str:
+    """
+    เลือก column แรกที่มีค่า ไม่ใช่แค่ column แรกที่มีอยู่ใน view
+
+    ตัวอย่าง:
+    - ถ้า images_checkin_1 มีค่า -> ใช้ images_checkin_1
+    - ถ้า images_checkin_1 ว่าง แต่ images_checkin_2 มีค่า -> ใช้ images_checkin_2
+    - ถ้าว่างทั้งหมด -> NULL
+
+    ใช้ NULLIF(TRIM(...), '') เพื่อให้ค่าว่าง "" ถูกมองเป็น NULL
+    """
+    existing_columns = [
+        f"NULLIF(TRIM(v.{column_name}), '')"
+        for column_name in column_candidates
+        if column_name in column_names
+    ]
+
+    if existing_columns:
+        return f"COALESCE({', '.join(existing_columns)}) AS {alias}"
+
+    return f"NULL AS {alias}"
 
 
 def _get_time_record_flags(
@@ -654,6 +729,17 @@ def _map_patrol_report_row(
         ),
         checkOutTime=_format_time(
             row.get(PatrolReportConstants.COLUMN_COMPLETED_AT),
+        ),
+
+        checkInImageUrl=_get_first_existing_text(
+            row,
+            CHECKIN_IMAGE_ALIAS,
+            *CHECKIN_IMAGE_COLUMN_CANDIDATES,
+        ),
+        checkOutImageUrl=_get_first_existing_text(
+            row,
+            CHECKOUT_IMAGE_ALIAS,
+            *CHECKOUT_IMAGE_COLUMN_CANDIDATES,
         ),
 
         employeeCode=_to_optional_text(
@@ -897,6 +983,17 @@ def _get_patrol_report_unplanned_rows(
     has_division_name = UNPLANNED_COLUMN_DIVISION_NAME in view_column_names
     has_shift_id = PatrolReportConstants.COLUMN_SHIFT_ID in view_column_names
 
+    checkin_image_select = _select_first_view_column(
+        view_column_names,
+        *CHECKIN_IMAGE_COLUMN_CANDIDATES,
+        alias=CHECKIN_IMAGE_ALIAS,
+    )
+    checkout_image_select = _select_first_view_column(
+        view_column_names,
+        *CHECKOUT_IMAGE_COLUMN_CANDIDATES,
+        alias=CHECKOUT_IMAGE_ALIAS,
+    )
+
     join_parts: list[str] = []
 
     if has_department_name:
@@ -978,6 +1075,8 @@ def _get_patrol_report_unplanned_rows(
             v.{PatrolReportConstants.COLUMN_WORK_DATE},
             v.{PatrolReportConstants.COLUMN_STARTED_AT},
             v.{PatrolReportConstants.COLUMN_COMPLETED_AT},
+            {checkin_image_select},
+            {checkout_image_select},
             v.{PatrolReportConstants.COLUMN_EMPLOYEE_CODE},
             v.{PatrolReportConstants.COLUMN_POSITION_NAME},
 
@@ -1232,6 +1331,16 @@ def get_patrol_report_rows(
         PatrolReportConstants.COLUMN_CALL_NOTE,
         alias=PatrolReportConstants.COLUMN_CALL_NOTE,
     )
+    checkin_image_select = _select_first_view_column(
+        view_column_names,
+        *CHECKIN_IMAGE_COLUMN_CANDIDATES,
+        alias=CHECKIN_IMAGE_ALIAS,
+    )
+    checkout_image_select = _select_first_view_column(
+        view_column_names,
+        *CHECKOUT_IMAGE_COLUMN_CANDIDATES,
+        alias=CHECKOUT_IMAGE_ALIAS,
+    )
 
     sql_parts = [
         f"""
@@ -1243,6 +1352,8 @@ def get_patrol_report_rows(
             v.{PatrolReportConstants.COLUMN_WORK_DATE},
             v.{PatrolReportConstants.COLUMN_STARTED_AT},
             v.{PatrolReportConstants.COLUMN_COMPLETED_AT},
+            {checkin_image_select},
+            {checkout_image_select},
             v.{PatrolReportConstants.COLUMN_EMPLOYEE_CODE},
             v.{PatrolReportConstants.COLUMN_POSITION_NAME},
             v.{PatrolReportConstants.COLUMN_EFFECTIVE_FROM},

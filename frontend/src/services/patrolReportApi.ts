@@ -70,8 +70,46 @@ export type PatrolReportRow = {
   call_note: string | null;
 
   scheduleText: string;
+
   checkInTime: string | null;
   checkOutTime: string | null;
+
+  // รูปภาพเวลาเข้า / เวลาออก
+  // ระยะสั้นรองรับ URL, path และ data:image/jpeg;base64,...
+  // ระยะยาวแนะนำให้ backend ส่งเป็น path/URL แทน base64
+  checkInImageUrl: string | null;
+  check_in_image_url: string | null;
+  checkinImageUrl: string | null;
+  checkin_image_url: string | null;
+  checkInPicture: string | null;
+  check_in_picture: string | null;
+  firstInPicture: string | null;
+  first_in_picture: string | null;
+
+  // ชื่อ column จริงจาก time_record / view รายงาน
+  imagesCheckin1: string | null;
+  imagesCheckin2: string | null;
+  imagesCheckin3: string | null;
+  images_checkin_1: string | null;
+  images_checkin_2: string | null;
+  images_checkin_3: string | null;
+
+  checkOutImageUrl: string | null;
+  check_out_image_url: string | null;
+  checkoutImageUrl: string | null;
+  checkout_image_url: string | null;
+  checkOutPicture: string | null;
+  check_out_picture: string | null;
+  lastOutPicture: string | null;
+  last_out_picture: string | null;
+
+  // ชื่อ column จริงจาก time_record / view รายงาน
+  imagesCheckout1: string | null;
+  imagesCheckout2: string | null;
+  imagesCheckout3: string | null;
+  images_checkout_1: string | null;
+  images_checkout_2: string | null;
+  images_checkout_3: string | null;
 
   operatorName: string | null;
 
@@ -197,6 +235,46 @@ type PatrolReportApiRow = {
   checkOutTime?: string | null;
   check_out_time?: string | null;
   completed_at?: string | null;
+
+  // รูปภาพเวลาเข้า
+  checkInImageUrl?: string | null;
+  check_in_image_url?: string | null;
+  checkinImageUrl?: string | null;
+  checkin_image_url?: string | null;
+  checkInPicture?: string | null;
+  check_in_picture?: string | null;
+  checkinPicture?: string | null;
+  checkin_picture?: string | null;
+  firstInPicture?: string | null;
+  first_in_picture?: string | null;
+
+  // ชื่อ column จริงจาก time_record / view รายงาน
+  imagesCheckin1?: string | null;
+  imagesCheckin2?: string | null;
+  imagesCheckin3?: string | null;
+  images_checkin_1?: string | null;
+  images_checkin_2?: string | null;
+  images_checkin_3?: string | null;
+
+  // รูปภาพเวลาออก
+  checkOutImageUrl?: string | null;
+  check_out_image_url?: string | null;
+  checkoutImageUrl?: string | null;
+  checkout_image_url?: string | null;
+  checkOutPicture?: string | null;
+  check_out_picture?: string | null;
+  checkoutPicture?: string | null;
+  checkout_picture?: string | null;
+  lastOutPicture?: string | null;
+  last_out_picture?: string | null;
+
+  // ชื่อ column จริงจาก time_record / view รายงาน
+  imagesCheckout1?: string | null;
+  imagesCheckout2?: string | null;
+  imagesCheckout3?: string | null;
+  images_checkout_1?: string | null;
+  images_checkout_2?: string | null;
+  images_checkout_3?: string | null;
 
   operatorName?: string | null;
   operator_name?: string | null;
@@ -399,6 +477,58 @@ function mapPatrolReportRow(
     row.checkOutTime ?? row.check_out_time ?? row.completed_at,
   );
 
+  const imagesCheckin1 = toNullableText(
+    row.imagesCheckin1 ?? row.images_checkin_1,
+  );
+  const imagesCheckin2 = toNullableText(
+    row.imagesCheckin2 ?? row.images_checkin_2,
+  );
+  const imagesCheckin3 = toNullableText(
+    row.imagesCheckin3 ?? row.images_checkin_3,
+  );
+
+  const imagesCheckout1 = toNullableText(
+    row.imagesCheckout1 ?? row.images_checkout_1,
+  );
+  const imagesCheckout2 = toNullableText(
+    row.imagesCheckout2 ?? row.images_checkout_2,
+  );
+  const imagesCheckout3 = toNullableText(
+    row.imagesCheckout3 ?? row.images_checkout_3,
+  );
+
+  const checkInImageUrl = toNullableText(
+    imagesCheckin1 ??
+      imagesCheckin2 ??
+      imagesCheckin3 ??
+      row.checkInImageUrl ??
+      row.check_in_image_url ??
+      row.checkinImageUrl ??
+      row.checkin_image_url ??
+      row.checkInPicture ??
+      row.check_in_picture ??
+      row.checkinPicture ??
+      row.checkin_picture ??
+      row.firstInPicture ??
+      row.first_in_picture,
+  );
+
+  const checkOutImageUrl = toNullableText(
+    imagesCheckout1 ??
+      imagesCheckout2 ??
+      imagesCheckout3 ??
+      row.checkOutImageUrl ??
+      row.check_out_image_url ??
+      row.checkoutImageUrl ??
+      row.checkout_image_url ??
+      row.checkOutPicture ??
+      row.check_out_picture ??
+      row.checkoutPicture ??
+      row.checkout_picture ??
+      row.lastOutPicture ??
+      row.last_out_picture,
+  );
+
   const operatorName = toNullableText(row.operatorName ?? row.operator_name);
 
   const employeeCode = toNullableText(row.employeeCode ?? row.employee_code);
@@ -458,8 +588,41 @@ function mapPatrolReportRow(
     call_note: callNote,
 
     scheduleText,
+
     checkInTime,
     checkOutTime,
+
+    checkInImageUrl,
+    check_in_image_url: checkInImageUrl,
+    checkinImageUrl: checkInImageUrl,
+    checkin_image_url: checkInImageUrl,
+    checkInPicture: checkInImageUrl,
+    check_in_picture: checkInImageUrl,
+    firstInPicture: checkInImageUrl,
+    first_in_picture: checkInImageUrl,
+
+    imagesCheckin1,
+    imagesCheckin2,
+    imagesCheckin3,
+    images_checkin_1: imagesCheckin1,
+    images_checkin_2: imagesCheckin2,
+    images_checkin_3: imagesCheckin3,
+
+    checkOutImageUrl,
+    check_out_image_url: checkOutImageUrl,
+    checkoutImageUrl: checkOutImageUrl,
+    checkout_image_url: checkOutImageUrl,
+    checkOutPicture: checkOutImageUrl,
+    check_out_picture: checkOutImageUrl,
+    lastOutPicture: checkOutImageUrl,
+    last_out_picture: checkOutImageUrl,
+
+    imagesCheckout1,
+    imagesCheckout2,
+    imagesCheckout3,
+    images_checkout_1: imagesCheckout1,
+    images_checkout_2: imagesCheckout2,
+    images_checkout_3: imagesCheckout3,
 
     operatorName,
 

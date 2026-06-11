@@ -1691,3 +1691,206 @@
     font-size: 10.5px;
   }
 }
+
+/* =========================
+   Report Image Thumbnail
+   เวลาเข้า / เวลาออก + รูปภาพ
+========================= */
+
+.timePhotoCell {
+  display: inline-grid;
+  grid-template-columns: 56px 64px;
+  align-items: center;
+  justify-content: center;
+  column-gap: 16px;
+  min-width: 140px;
+}
+
+.timePhotoCellRight {
+  justify-content: end;
+}
+
+.timePhotoText {
+  min-width: 56px;
+  text-align: right;
+  font-weight: inherit;
+  color: inherit;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.reportThumbButton {
+  justify-self: center;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #e2e8f0;
+  cursor: pointer;
+  box-shadow: 0 0 0 1px #cbd5e1;
+  transition:
+    transform 0.14s ease,
+    box-shadow 0.14s ease;
+}
+
+.reportThumbButton:hover {
+  transform: scale(1.04);
+  box-shadow: 0 0 0 2px #1d4a82;
+}
+
+.reportThumbButton img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.noReportImage {
+  justify-self: center;
+  width: 64px;
+  height: 48px;
+  border-radius: 10px;
+  border: 1px dashed #cbd5e1;
+  background: #f8fafc;
+  color: #94a3b8;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.1;
+  text-align: center;
+  white-space: normal;
+}
+
+/* =========================
+   Report Image Preview Modal
+========================= */
+
+.imagePreviewOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 20px;
+  background: rgba(15, 23, 42, 0.78);
+}
+
+.imagePreviewModal {
+  width: min(920px, 96vw);
+  max-height: 92vh;
+  overflow: hidden;
+
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+}
+
+.imagePreviewHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+
+  padding: 14px 18px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+
+  color: #0f172a;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.imagePreviewCloseButton {
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #0f172a;
+
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.imagePreviewCloseButton:hover {
+  background: #cbd5e1;
+}
+
+.imagePreviewBody {
+  padding: 16px;
+  text-align: center;
+  background: #0f172a;
+}
+
+.imagePreviewBody img {
+  max-width: 100%;
+  max-height: 76vh;
+  object-fit: contain;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+/* =========================
+   Mobile Thumbnail
+========================= */
+
+@media (max-width: 768px) {
+  .timePhotoCell {
+    grid-template-columns: 48px 58px;
+    column-gap: 10px;
+    min-width: 116px;
+  }
+
+  .timePhotoText {
+    min-width: 48px;
+    font-size: 11px;
+    font-weight: inherit;
+    color: inherit;
+  }
+
+  .reportThumbButton {
+    width: 42px;
+    height: 42px;
+    border-radius: 9px;
+  }
+
+  .noReportImage {
+    width: 58px;
+    height: 42px;
+    border-radius: 9px;
+    font-size: 10px;
+    font-weight: 500;
+  }
+
+  .imagePreviewOverlay {
+    padding: 12px;
+  }
+
+  .imagePreviewModal {
+    width: 96vw;
+    border-radius: 14px;
+  }
+
+  .imagePreviewHeader {
+    padding: 12px 14px;
+    font-size: 14px;
+  }
+
+  .imagePreviewBody {
+    padding: 12px;
+  }
+
+  .imagePreviewBody img {
+    max-height: 72vh;
+  }
+}

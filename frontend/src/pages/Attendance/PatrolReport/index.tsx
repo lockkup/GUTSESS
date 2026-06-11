@@ -22,6 +22,11 @@ import {
   type PatrolStatus,
 } from "@/services/patrolReportApi";
 
+import ReportTimePhotoCell from "@/components/ReportTimePhotoCell";
+import ReportImagePreviewModal, {
+  type PreviewImageState,
+} from "@/components/ReportImagePreviewModal";
+
 import styles from "./PatrolReport.module.css";
 
 type ShiftValue = "all" | "day" | "night";
@@ -68,6 +73,33 @@ type ExtraPatrolReportFilterParams = {
 type PatrolReportDisplayRow = PatrolReportRow & {
   assignmentStatus?: PatrolStatus | null;
   assignment_status?: PatrolStatus | null;
+
+  checkInImageUrl?: string | null;
+  check_in_image_url?: string | null;
+  checkinImageUrl?: string | null;
+  checkin_image_url?: string | null;
+  checkInPicture?: string | null;
+  check_in_picture?: string | null;
+  firstInPicture?: string | null;
+  first_in_picture?: string | null;
+
+  checkOutImageUrl?: string | null;
+  check_out_image_url?: string | null;
+  checkoutImageUrl?: string | null;
+  checkout_image_url?: string | null;
+  checkOutPicture?: string | null;
+  check_out_picture?: string | null;
+  lastOutPicture?: string | null;
+  last_out_picture?: string | null;
+
+  imagesCheckin1?: string | null;
+  images_checkin_1?: string | null;
+  imagesCheckin2?: string | null;
+  images_checkin_2?: string | null;
+  imagesCheckout1?: string | null;
+  images_checkout_1?: string | null;
+  imagesCheckout2?: string | null;
+  images_checkout_2?: string | null;
 
   departmentId?: number | string | null;
   department_id?: number | string | null;
@@ -680,6 +712,91 @@ function getEmployeeOptionLabel(
   return employeeCode;
 }
 
+function getApiOriginForImage() {
+  const apiBaseUrl = String(import.meta.env.VITE_API_BASE_URL ?? "").trim();
+
+  if (!apiBaseUrl) {
+    return "";
+  }
+
+  return apiBaseUrl
+    .replace(/\/api(?:\/v\d+)?\/?$/i, "")
+    .replace(/\/$/, "");
+}
+
+function resolveReportImageUrl(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  const imageText = String(value).trim();
+
+  if (!imageText || imageText === "-" || imageText.toUpperCase() === "NULL") {
+    return null;
+  }
+
+  // รองรับรูปแบบที่เก็บใน DB เป็น data:image/jpeg;base64,...
+  // ใช้กับ <img src="..."> ได้โดยตรง ไม่ต้อง decode ก่อน
+  if (/^data:image\/[a-zA-Z0-9.+-]+;base64,/i.test(imageText)) {
+    return imageText;
+  }
+
+  if (imageText.startsWith("blob:") || /^https?:\/\//i.test(imageText)) {
+    return imageText;
+  }
+
+  // เผื่ออนาคต/ข้อมูลเก่าบางแถวเก็บเฉพาะ base64 ล้วน ไม่มี prefix
+  if (/^(?:[A-Za-z0-9+/]{80,}={0,2})$/.test(imageText)) {
+    return `data:image/jpeg;base64,${imageText}`;
+  }
+
+  const apiOrigin = getApiOriginForImage();
+
+  if (!apiOrigin) {
+    return imageText.startsWith("/") ? imageText : `/${imageText}`;
+  }
+
+  return imageText.startsWith("/")
+    ? `${apiOrigin}${imageText}`
+    : `${apiOrigin}/${imageText}`;
+}
+
+function getCheckInImageUrl(row: PatrolReportDisplayRow) {
+  return resolveReportImageUrl(
+    row.checkInImageUrl ??
+      row.check_in_image_url ??
+      row.checkinImageUrl ??
+      row.checkin_image_url ??
+      row.checkInPicture ??
+      row.check_in_picture ??
+      row.firstInPicture ??
+      row.first_in_picture ??
+      row.imagesCheckin1 ??
+      row.images_checkin_1 ??
+      row.imagesCheckin2 ??
+      row.images_checkin_2 ??
+      null,
+  );
+}
+
+function getCheckOutImageUrl(row: PatrolReportDisplayRow) {
+  return resolveReportImageUrl(
+    row.checkOutImageUrl ??
+      row.check_out_image_url ??
+      row.checkoutImageUrl ??
+      row.checkout_image_url ??
+      row.checkOutPicture ??
+      row.check_out_picture ??
+      row.lastOutPicture ??
+      row.last_out_picture ??
+      row.imagesCheckout1 ??
+      row.images_checkout_1 ??
+      row.imagesCheckout2 ??
+      row.images_checkout_2 ??
+      null,
+  );
+}
+
 function EmptyReportState({
   title = "ไม่พบข้อมูลรายงานสายตรวจ",
   hint = "กรุณาติดต่อผู้ดูแลระบบ",
@@ -779,6 +896,10 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
     return parseYYYYMMDD(getTodayYYYYMMDD()) ?? new Date();
   });
 
+  const [previewImage, setPreviewImage] = useState<PreviewImageState | null>(
+    null,
+  );
+
   const startDatePickerWrapRef = useRef<HTMLDivElement | null>(null);
   const endDatePickerWrapRef = useRef<HTMLDivElement | null>(null);
 
@@ -798,6 +919,20 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
   const hasSelectedDivision = selectedDivisionId !== undefined;
 
   const hasRequiredReportScope = hasSelectedDepartment && hasSelectedDivision;
+
+  const handleOpenImagePreview = useCallback(
+    (imageUrl: string, title: string) => {
+      setPreviewImage({
+        url: imageUrl,
+        title,
+      });
+    },
+    [],
+  );
+
+  const handleCloseImagePreview = useCallback(() => {
+    setPreviewImage(null);
+  }, []);
 
   const fetchFilterOptions = useCallback(async () => {
     try {
@@ -976,10 +1111,12 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
   }, [filterOptions.divisions, selectedDepartmentId]);
 
   const routeOptions = useMemo(() => {
+    if (selectedDepartmentId === undefined) {
+      return [];
+    }
+
     return filterOptions.routes.filter((route) => {
-      const matchDepartment =
-        selectedDepartmentId === undefined ||
-        route.departmentId === selectedDepartmentId;
+      const matchDepartment = route.departmentId === selectedDepartmentId;
       const matchDivision =
         selectedDivisionId === undefined ||
         route.divisionId === selectedDivisionId;
@@ -989,10 +1126,12 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
   }, [filterOptions.routes, selectedDepartmentId, selectedDivisionId]);
 
   const locationOptions = useMemo(() => {
+    if (selectedDepartmentId === undefined) {
+      return [];
+    }
+
     return filterOptions.locations.filter((location) => {
-      const matchDepartment =
-        selectedDepartmentId === undefined ||
-        location.departmentId === selectedDepartmentId;
+      const matchDepartment = location.departmentId === selectedDepartmentId;
       const matchDivision =
         selectedDivisionId === undefined ||
         location.divisionId === selectedDivisionId;
@@ -1009,8 +1148,12 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
   ]);
 
   const employeeOptions = useMemo(() => {
+    if (selectedDepartmentId === undefined) {
+      return [];
+    }
+
     return filterOptions.employees;
-  }, [filterOptions.employees]);
+  }, [filterOptions.employees, selectedDepartmentId]);
 
   const reportCountText = getReportCountText(filteredRows.length);
 
@@ -1089,6 +1232,7 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
     setEmployeeCodeText(DEFAULT_EMPLOYEE_CODE_TEXT);
     setExpandedId(null);
     setActiveDatePicker(null);
+    setPreviewImage(null);
 
     setPatrolRows([]);
     setEmptyReason("need_filter");
@@ -1289,6 +1433,8 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                 setRouteIdText(DEFAULT_ROUTE_ID_TEXT);
                 setLocationIdText(DEFAULT_LOCATION_ID_TEXT);
                 setEmployeeCodeText(DEFAULT_EMPLOYEE_CODE_TEXT);
+                setShiftValue(DEFAULT_SHIFT_VALUE);
+                setStatusValue(DEFAULT_STATUS_VALUE);
                 setPatrolRows([]);
                 setExpandedId(null);
                 setEmptyReason("need_filter");
@@ -1361,6 +1507,7 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                 setEmptyErrorMessage(null);
               }}
               className={styles.select}
+              disabled={!hasSelectedDepartment}
             >
               <option value="">ทั้งหมด</option>
               {routeOptions.map((option, index) => (
@@ -1387,6 +1534,7 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                 setEmptyErrorMessage(null);
               }}
               className={styles.select}
+              disabled={!hasSelectedDepartment}
             >
               <option value="">ทั้งหมด</option>
               {locationOptions.map((option, index) => (
@@ -1416,6 +1564,7 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                 setEmptyErrorMessage(null);
               }}
               className={styles.select}
+              disabled={!hasSelectedDepartment}
             >
               <option value="">ทั้งหมด</option>
               {employeeOptions.map((option, index) => (
@@ -1441,6 +1590,7 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                 setStatusValue(event.target.value as StatusFilterValue)
               }
               className={styles.select}
+              disabled={!hasSelectedDepartment}
             >
               <option value="all">ทั้งหมด</option>
               <option value="completed">ตรวจแล้ว</option>
@@ -1508,6 +1658,7 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                 setShiftValue(event.target.value as ShiftValue)
               }
               className={styles.select}
+              disabled={!hasSelectedDepartment}
             >
               <option value="all">ทั้งหมด</option>
               <option value="day">ผลัดกลางวัน</option>
@@ -1549,7 +1700,7 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
               type="button"
               className={styles.searchButton}
               onClick={handleSearch}
-              disabled={loading}
+              disabled={loading || !hasRequiredReportScope}
             >
               <Search size={15} strokeWidth={2.6} />
               <span>{loading ? "กำลังค้นหา..." : "ค้นหา"}</span>
@@ -1609,6 +1760,9 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                   ) : (
                     filteredRows.map((row, index) => {
                       const status = getDisplayStatus(row);
+                      const checkInImageUrl = getCheckInImageUrl(row);
+                      const checkOutImageUrl = getCheckOutImageUrl(row);
+                      const contractText = getContractCodeText(row.contractCode);
 
                       return (
                         <tr
@@ -1621,7 +1775,7 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                           )}
                         >
                           <td>{row.id}</td>
-                          <td>{getContractCodeText(row.contractCode)}</td>
+                          <td>{contractText}</td>
                           <td className={styles.textLeft}>{row.siteName}</td>
                           <td>{row.shiftLabel}</td>
                           <td>
@@ -1655,8 +1809,29 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                           </td>
 
                           <td>{row.dateText}</td>
-                          <td>{row.checkInTime ?? "-"}</td>
-                          <td>{row.checkOutTime ?? "-"}</td>
+
+                          <td>
+                            <ReportTimePhotoCell
+                              time={row.checkInTime}
+                              imageUrl={checkInImageUrl}
+                              imageTitle={`${contractText} - ${row.siteName} | รูปเวลาเข้า ${
+                                row.checkInTime ?? "-"
+                              }`}
+                              onPreview={handleOpenImagePreview}
+                            />
+                          </td>
+
+                          <td>
+                            <ReportTimePhotoCell
+                              time={row.checkOutTime}
+                              imageUrl={checkOutImageUrl}
+                              imageTitle={`${contractText} - ${row.siteName} | รูปเวลาออก ${
+                                row.checkOutTime ?? "-"
+                              }`}
+                              onPreview={handleOpenImagePreview}
+                            />
+                          </td>
+
                           <td>{getOperatorText(row)}</td>
                           <td className={styles.textLeft}>
                             {getContactDetail(row)}
@@ -1707,6 +1882,9 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
               filteredRows.map((row, index) => {
                 const isExpanded = expandedId === row.id;
                 const status = getDisplayStatus(row);
+                const checkInImageUrl = getCheckInImageUrl(row);
+                const checkOutImageUrl = getCheckOutImageUrl(row);
+                const contractText = getContractCodeText(row.contractCode);
 
                 return (
                   <article
@@ -1734,7 +1912,7 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                           <span className={styles.mobileNo}>{row.id}</span>
 
                           <span className={styles.mobileCode}>
-                            {getContractCodeText(row.contractCode)}
+                            {contractText}
                           </span>
                         </div>
 
@@ -1807,12 +1985,30 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
 
                         <div className={styles.detailRow}>
                           <span>เวลาเข้า</span>
-                          <strong>{row.checkInTime ?? "-"}</strong>
+
+                          <ReportTimePhotoCell
+                            time={row.checkInTime}
+                            imageUrl={checkInImageUrl}
+                            imageTitle={`${contractText} - ${row.siteName} | รูปเวลาเข้า ${
+                              row.checkInTime ?? "-"
+                            }`}
+                            align="right"
+                            onPreview={handleOpenImagePreview}
+                          />
                         </div>
 
                         <div className={styles.detailRow}>
                           <span>เวลาออก</span>
-                          <strong>{row.checkOutTime ?? "-"}</strong>
+
+                          <ReportTimePhotoCell
+                            time={row.checkOutTime}
+                            imageUrl={checkOutImageUrl}
+                            imageTitle={`${contractText} - ${row.siteName} | รูปเวลาออก ${
+                              row.checkOutTime ?? "-"
+                            }`}
+                            align="right"
+                            onPreview={handleOpenImagePreview}
+                          />
                         </div>
 
                         <div className={styles.detailRow}>
@@ -1843,6 +2039,11 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
             <BackButton onClick={onBack} className="guts-fv-backBtn" />
           </div>
         </section>
+
+        <ReportImagePreviewModal
+          previewImage={previewImage}
+          onClose={handleCloseImagePreview}
+        />
       </div>
     </main>
   );
