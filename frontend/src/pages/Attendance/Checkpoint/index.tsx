@@ -141,6 +141,10 @@ const statusOrder: Record<RowStatus, number> = {
   cancelled: 5,
 };
 
+const DAY_SHIFT_START_SECONDS = 8 * 60 * 60 + 1; // 08:00:01
+const DAY_SHIFT_END_SECONDS = 20 * 60 * 60; // 20:00:00
+const NIGHT_SHIFT_END_SECONDS = 8 * 60 * 60; // 08:00:00
+
 function logDev(message: string, payload?: unknown) {
   console.log(message, payload);
 }
@@ -291,19 +295,42 @@ const formatApiDate = (date: Date) => {
   return `${year}-${month}-${day}`;
 };
 
+const getTotalSeconds = (date: Date) => {
+  return date.getHours() * 60 * 60 + date.getMinutes() * 60 + date.getSeconds();
+};
+
 const getCurrentShiftTypeByTime = (date: Date): ShiftType => {
-  const totalMinutes = date.getHours() * 60 + date.getMinutes();
+  const totalSeconds = getTotalSeconds(date);
 
-  // ผลัดกลางวัน 08:01:00 - 20:00:00
-  const dayStartMinutes = 8 * 60 + 1;
-  const dayEndMinutes = 20 * 60;
-
-  if (totalMinutes >= dayStartMinutes && totalMinutes <= dayEndMinutes) {
+  // ผลัดกลางวัน 08:00:01 - 20:00:00
+  if (
+    totalSeconds >= DAY_SHIFT_START_SECONDS &&
+    totalSeconds <= DAY_SHIFT_END_SECONDS
+  ) {
     return "day";
   }
 
-  // ผลัดกลางคืน 20:01:00 - 08:00:00 ข้ามวัน
+  // ผลัดกลางคืน 20:00:01 - 08:00:00
   return "night";
+};
+
+const getCheckpointWorkDate = (date: Date, shift: ShiftType) => {
+  const workDate = new Date(date);
+  const totalSeconds = getTotalSeconds(date);
+
+  /**
+   * ผลัดกลางคืนข้ามวัน:
+   * 00:00:00 - 08:00:00 ต้องนับเป็น work_date ของวันก่อนหน้า
+   *
+   * ตัวอย่าง:
+   * 12 มิ.ย. 00:03 + ผลัดกลางคืน
+   * ต้องส่ง API เป็น workDate = 11 มิ.ย.
+   */
+  if (shift === "night" && totalSeconds <= NIGHT_SHIFT_END_SECONDS) {
+    workDate.setDate(workDate.getDate() - 1);
+  }
+
+  return workDate;
 };
 
 const getShiftText = (shift: ShiftType): string => {
@@ -488,9 +515,40 @@ function getRequestErrorMessage(error: unknown): string {
 }
 
 function splitUnitName(unitName: string) {
-  const parts = unitName.split("-");
-  const contractCode = parts.shift()?.trim() || unitName.trim();
-  const locationName = parts.join("-").trim();
+  const cleanUnitName = unitName.trim();
+
+  const parts = cleanUnitName
+    .split("-")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (parts.length <= 1) {
+    return {
+      contractCode: cleanUnitName,
+      locationName: cleanUnitName,
+    };
+  }
+
+  const firstPart = parts[0] ?? cleanUnitName;
+  const secondPart = parts[1] ?? "";
+
+  /**
+   * รองรับกรณี contract_code มีขีด เช่น:
+   * ท046-2-ทีโอเอ (22)
+   *
+   * ต้องได้:
+   * contractCode = ท046-2
+   * locationName = ทีโอเอ (22)
+   */
+  const secondPartIsCodeSuffix = parts.length >= 3 && /^\d+$/.test(secondPart);
+
+  const contractCode = secondPartIsCodeSuffix
+    ? `${firstPart}-${secondPart}`
+    : firstPart;
+
+  const locationName = secondPartIsCodeSuffix
+    ? parts.slice(2).join("-").trim()
+    : parts.slice(1).join("-").trim();
 
   return {
     contractCode,
@@ -518,7 +576,10 @@ export default function Checkpoint({
   const [contactDetail, setContactDetail] = useState("");
   const [callNote, setCallNote] = useState("");
   const [callStatus, setCallStatus] = useState<CallStatus>(1);
-  const [selectedShift, setSelectedShift] = useState<ShiftType>("day");
+
+  const [selectedShift, setSelectedShift] = useState<ShiftType>(() =>
+    getCurrentShiftTypeByTime(new Date()),
+  );
   const [currentDate, setCurrentDate] = useState(() => new Date());
 
   const [isSavingCall, setIsSavingCall] = useState(false);
@@ -538,6 +599,16 @@ export default function Checkpoint({
   const currentShift = useMemo(
     () => getCurrentShiftTypeByTime(currentDate),
     [currentDate],
+  );
+
+  const selectedWorkDate = useMemo(
+    () => getCheckpointWorkDate(currentDate, selectedShift),
+    [currentDate, selectedShift],
+  );
+
+  const selectedWorkDateText = useMemo(
+    () => formatApiDate(selectedWorkDate),
+    [selectedWorkDate],
   );
 
   const shiftText = getShiftText(selectedShift);
@@ -567,7 +638,13 @@ export default function Checkpoint({
       setIsLoading(true);
       setErrorMessage("");
 
-      const workDate = formatApiDate(new Date());
+      const workDate = selectedWorkDateText;
+
+      logDev("[Checkpoint] FETCH ASSIGNMENTS", {
+        workDate,
+        selectedShift,
+        currentShift,
+      });
 
       const data = await getDailyCheckpointAssignments({
         workDate,
@@ -586,7 +663,7 @@ export default function Checkpoint({
     } finally {
       setIsLoading(false);
     }
-  }, [empCode, selectedShift]);
+  }, [empCode, selectedShift, selectedWorkDateText, currentShift]);
 
   useEffect(() => {
     let cancelled = false;
@@ -628,6 +705,16 @@ export default function Checkpoint({
 
     return () => window.clearInterval(timer);
   }, []);
+
+  /**
+   * เลือกปุ่ม Radio ผลัดตามเวลาปัจจุบันอัตโนมัติ
+   *
+   * 08:00:01 - 20:00:00 = ผลัดกลางวัน
+   * 20:00:01 - 08:00:00 = ผลัดกลางคืน
+   */
+  useEffect(() => {
+    setSelectedShift(currentShift);
+  }, [currentShift]);
 
   useEffect(() => {
     void fetchCheckpointAssignments();
@@ -684,8 +771,16 @@ export default function Checkpoint({
   const openCheckpointMapModal = async (row: CheckRow) => {
     const { contractCode, locationName } = splitUnitName(row.unitName);
 
+    logDev("[Checkpoint] MAP LOCATION REQUEST", {
+      assignmentId: row.assignmentId,
+      unitName: row.unitName,
+      contractCode,
+      locationName,
+    });
+
     setIsMapModalOpen(true);
     setMapLoading(true);
+    setMapLocation(null);
     setMapErrorMessage(null);
 
     try {
@@ -1083,7 +1178,7 @@ export default function Checkpoint({
             <h2 className={styles.attTitle}>หน้าจอ-ตารางงานสายตรวจประจำวัน</h2>
 
             <div className={styles.roundInfo}>
-              {formatThaiDateTime(currentDate)}
+              {formatThaiDateTime(selectedWorkDate)}
             </div>
 
             <fieldset className={styles.shiftSelector}>

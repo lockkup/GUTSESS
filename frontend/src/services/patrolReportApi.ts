@@ -418,9 +418,7 @@ function mapPatrolReportRow(
     row.status ?? row.assignmentStatus ?? row.assignment_status,
   );
 
-  const departmentId = toNumberOrNull(
-    row.departmentId ?? row.department_id,
-  );
+  const departmentId = toNumberOrNull(row.departmentId ?? row.department_id);
 
   const divisionId = toNumberOrNull(row.divisionId ?? row.division_id);
 
@@ -648,7 +646,7 @@ function normalizeFilterOptions(
 
 export async function getPatrolReportFilterOptions() {
   const options = await api.get<PatrolReportFilterOptionsApiResponse>(
-    "/api/reports/patrol/filter-options",
+    "/reports/patrol/filter-options",
   );
 
   return normalizeFilterOptions(options);
@@ -730,7 +728,7 @@ export async function getPatrolReport({
   }
 
   const rows = await api.get<PatrolReportApiRow[]>(
-    "/api/reports/patrol",
+    "/reports/patrol",
     params,
   );
 

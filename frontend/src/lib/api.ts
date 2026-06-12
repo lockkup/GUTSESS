@@ -2,16 +2,24 @@ const rawApiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? "").trim();
 
 /**
  * VITE_API_BASE_URL options:
- * - "same-origin" หรือเว้นว่าง = ใช้ domain ปัจจุบัน เช่น
- *   http://localhost:8090
- *   https://xxxxx.trycloudflare.com
  *
- * - URL เต็ม = ใช้ URL นั้น เช่น
- *   http://localhost:8090
+ * - "same-origin", "sameorigin", "same_origin" หรือเว้นว่าง
+ *   = ใช้ domain ปัจจุบัน + /api เช่น
+ *   https://xxxxx.trycloudflare.com/api
+ *   http://localhost:8090/api
+ *
+ * - URL เต็ม
+ *   = ใช้ URL นั้นตรง ๆ เช่น
+ *   http://127.0.0.1:10000
+ *   https://xxxxx.trycloudflare.com/api
  */
+const sameOriginValues = ["same-origin", "sameorigin", "same_origin"];
+
+const normalizedRawApiBaseUrl = rawApiBaseUrl.toLowerCase();
+
 export const API_ORIGIN =
-  !rawApiBaseUrl || rawApiBaseUrl.toLowerCase() === "same-origin"
-    ? window.location.origin
+  !rawApiBaseUrl || sameOriginValues.includes(normalizedRawApiBaseUrl)
+    ? `${window.location.origin}/api`
     : rawApiBaseUrl.replace(/\/+$/, "");
 
 // คงชื่อ API_BASE_URL ไว้ เพื่อไม่ให้ service เดิมที่ import ชื่อนี้พัง

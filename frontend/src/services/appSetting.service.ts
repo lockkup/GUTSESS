@@ -2,7 +2,7 @@
 
 import { api } from "../lib/api";
 
-const BASE_PATH = "/api/app-settings";
+const BASE_PATH = "/app-settings";
 
 export type AttendanceLocationSetting = {
   enable_face_verify: boolean;
@@ -63,7 +63,7 @@ export const appSettingService = {
   /**
    * ดึงค่าตั้งค่าการตรวจ GPS สำหรับเมนูลงเวลาเข้า-ออกงาน
    *
-   * Endpoint:
+   * Endpoint จริงหลังผ่าน api.ts:
    * GET /api/app-settings/attendance-location
    */
   async getAttendanceLocationSetting(): Promise<AttendanceLocationSetting> {

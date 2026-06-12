@@ -1,7 +1,7 @@
 import api from "../lib/api";
 import type { GetShiftsParams, Shift, ShiftFormValues } from "../types/shift";
 
-const BASE_PATH = "/api/shifts";
+const BASE_PATH = "/shifts";
 
 export const shiftService = {
   async getShifts(params?: GetShiftsParams): Promise<Shift[]> {
@@ -18,7 +18,7 @@ export const shiftService = {
 
   async updateShift(
     shiftId: number,
-    payload: Partial<ShiftFormValues>
+    payload: Partial<ShiftFormValues>,
   ): Promise<Shift> {
     return api.patch<Shift>(`${BASE_PATH}/${shiftId}`, payload);
   },

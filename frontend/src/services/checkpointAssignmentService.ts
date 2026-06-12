@@ -38,7 +38,7 @@ export function getDailyCheckpointAssignments({
     return Promise.resolve([] as CheckpointDailyRow[]);
   }
 
-  return api.get<CheckpointDailyRow[]>("/api/checkpoint-assignments/daily", {
+  return api.get<CheckpointDailyRow[]>("/checkpoint-assignments/daily", {
     work_date: workDate,
     shift_type: shiftType ?? undefined,
     employee_code: normalizedEmployeeCode,
@@ -55,13 +55,11 @@ export function getCheckpointMapLocation({
   const normalizedLocationName = locationName.trim();
 
   if (!normalizedContractCode || !normalizedLocationName) {
-    return Promise.reject(
-      new Error("กรุณาระบุรหัสสัญญาและชื่อหน่วยงาน"),
-    );
+    return Promise.reject(new Error("กรุณาระบุรหัสสัญญาและชื่อหน่วยงาน"));
   }
 
   return api.get<CheckpointMapLocationResponse>(
-    "/api/checkpoint-assignments/map-location",
+    "/checkpoint-assignments/map-location",
     {
       contract_code: normalizedContractCode,
       location_name: normalizedLocationName,

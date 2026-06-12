@@ -50,7 +50,7 @@ export function verifyCheckpointLocation(
   payload: VerifyCheckpointLocationPayload,
 ) {
   return api.post<VerifyCheckpointLocationResponse>(
-    "/api/checkpoint-assignments/verify-location",
+    "/checkpoint-assignments/verify-location",
     payload,
   );
 }

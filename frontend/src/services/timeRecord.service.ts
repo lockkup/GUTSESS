@@ -9,7 +9,7 @@ import type {
   TimeRecordResponse,
 } from "../types/timeRecord";
 
-const BASE_PATH = "/api/time-records";
+const BASE_PATH = "/time-records";
 
 export type OpenAttendanceTimeRecordParams = {
   work_date: string; // YYYY-MM-DD
@@ -128,7 +128,7 @@ export const timeRecordService = {
    * ใช้ employee_code + work_date
    * ไม่ใช้ shift_id
    *
-   * Endpoint:
+   * Endpoint จริงหลังผ่าน api.ts:
    * GET /api/time-records/open/attendance/{employee_code}?work_date=YYYY-MM-DD
    */
   async getOpenAttendanceTimeRecordByEmployeeCode(
@@ -158,7 +158,7 @@ export const timeRecordService = {
    * Backend จะหา time_record ผ่าน checkpoint_assignment.time_record_id
    * โดยใช้ assignment_id ที่เลือกจากตารางงานสายตรวจ
    *
-   * Endpoint:
+   * Endpoint จริงหลังผ่าน api.ts:
    * GET /api/time-records/open/checkpoint/{employee_code}/{assignment_id}
    */
   async getOpenCheckpointTimeRecordByEmployeeCode(
@@ -201,7 +201,7 @@ export const timeRecordService = {
   /**
    * ดึงข้อมูล time_record แบบเต็ม
    *
-   * Endpoint:
+   * Endpoint จริงหลังผ่าน api.ts:
    * GET /api/time-records/
    */
   getTimeRecords(params?: GetTimeRecordsParams) {
@@ -211,7 +211,7 @@ export const timeRecordService = {
   /**
    * ดึงข้อมูลสำหรับหน้า list/history แบบย่อ
    *
-   * Endpoint:
+   * Endpoint จริงหลังผ่าน api.ts:
    * GET /api/time-records/list-items
    */
   getTimeRecordListItems(params?: GetTimeRecordsParams) {

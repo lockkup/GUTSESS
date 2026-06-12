@@ -1,6 +1,6 @@
 // src/services/auth.Service.ts
 
-import api from "@/lib/api";
+import api, { API_BASE_URL } from "@/lib/api";
 
 type AuthContact = {
   team?: string;
@@ -55,6 +55,11 @@ export interface ChangePasswordRequest {
   new_password: string;
 }
 
+export interface ChangePasswordResponse {
+  message?: string;
+  contacts?: AuthContact[];
+}
+
 export interface AuthEmployee {
   employee_code: string;
   email: string | null;
@@ -105,10 +110,15 @@ export interface AuthLoginResult {
   icon?: AuthAlertIcon;
 }
 
-const AUTH_BASE = "/api/auth";
-
-const API_ORIGIN =
-  import.meta.env.VITE_API_ORIGIN || "http://127.0.0.1:8000";
+/**
+ * สำคัญ:
+ * api.ts เติม /api ให้แล้ว
+ * ดังนั้นใน service นี้ใช้แค่ /auth เท่านั้น
+ *
+ * ถูก: /auth/login
+ * ผิด: /api/auth/login
+ */
+const AUTH_BASE = "/auth";
 
 const DEFAULT_ERROR_TITLE = "ข้อผิดพลาดในการเชื่อมต่อ";
 const DEFAULT_ERROR_ICON: AuthAlertIcon = "alert-circle";
@@ -134,6 +144,10 @@ function mapKnownAuthMessage(errorKey?: string, message?: string): string {
   }
 
   if (errorKey === "PASSWORD_SAME_AS_OLD") {
+    return message || "รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสผ่านเดิม";
+  }
+
+  if (errorKey === "SAME_PASSWORD") {
     return message || "รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสผ่านเดิม";
   }
 
@@ -331,38 +345,34 @@ function parseApiError(
   });
 }
 
-async function parseFetchError(
-  response: Response,
-  fallbackMessage: string,
-): Promise<AuthActionResult> {
-  try {
-    const data = await response.json();
+async function parseFetchJson(response: Response): Promise<unknown> {
+  const raw = await response.text();
 
-    console.warn("auth fetch error response:", response.status, data);
-
-    if (Array.isArray(data?.detail)) {
-      return parseValidationErrors(data.detail, fallbackMessage);
-    }
-
-    const detailResult = normalizeErrorDetail(data?.detail, fallbackMessage);
-
-    if (detailResult) {
-      return detailResult;
-    }
-
-    if (isErrorPayload(data)) {
-      return toAuthActionResult(data, fallbackMessage);
-    }
-
-    return makeErrorResult({
-      message:
-        typeof data?.message === "string" ? data.message : fallbackMessage,
-    });
-  } catch {
-    return makeErrorResult({
-      message: fallbackMessage,
-    });
+  if (!raw) {
+    return undefined;
   }
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+}
+
+function getMessageFromUnknownData(
+  data: unknown,
+  fallbackMessage: string,
+): string {
+  if (
+    data &&
+    typeof data === "object" &&
+    "message" in (data as Record<string, unknown>) &&
+    typeof (data as Record<string, unknown>).message === "string"
+  ) {
+    return String((data as Record<string, unknown>).message);
+  }
+
+  return fallbackMessage;
 }
 
 export const authService = {
@@ -404,11 +414,21 @@ export const authService = {
 
   async logout(employee_code: string): Promise<void> {
     try {
-      const response = await fetch(`${API_ORIGIN}${AUTH_BASE}/logout`, {
+      const actorCode = String(employee_code || "").trim();
+
+      if (!actorCode) {
+        return;
+      }
+
+      const logoutUrl = `${API_BASE_URL}${AUTH_BASE}/logout`;
+
+      const response = await fetch(logoutUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${employee_code}`,
+          Accept: "application/json",
+          "X-Employee-Code": actorCode,
+          Authorization: `Bearer ${actorCode}`,
         },
       });
 
@@ -454,40 +474,70 @@ export const authService = {
     newPin: string,
   ): Promise<AuthActionResult> {
     try {
+      const actorCode = String(employee_code || "").trim();
+
+      if (!actorCode) {
+        return makeErrorResult({
+          message: "ไม่พบรหัสพนักงาน กรุณาเข้าสู่ระบบใหม่อีกครั้ง",
+        });
+      }
+
       const payload: ChangePasswordRequest = {
-        employee_code,
+        employee_code: actorCode,
         old_password: oldPin,
         new_password: newPin,
       };
 
       console.log("changePassword payload:", {
-        employee_code,
+        employee_code: actorCode,
         old_password_length: oldPin.length,
         new_password_length: newPin.length,
       });
 
-      const response = await fetch(`${API_ORIGIN}${AUTH_BASE}/change-password`, {
+      const response = await fetch(`${API_BASE_URL}${AUTH_BASE}/change-password`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${employee_code}`,
+          Accept: "application/json",
+
+          // Backend ต้องการ actor identity
+          "X-Employee-Code": actorCode,
+          Authorization: `Bearer ${actorCode}`,
         },
         body: JSON.stringify(payload),
       });
 
+      const data = await parseFetchJson(response);
+
       if (!response.ok) {
-        return await parseFetchError(
-          response,
+        const detail =
+          data &&
+          typeof data === "object" &&
+          "detail" in (data as Record<string, unknown>)
+            ? (data as Record<string, unknown>).detail
+            : data;
+
+        const detailResult = normalizeErrorDetail(
+          detail,
           "ไม่สามารถเปลี่ยนรหัสผ่านได้ กรุณาตรวจสอบข้อมูลอีกครั้ง",
         );
-      }
 
-      const data = (await response.json()) as { message?: string };
+        if (detailResult) {
+          return detailResult;
+        }
+
+        return makeErrorResult({
+          message: getMessageFromUnknownData(
+            data,
+            "ไม่สามารถเปลี่ยนรหัสผ่านได้ กรุณาตรวจสอบข้อมูลอีกครั้ง",
+          ),
+        });
+      }
 
       return {
         success: true,
         title: DEFAULT_SUCCESS_TITLE,
-        message: data.message || "เปลี่ยนรหัสผ่านสำเร็จ",
+        message: getMessageFromUnknownData(data, "เปลี่ยนรหัสผ่านสำเร็จ"),
         icon: DEFAULT_SUCCESS_ICON,
       };
     } catch (error) {

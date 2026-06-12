@@ -23,7 +23,7 @@ export type CheckpointAssignmentCallResponse = {
   updated_by: string | null;
 };
 
-const BASE_PATH = "/api/checkpoint-assignment-calls";
+const BASE_PATH = "/checkpoint-assignment-calls";
 
 export function createCheckpointAssignmentCall(
   payload: CreateCheckpointAssignmentCallPayload,

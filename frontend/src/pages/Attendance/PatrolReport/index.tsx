@@ -219,6 +219,16 @@ const THAI_MONTH_FULL = [
 
 const THAI_WEEKDAYS = ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"];
 
+const THAI_WEEKDAYS_FULL = [
+  "วันอาทิตย์",
+  "วันจันทร์",
+  "วันอังคาร",
+  "วันพุธ",
+  "วันพฤหัสบดี",
+  "วันศุกร์",
+  "วันเสาร์",
+];
+
 function getTodayYYYYMMDD() {
   const today = new Date();
 
@@ -258,6 +268,42 @@ function formatDateThaiShort(value: string) {
   return `${date.getDate()} ${THAI_MONTH_SHORT[date.getMonth()]} ${
     date.getFullYear() + 543
   }`;
+}
+
+function formatDateThaiLong(value: string) {
+  const date = parseYYYYMMDD(value);
+
+  if (!date) return "-";
+
+  return `${THAI_WEEKDAYS_FULL[date.getDay()]}ที่ ${date.getDate()} ${
+    THAI_MONTH_FULL[date.getMonth()]
+  } ${date.getFullYear() + 543}`;
+}
+
+function formatReportDateText(value: string | null | undefined) {
+  if (!value) return "-";
+
+  const text = String(value).trim();
+
+  if (!text) return "-";
+
+  const isoDateText = text.slice(0, 10);
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(isoDateText)) {
+    return formatDateThaiLong(isoDateText);
+  }
+
+  // แปลงปี ค.ศ. ในข้อความวันที่ไทย เช่น
+  // "วันพฤหัสบดีที่ 11 มิถุนายน 2026" -> "วันพฤหัสบดีที่ 11 มิถุนายน 2569"
+  return text.replace(/\b(19\d{2}|20\d{2})\b/g, (yearText) => {
+    const yearValue = Number(yearText);
+
+    if (!Number.isFinite(yearValue)) {
+      return yearText;
+    }
+
+    return String(yearValue + 543);
+  });
 }
 
 function getCalendarTitle(date: Date) {
@@ -612,19 +658,40 @@ function getCallNote(row: PatrolReportDisplayRow) {
 
 function getOperatorText(row: PatrolReportDisplayRow) {
   const employeeCode = getEmployeeCode(row);
-  const positionName = getPositionName(row);
+  const operatorName = row.operatorName ?? row.operator_name ?? null;
 
   const hasEmployeeCode = employeeCode !== "-";
+
+  if (operatorName) {
+    const operatorNameText = String(operatorName).trim();
+
+    if (operatorNameText) {
+      // แสดงเป็น "รหัสพนักงาน - ชื่อ นามสกุล"
+      // กันกรณี backend ส่งรหัสพนักงานนำหน้ามาแล้ว จะไม่ซ้ำเป็น 540386 - 540386 - ชื่อ
+      if (
+        hasEmployeeCode &&
+        !operatorNameText.startsWith(`${employeeCode} -`) &&
+        !operatorNameText.startsWith(`${employeeCode} –`) &&
+        operatorNameText !== employeeCode
+      ) {
+        return `${employeeCode} - ${operatorNameText}`;
+      }
+
+      return operatorNameText;
+    }
+  }
+
+  const positionName = getPositionName(row);
   const hasPositionName = positionName !== "-";
 
   if (hasEmployeeCode && hasPositionName) {
-    return `${employeeCode} – ${positionName}`;
+    return `${employeeCode} - ${positionName}`;
   }
 
   if (hasEmployeeCode) return employeeCode;
   if (hasPositionName) return positionName;
 
-  return row.operatorName ?? row.operator_name ?? "-";
+  return "-";
 }
 
 function getContractCodeText(contractCode: string | null | undefined) {
@@ -647,7 +714,8 @@ function getDepartmentOptionLabel(departmentName: string, departmentId: number) 
     return `ภาค ${departmentId}`;
   }
 
-  return `${departmentId} - ${name}`;
+  // แสดงเฉพาะชื่อ ไม่แสดงเลข id นำหน้า
+  return name;
 }
 
 function getDivisionOptionLabel(divisionName: string, divisionId: number) {
@@ -657,7 +725,8 @@ function getDivisionOptionLabel(divisionName: string, divisionId: number) {
     return `เขต ${divisionId}`;
   }
 
-  return `${divisionId} - ${name}`;
+  // แสดงเฉพาะชื่อ ไม่แสดงเลข id นำหน้า
+  return name;
 }
 
 function getRouteOptionLabel(routeName: string, routeId: number) {
@@ -667,7 +736,8 @@ function getRouteOptionLabel(routeName: string, routeId: number) {
     return `เส้นทาง ${routeId}`;
   }
 
-  return `${routeId} - ${name}`;
+  // แสดงเฉพาะชื่อ ไม่แสดงเลข id นำหน้า
+  return name;
 }
 
 function getLocationOptionLabel(
@@ -678,12 +748,14 @@ function getLocationOptionLabel(
   const contractText = getContractCodeText(contractCode);
   const locationText = locationName.trim();
 
-  if (contractText !== "-" && locationText) {
-    return `${contractText} - ${locationText}`;
+  // แสดงเฉพาะชื่อหน่วยงาน ไม่แสดงเลข id นำหน้า
+  if (locationText) {
+    return locationText;
   }
 
-  if (locationText) {
-    return `${locationId} - ${locationText}`;
+  // ถ้าไม่มีชื่อหน่วยงานจริง ๆ ค่อยแสดงรหัสสัญญาแทน
+  if (contractText !== "-") {
+    return contractText;
   }
 
   return `หน่วยงาน ${locationId}`;
@@ -697,16 +769,17 @@ function getEmployeeOptionLabel(
   const employeeNameText = employeeName?.trim();
   const positionNameText = positionName?.trim();
 
+  // แสดงเฉพาะชื่อ/ตำแหน่ง ไม่แสดงรหัสพนักงานนำหน้า
   if (employeeNameText && positionNameText) {
-    return `${employeeCode} - ${employeeNameText} (${positionNameText})`;
+    return `${employeeNameText} (${positionNameText})`;
   }
 
   if (employeeNameText) {
-    return `${employeeCode} - ${employeeNameText}`;
+    return employeeNameText;
   }
 
   if (positionNameText) {
-    return `${employeeCode} - ${positionNameText}`;
+    return positionNameText;
   }
 
   return employeeCode;
@@ -1808,7 +1881,7 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                             {getScheduleText(row)}
                           </td>
 
-                          <td>{row.dateText}</td>
+                          <td>{formatReportDateText(row.dateText)}</td>
 
                           <td>
                             <ReportTimePhotoCell
@@ -1980,7 +2053,7 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
 
                         <div className={styles.detailRow}>
                           <span>วันที่</span>
-                          <strong>{row.dateText}</strong>
+                          <strong>{formatReportDateText(row.dateText)}</strong>
                         </div>
 
                         <div className={styles.detailRow}>

@@ -5,11 +5,11 @@ import type {
   SiteLocationFormValues,
 } from "../types/siteLocation";
 
-const BASE_PATH = "/api/site-locations";
+const BASE_PATH = "/site-locations";
 
 export const siteLocationService = {
   async getSiteLocations(
-    params?: GetSiteLocationsParams
+    params?: GetSiteLocationsParams,
   ): Promise<SiteLocation[]> {
     return api.get<SiteLocation[]>(BASE_PATH, params);
   },
@@ -27,21 +27,21 @@ export const siteLocationService = {
   },
 
   async createSiteLocation(
-    payload: SiteLocationFormValues
+    payload: SiteLocationFormValues,
   ): Promise<SiteLocation> {
     return api.post<SiteLocation>(BASE_PATH, payload);
   },
 
   async updateSiteLocation(
     siteLocationId: number,
-    payload: Partial<SiteLocationFormValues>
+    payload: Partial<SiteLocationFormValues>,
   ): Promise<SiteLocation> {
     return api.patch<SiteLocation>(`${BASE_PATH}/${siteLocationId}`, payload);
   },
 
   async deleteSiteLocation(
     siteLocationId: number,
-    updated_by: string
+    updated_by: string,
   ): Promise<SiteLocation> {
     return api.delete<SiteLocation>(`${BASE_PATH}/${siteLocationId}`, {
       updated_by,

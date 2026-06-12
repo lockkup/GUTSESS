@@ -36,6 +36,11 @@ UNPLANNED_COLUMN_LAST_NAME = "last_name"
 UNPLANNED_COLUMN_DEPARTMENT_NAME = "department_name"
 UNPLANNED_COLUMN_DIVISION_NAME = "division_name"
 
+EMPLOYEE_FIRST_NAME_COLUMN = "first_name"
+EMPLOYEE_LAST_NAME_COLUMN = "last_name"
+OPERATOR_FIRST_NAME_ALIAS = "operator_first_name"
+OPERATOR_LAST_NAME_ALIAS = "operator_last_name"
+
 
 CHECKIN_IMAGE_ALIAS = "checkin_image_url"
 CHECKOUT_IMAGE_ALIAS = "checkout_image_url"
@@ -306,14 +311,41 @@ def _normalize_status(value: Any) -> PatrolStatus:
     return cast(PatrolStatus, PatrolReportConstants.STATUS_PENDING)
 
 
-def _build_operator_name(employee_code: Any, position_name: Any) -> str | None:
-    employee_code_text = str(employee_code).strip() if employee_code is not None else ""
+def _build_operator_name(
+    employee_code: Any,
+    position_name: Any,
+    first_name: Any = None,
+    last_name: Any = None,
+) -> str | None:
+    first_name_text = _to_optional_text(first_name)
+    last_name_text = _to_optional_text(last_name)
+
+    full_name = " ".join(
+        part
+        for part in (first_name_text, last_name_text)
+        if part
+    ).strip()
+
+    # ต้องการให้คอลัมน์ผู้ดำเนินการแสดง ชื่อ-นามสกุล เป็นหลัก
+    if full_name:
+        return full_name
+
+    employee_code_text = (
+        str(employee_code).strip()
+        if employee_code is not None
+        else ""
+    )
 
     if not employee_code_text:
         return None
 
-    position_name_text = str(position_name).strip() if position_name is not None else ""
+    position_name_text = (
+        str(position_name).strip()
+        if position_name is not None
+        else ""
+    )
 
+    # fallback สำหรับกรณีข้อมูลเก่ายังไม่มี first_name / last_name
     if position_name_text:
         return f"{employee_code_text} - {position_name_text}"
 
@@ -495,6 +527,30 @@ def _select_first_view_column(
         return f"COALESCE({', '.join(existing_columns)}) AS {alias}"
 
     return f"NULL AS {alias}"
+
+
+def _select_operator_employee_name_column(
+    column_names: set[str],
+    column_name: str,
+    *,
+    alias: str,
+) -> str:
+    """
+    ดึงชื่อ/นามสกุลผู้ดำเนินการจาก employees เป็นหลัก
+    และ fallback ไปใช้ column ใน view ถ้า view มี first_name / last_name อยู่แล้ว
+    """
+    view_value = (
+        f"NULLIF(TRIM(v.{column_name}), '')"
+        if column_name in column_names
+        else "NULL"
+    )
+
+    return (
+        f"COALESCE("
+        f"NULLIF(TRIM(em_operator.{column_name}), ''), "
+        f"{view_value}"
+        f") AS {alias}"
+    )
 
 
 def _get_time_record_flags(
@@ -751,6 +807,8 @@ def _map_patrol_report_row(
         operatorName=_build_operator_name(
             row.get(PatrolReportConstants.COLUMN_EMPLOYEE_CODE),
             row.get(PatrolReportConstants.COLUMN_POSITION_NAME),
+            row.get(OPERATOR_FIRST_NAME_ALIAS),
+            row.get(OPERATOR_LAST_NAME_ALIAS),
         ),
 
         contactDetail=_to_optional_text(
@@ -769,7 +827,31 @@ def _map_patrol_report_row(
 
 def get_patrol_report_filter_options(
     db: Session,
+    *,
+    plan_mode: ReportPlanMode = "planned",
+    shift_id: int | None = None,
+    department_id: int | None = None,
+    division_id: int | None = None,
+    route_id: int | None = None,
+    location_id: int | None = None,
 ) -> PatrolReportFilterOptionsResponse:
+    """
+    คืนค่า options สำหรับหน้า PatrolReport
+
+    สำคัญ:
+    - รายสายตรวจต้องไม่ดึง employees ทั้งระบบ
+    - ต้องดึงจากข้อมูลรายงาน แล้วกรองตาม ภาค/เขต/เส้นทาง/รายหน่วยงาน/ผลัด
+    - ฟังก์ชันยังรองรับการเรียกแบบเดิม get_patrol_report_filter_options(db)
+      เพราะทุก filter เป็น optional
+    """
+    params: dict[str, Any] = {
+        "shift_id": shift_id,
+        "department_id": department_id,
+        "division_id": division_id,
+        "route_id": route_id,
+        "location_id": location_id,
+    }
+
     departments_sql = text(
         """
         SELECT
@@ -779,6 +861,7 @@ def get_patrol_report_filter_options(
                 CONCAT('ภาค ', dp.department_id)
             ) AS department_name
         FROM departments dp
+        WHERE dp.is_active = 1
         ORDER BY dp.department_id
         """
     )
@@ -793,6 +876,11 @@ def get_patrol_report_filter_options(
             ) AS division_name,
             dv.department_id
         FROM divisions dv
+        INNER JOIN departments dp
+            ON dv.department_id = dp.department_id
+           AND dp.is_active = 1
+        WHERE dv.is_active = 1
+          AND (:department_id IS NULL OR dv.department_id = :department_id)
         ORDER BY dv.department_id, dv.division_id
         """
     )
@@ -805,9 +893,15 @@ def get_patrol_report_filter_options(
             dv.department_id,
             rsl.division_id
         FROM route_site_location rsl
-        LEFT JOIN divisions dv
+        INNER JOIN divisions dv
             ON rsl.division_id = dv.division_id
+           AND dv.is_active = 1
+        INNER JOIN departments dp
+            ON dv.department_id = dp.department_id
+           AND dp.is_active = 1
         WHERE rsl.routes_id IS NOT NULL
+          AND (:department_id IS NULL OR dv.department_id = :department_id)
+          AND (:division_id IS NULL OR rsl.division_id = :division_id)
         ORDER BY dv.department_id, rsl.division_id, rsl.routes_id
         """
     )
@@ -822,11 +916,18 @@ def get_patrol_report_filter_options(
             dv.department_id,
             rsl.division_id
         FROM route_site_location rsl
-        LEFT JOIN site_location sl
+        INNER JOIN site_location sl
             ON rsl.location_id = sl.location_id
-        LEFT JOIN divisions dv
+        INNER JOIN divisions dv
             ON rsl.division_id = dv.division_id
+           AND dv.is_active = 1
+        INNER JOIN departments dp
+            ON dv.department_id = dp.department_id
+           AND dp.is_active = 1
         WHERE sl.location_id IS NOT NULL
+          AND (:department_id IS NULL OR dv.department_id = :department_id)
+          AND (:division_id IS NULL OR rsl.division_id = :division_id)
+          AND (:route_id IS NULL OR rsl.routes_id = :route_id)
         ORDER BY
             dv.department_id,
             rsl.division_id,
@@ -836,55 +937,192 @@ def get_patrol_report_filter_options(
         """
     )
 
-    employees_sql = text(
-        """
-        SELECT DISTINCT
-            em.employee_code,
-            NULL AS employee_name,
-            po.position_name
-        FROM employees em
-        LEFT JOIN positions po
-            ON em.position_id = po.position_id
-        WHERE em.employee_code IS NOT NULL
-        ORDER BY em.employee_code
-        """
-    )
+    if plan_mode == "outside_plan":
+        view_column_names = _get_view_column_names(db, UNPLANNED_VIEW_NAME)
+        has_department_name = UNPLANNED_COLUMN_DEPARTMENT_NAME in view_column_names
+        has_division_name = UNPLANNED_COLUMN_DIVISION_NAME in view_column_names
+        has_shift_id = PatrolReportConstants.COLUMN_SHIFT_ID in view_column_names
+
+        join_parts: list[str] = []
+        where_parts: list[str] = [
+            f"v.{PatrolReportConstants.COLUMN_EMPLOYEE_CODE} IS NOT NULL",
+        ]
+
+        join_parts.append(
+            f"""
+            INNER JOIN employees em
+                ON em.employee_code
+                    = v.{PatrolReportConstants.COLUMN_EMPLOYEE_CODE}
+            """
+        )
+        join_parts.append(
+            """
+            LEFT JOIN positions po
+                ON em.position_id = po.position_id
+            """
+        )
+        join_parts.append(
+            f"""
+            LEFT JOIN site_location sl
+                ON TRIM(sl.contract_code)
+                    = TRIM(v.{PatrolReportConstants.COLUMN_CONTRACT_CODE})
+                AND TRIM(sl.location_name)
+                    = TRIM(v.{PatrolReportConstants.COLUMN_LOCATION_NAME})
+            """
+        )
+
+        if has_department_name:
+            join_parts.append(
+                f"""
+                LEFT JOIN departments dp
+                    ON TRIM(dp.department_name)
+                        = TRIM(v.{UNPLANNED_COLUMN_DEPARTMENT_NAME})
+                """
+            )
+            where_parts.append(
+                "(:department_id IS NULL OR dp.department_id = :department_id)",
+            )
+        elif department_id is not None:
+            where_parts.append("1 = 0")
+
+        if has_division_name:
+            if has_department_name:
+                join_parts.append(
+                    f"""
+                    LEFT JOIN divisions dv
+                        ON TRIM(dv.division_name)
+                            = TRIM(v.{UNPLANNED_COLUMN_DIVISION_NAME})
+                        AND (
+                            dp.department_id IS NULL
+                            OR dv.department_id = dp.department_id
+                        )
+                    """
+                )
+            else:
+                join_parts.append(
+                    f"""
+                    LEFT JOIN divisions dv
+                        ON TRIM(dv.division_name)
+                            = TRIM(v.{UNPLANNED_COLUMN_DIVISION_NAME})
+                    """
+                )
+
+            where_parts.append(
+                "(:division_id IS NULL OR dv.division_id = :division_id)",
+            )
+        elif division_id is not None:
+            where_parts.append("1 = 0")
+
+        if has_shift_id:
+            where_parts.append(
+                f"(:shift_id IS NULL OR v.{PatrolReportConstants.COLUMN_SHIFT_ID} = :shift_id)",
+            )
+        elif shift_id is not None:
+            where_parts.append("1 = 0")
+
+        where_parts.append("(:location_id IS NULL OR sl.location_id = :location_id)")
+        where_parts.append(
+            """
+            (
+                :route_id IS NULL
+                OR EXISTS (
+                    SELECT 1
+                    FROM route_site_location rsl_filter
+                    WHERE rsl_filter.location_id = sl.location_id
+                      AND rsl_filter.routes_id = :route_id
+                )
+            )
+            """,
+        )
+
+        employees_sql = text(
+            f"""
+            SELECT DISTINCT
+                em.employee_code,
+                NULLIF(
+                    TRIM(
+                        CONCAT_WS(
+                            ' ',
+                            NULLIF(TRIM(em.first_name), ''),
+                            NULLIF(TRIM(em.last_name), '')
+                        )
+                    ),
+                    ''
+                ) AS employee_name,
+                po.position_name
+            FROM {UNPLANNED_VIEW_NAME} v
+            {' '.join(join_parts)}
+            WHERE {' AND '.join(where_parts)}
+            ORDER BY employee_name, em.employee_code
+            """
+        )
+    else:
+        employees_sql = text(
+            f"""
+            SELECT DISTINCT
+                em.employee_code,
+                NULLIF(
+                    TRIM(
+                        CONCAT_WS(
+                            ' ',
+                            NULLIF(TRIM(em.first_name), ''),
+                            NULLIF(TRIM(em.last_name), '')
+                        )
+                    ),
+                    ''
+                ) AS employee_name,
+                po.position_name
+            FROM {PatrolReportConstants.VIEW_NAME} v
+            INNER JOIN employees em
+                ON em.employee_code
+                    = v.{PatrolReportConstants.COLUMN_EMPLOYEE_CODE}
+            LEFT JOIN positions po
+                ON em.position_id = po.position_id
+            WHERE v.{PatrolReportConstants.COLUMN_EMPLOYEE_CODE} IS NOT NULL
+              AND (:shift_id IS NULL OR v.{PatrolReportConstants.COLUMN_SHIFT_ID} = :shift_id)
+              AND (:department_id IS NULL OR v.{PatrolReportConstants.COLUMN_DEPARTMENT_ID} = :department_id)
+              AND (:division_id IS NULL OR v.{PatrolReportConstants.COLUMN_DIVISION_ID} = :division_id)
+              AND (:route_id IS NULL OR v.{PatrolReportConstants.COLUMN_ROUTE_ID} = :route_id)
+              AND (:location_id IS NULL OR v.{PatrolReportConstants.COLUMN_LOCATION_ID} = :location_id)
+            ORDER BY employee_name, em.employee_code
+            """
+        )
 
     try:
         department_rows = db.execute(departments_sql).mappings().all()
-        division_rows = db.execute(divisions_sql).mappings().all()
-        route_rows = db.execute(routes_sql).mappings().all()
-        location_rows = db.execute(locations_sql).mappings().all()
-        employee_rows = db.execute(employees_sql).mappings().all()
+        division_rows = db.execute(divisions_sql, params).mappings().all()
+        route_rows = db.execute(routes_sql, params).mappings().all()
+        location_rows = db.execute(locations_sql, params).mappings().all()
+        employee_rows = db.execute(employees_sql, params).mappings().all()
 
         departments: list[PatrolDepartmentOption] = []
         for row in department_rows:
-            department_id = _to_optional_positive_int(row.get("department_id"))
-            if department_id is None:
+            department_id_value = _to_optional_positive_int(row.get("department_id"))
+            if department_id_value is None:
                 continue
 
             departments.append(
                 PatrolDepartmentOption(
-                    departmentId=department_id,
+                    departmentId=department_id_value,
                     departmentName=_to_text(
                         row.get("department_name"),
-                        f"ภาค {department_id}",
+                        f"ภาค {department_id_value}",
                     ),
                 )
             )
 
         divisions: list[PatrolDivisionOption] = []
         for row in division_rows:
-            division_id = _to_optional_positive_int(row.get("division_id"))
-            if division_id is None:
+            division_id_value = _to_optional_positive_int(row.get("division_id"))
+            if division_id_value is None:
                 continue
 
             divisions.append(
                 PatrolDivisionOption(
-                    divisionId=division_id,
+                    divisionId=division_id_value,
                     divisionName=_to_text(
                         row.get("division_name"),
-                        f"เขต {division_id}",
+                        f"เขต {division_id_value}",
                     ),
                     departmentId=_to_optional_positive_int(
                         row.get("department_id"),
@@ -894,16 +1132,16 @@ def get_patrol_report_filter_options(
 
         routes: list[PatrolRouteOption] = []
         for row in route_rows:
-            route_id = _to_optional_positive_int(row.get("route_id"))
-            if route_id is None:
+            route_id_value = _to_optional_positive_int(row.get("route_id"))
+            if route_id_value is None:
                 continue
 
             routes.append(
                 PatrolRouteOption(
-                    routeId=route_id,
+                    routeId=route_id_value,
                     routeName=_to_text(
                         row.get("route_name"),
-                        f"เส้นทาง {route_id}",
+                        f"เส้นทาง {route_id_value}",
                     ),
                     departmentId=_to_optional_positive_int(
                         row.get("department_id"),
@@ -914,13 +1152,13 @@ def get_patrol_report_filter_options(
 
         locations: list[PatrolLocationOption] = []
         for row in location_rows:
-            location_id = _to_optional_positive_int(row.get("location_id"))
-            if location_id is None:
+            location_id_value = _to_optional_positive_int(row.get("location_id"))
+            if location_id_value is None:
                 continue
 
             locations.append(
                 PatrolLocationOption(
-                    locationId=location_id,
+                    locationId=location_id_value,
                     contractCode=_to_text(row.get("contract_code")),
                     locationName=_to_text(row.get("location_name")),
                     routeId=_to_optional_positive_int(row.get("route_id")),
@@ -959,7 +1197,6 @@ def get_patrol_report_filter_options(
             detail=PATROL_REPORT_FETCH_FAILED_DETAIL,
         ) from exc
 
-
 def _get_patrol_report_unplanned_rows(
     db: Session,
     *,
@@ -992,6 +1229,16 @@ def _get_patrol_report_unplanned_rows(
         view_column_names,
         *CHECKOUT_IMAGE_COLUMN_CANDIDATES,
         alias=CHECKOUT_IMAGE_ALIAS,
+    )
+    operator_first_name_select = _select_operator_employee_name_column(
+        view_column_names,
+        EMPLOYEE_FIRST_NAME_COLUMN,
+        alias=OPERATOR_FIRST_NAME_ALIAS,
+    )
+    operator_last_name_select = _select_operator_employee_name_column(
+        view_column_names,
+        EMPLOYEE_LAST_NAME_COLUMN,
+        alias=OPERATOR_LAST_NAME_ALIAS,
     )
 
     join_parts: list[str] = []
@@ -1044,6 +1291,14 @@ def _get_patrol_report_unplanned_rows(
         """
     )
 
+    join_parts.append(
+        f"""
+        LEFT JOIN employees em_operator
+            ON em_operator.employee_code
+                = v.{PatrolReportConstants.COLUMN_EMPLOYEE_CODE}
+        """
+    )
+
     route_id_select = """
         (
             SELECT MIN(rsl.routes_id)
@@ -1078,6 +1333,8 @@ def _get_patrol_report_unplanned_rows(
             {checkin_image_select},
             {checkout_image_select},
             v.{PatrolReportConstants.COLUMN_EMPLOYEE_CODE},
+            {operator_first_name_select},
+            {operator_last_name_select},
             v.{PatrolReportConstants.COLUMN_POSITION_NAME},
 
             NULL AS {PatrolReportConstants.COLUMN_EFFECTIVE_FROM},
@@ -1341,6 +1598,16 @@ def get_patrol_report_rows(
         *CHECKOUT_IMAGE_COLUMN_CANDIDATES,
         alias=CHECKOUT_IMAGE_ALIAS,
     )
+    operator_first_name_select = _select_operator_employee_name_column(
+        view_column_names,
+        EMPLOYEE_FIRST_NAME_COLUMN,
+        alias=OPERATOR_FIRST_NAME_ALIAS,
+    )
+    operator_last_name_select = _select_operator_employee_name_column(
+        view_column_names,
+        EMPLOYEE_LAST_NAME_COLUMN,
+        alias=OPERATOR_LAST_NAME_ALIAS,
+    )
 
     sql_parts = [
         f"""
@@ -1355,6 +1622,8 @@ def get_patrol_report_rows(
             {checkin_image_select},
             {checkout_image_select},
             v.{PatrolReportConstants.COLUMN_EMPLOYEE_CODE},
+            {operator_first_name_select},
+            {operator_last_name_select},
             v.{PatrolReportConstants.COLUMN_POSITION_NAME},
             v.{PatrolReportConstants.COLUMN_EFFECTIVE_FROM},
             v.{PatrolReportConstants.COLUMN_BY_CONTRACT},
@@ -1370,6 +1639,9 @@ def get_patrol_report_rows(
             {call_note_select},
             NULL AS last_inspection_date
         FROM {PatrolReportConstants.VIEW_NAME} v
+        LEFT JOIN employees em_operator
+            ON em_operator.employee_code
+                = v.{PatrolReportConstants.COLUMN_EMPLOYEE_CODE}
         WHERE v.{PatrolReportConstants.COLUMN_WORKDAY}
             BETWEEN :workday_start AND :workday_end
         """
