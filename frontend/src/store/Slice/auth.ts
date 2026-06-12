@@ -71,8 +71,8 @@ const AUTH_EXPIRES_AT_KEY = "auth_expires_at";
 const EMP_CODE_KEY = "emp_code";
 const DISPLAY_NAME_KEY = "display_name";
 
-// 2 ชั่วโมง
-const SESSION_TIMEOUT_MS = 2 * 60 * 60 * 1000;
+// 12 ชั่วโมง เหมาะกับกะงาน 08:00-20:00 / 20:00-08:00
+const SESSION_TIMEOUT_MS = 12 * 60 * 60 * 1000;
 
 function isLoginData(data: unknown): data is LoginData {
   if (!data || typeof data !== "object") return false;
@@ -84,26 +84,47 @@ function getDisplayName(emp: AuthEmployee): string {
   return `${emp.first_name} ${emp.last_name}`.trim() || emp.employee_code;
 }
 
+function hasStoredAuthPayload(): boolean {
+  // ใช้ auth_employee เป็นหลัก เพราะหน้าเว็บต้องใช้ข้อมูลพนักงานตอน refresh
+  return Boolean(localStorage.getItem(AUTH_EMPLOYEE_KEY));
+}
+
+function touchAuthSession() {
+  const expiresAt = Date.now() + SESSION_TIMEOUT_MS;
+  localStorage.setItem(AUTH_EXPIRES_AT_KEY, String(expiresAt));
+}
+
 function isAuthSessionExpired(): boolean {
   const rawExpiresAt = localStorage.getItem(AUTH_EXPIRES_AT_KEY);
 
-  if (!rawExpiresAt) return true;
+  // รองรับ session เก่าที่ login ไว้ก่อนมี auth_expires_at
+  // ถ้ามี auth_employee อยู่ ให้ต่ออายุ session แทนการเด้งกลับหน้า login
+  if (!rawExpiresAt) {
+    if (hasStoredAuthPayload()) {
+      touchAuthSession();
+      return false;
+    }
+
+    return true;
+  }
 
   const expiresAt = Number(rawExpiresAt);
 
-  if (!Number.isFinite(expiresAt)) return true;
+  if (!Number.isFinite(expiresAt)) {
+    return true;
+  }
 
   return Date.now() > expiresAt;
 }
 
 function saveAuthSession(emp: AuthEmployee, token: string | null) {
   const displayName = getDisplayName(emp);
-  const expiresAt = Date.now() + SESSION_TIMEOUT_MS;
 
   localStorage.setItem(AUTH_EMPLOYEE_KEY, JSON.stringify(emp));
   localStorage.setItem(EMP_CODE_KEY, emp.employee_code);
   localStorage.setItem(DISPLAY_NAME_KEY, displayName);
-  localStorage.setItem(AUTH_EXPIRES_AT_KEY, String(expiresAt));
+
+  touchAuthSession();
 
   if (token) {
     localStorage.setItem(AUTH_TOKEN_KEY, token);
@@ -135,7 +156,10 @@ function loadStoredEmployee(): AuthEmployee | null {
 
     const raw = localStorage.getItem(AUTH_EMPLOYEE_KEY);
 
-    if (!raw) return null;
+    if (!raw) {
+      clearAuthSession();
+      return null;
+    }
 
     const parsed = JSON.parse(raw) as AuthEmployee;
 
@@ -143,6 +167,9 @@ function loadStoredEmployee(): AuthEmployee | null {
       clearAuthSession();
       return null;
     }
+
+    // refresh หน้าเว็บแล้วให้ต่ออายุ session
+    touchAuthSession();
 
     return parsed;
   } catch (error) {
@@ -158,11 +185,17 @@ function loadStoredToken(): string | null {
     return null;
   }
 
-  return (
+  const token =
     localStorage.getItem(AUTH_TOKEN_KEY) ||
     localStorage.getItem(ACCESS_TOKEN_KEY) ||
-    null
-  );
+    null;
+
+  if (token) {
+    // refresh หน้าเว็บแล้วให้ต่ออายุ session
+    touchAuthSession();
+  }
+
+  return token;
 }
 
 const storedEmployee = loadStoredEmployee();

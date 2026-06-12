@@ -888,21 +888,23 @@ def get_patrol_report_filter_options(
     routes_sql = text(
         """
         SELECT DISTINCT
-            rsl.routes_id AS route_id,
-            CONCAT('เส้นทาง ', rsl.routes_id) AS route_name,
+            r.route_id AS route_id,
+            COALESCE(
+                NULLIF(TRIM(r.route_name), ''),
+                CONCAT('เส้นทาง ', r.route_id)
+            ) AS route_name,
             dv.department_id,
-            rsl.division_id
-        FROM route_site_location rsl
-        INNER JOIN divisions dv
-            ON rsl.division_id = dv.division_id
-           AND dv.is_active = 1
+            dv.division_id
+        FROM routes r
+        CROSS JOIN divisions dv
         INNER JOIN departments dp
             ON dv.department_id = dp.department_id
            AND dp.is_active = 1
-        WHERE rsl.routes_id IS NOT NULL
+        WHERE r.is_active = 1
+          AND dv.is_active = 1
           AND (:department_id IS NULL OR dv.department_id = :department_id)
-          AND (:division_id IS NULL OR rsl.division_id = :division_id)
-        ORDER BY dv.department_id, rsl.division_id, rsl.routes_id
+          AND (:division_id IS NULL OR dv.division_id = :division_id)
+        ORDER BY dv.department_id, dv.division_id, r.route_id
         """
     )
 
@@ -912,12 +914,17 @@ def get_patrol_report_filter_options(
             sl.location_id,
             sl.contract_code,
             sl.location_name,
-            rsl.routes_id AS route_id,
+            r.route_id AS route_id,
             dv.department_id,
             rsl.division_id
         FROM route_site_location rsl
+        INNER JOIN routes r
+            ON r.route_id = rsl.routes_id
+           AND r.is_active = 1
         INNER JOIN site_location sl
             ON rsl.location_id = sl.location_id
+           AND sl.is_active = 1
+           AND COALESCE(sl.mark_flag, 0) = 0
         INNER JOIN divisions dv
             ON rsl.division_id = dv.division_id
            AND dv.is_active = 1
@@ -925,13 +932,15 @@ def get_patrol_report_filter_options(
             ON dv.department_id = dp.department_id
            AND dp.is_active = 1
         WHERE sl.location_id IS NOT NULL
+          AND rsl.is_active = 1
+          AND COALESCE(rsl.mark_flag, 0) = 0
           AND (:department_id IS NULL OR dv.department_id = :department_id)
           AND (:division_id IS NULL OR rsl.division_id = :division_id)
-          AND (:route_id IS NULL OR rsl.routes_id = :route_id)
+          AND (:route_id IS NULL OR r.route_id = :route_id)
         ORDER BY
             dv.department_id,
             rsl.division_id,
-            rsl.routes_id,
+            r.route_id,
             sl.contract_code,
             sl.location_name
         """
@@ -1028,8 +1037,13 @@ def get_patrol_report_filter_options(
                 OR EXISTS (
                     SELECT 1
                     FROM route_site_location rsl_filter
+                    INNER JOIN routes r_filter
+                        ON r_filter.route_id = rsl_filter.routes_id
+                       AND r_filter.is_active = 1
                     WHERE rsl_filter.location_id = sl.location_id
                       AND rsl_filter.routes_id = :route_id
+                      AND rsl_filter.is_active = 1
+                      AND COALESCE(rsl_filter.mark_flag, 0) = 0
                 )
             )
             """,
@@ -1303,7 +1317,12 @@ def _get_patrol_report_unplanned_rows(
         (
             SELECT MIN(rsl.routes_id)
             FROM route_site_location rsl
+            INNER JOIN routes r
+                ON r.route_id = rsl.routes_id
+               AND r.is_active = 1
             WHERE rsl.location_id = sl.location_id
+              AND rsl.is_active = 1
+              AND COALESCE(rsl.mark_flag, 0) = 0
         )
     """
 
@@ -1393,8 +1412,13 @@ def _get_patrol_report_unplanned_rows(
             AND EXISTS (
                 SELECT 1
                 FROM route_site_location rsl_filter
+                INNER JOIN routes r_filter
+                    ON r_filter.route_id = rsl_filter.routes_id
+                   AND r_filter.is_active = 1
                 WHERE rsl_filter.location_id = sl.location_id
                   AND rsl_filter.routes_id = :route_id
+                  AND rsl_filter.is_active = 1
+                  AND COALESCE(rsl_filter.mark_flag, 0) = 0
             )
             """
         )

@@ -1,3 +1,5 @@
+// src/lib/api.ts
+
 const rawApiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? "").trim();
 
 /**
@@ -37,8 +39,53 @@ export type RequestOptions = Omit<RequestInit, "body"> & {
 
 const IS_DEV = import.meta.env.DEV;
 
+const AUTH_TOKEN_KEY = "auth_token";
+const ACCESS_TOKEN_KEY = "access_token";
+
+function getStoredAuthToken(): string | null {
+  return (
+    localStorage.getItem(AUTH_TOKEN_KEY) ||
+    localStorage.getItem(ACCESS_TOKEN_KEY) ||
+    null
+  );
+}
+
+function normalizePath(path: string) {
+  let normalizedPath = path.startsWith("/") ? path : `/${path}`;
+
+  /**
+   * กันปัญหา URL ซ้ำเป็น /api/api/...
+   *
+   * เช่น:
+   * API_ORIGIN = https://domain.com/api
+   * path       = /api/patrol-report
+   *
+   * ถ้าไม่ตัด จะกลายเป็น:
+   * https://domain.com/api/api/patrol-report
+   */
+  if (
+    API_ORIGIN.endsWith("/api") &&
+    (normalizedPath === "/api" || normalizedPath.startsWith("/api/"))
+  ) {
+    normalizedPath = normalizedPath.replace(/^\/api(?=\/|$)/, "");
+  }
+
+  return normalizedPath;
+}
+
+function isPublicAuthPath(path: string) {
+  const normalizedPath = normalizePath(path);
+
+  return (
+    normalizedPath === "/auth/login" ||
+    normalizedPath.startsWith("/auth/login") ||
+    normalizedPath === "/auth/forgot-password" ||
+    normalizedPath.startsWith("/auth/forgot-password")
+  );
+}
+
 function buildUrl(path: string, params?: QueryParams) {
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const normalizedPath = normalizePath(path);
 
   const url = new URL(`${API_ORIGIN}${normalizedPath}`);
 
@@ -124,6 +171,16 @@ async function request<T>(
     requestHeaders.set("Content-Type", "application/json");
   }
 
+  /**
+   * แนบ token ให้ API หลัง login
+   * ช่วยให้ refresh หน้าแล้วเรียก API ที่ต้อง login ได้ต่อ
+   */
+  const token = getStoredAuthToken();
+
+  if (token && !isPublicAuthPath(path) && !requestHeaders.has("Authorization")) {
+    requestHeaders.set("Authorization", `Bearer ${token}`);
+  }
+
   // สำหรับ LocalTunnel เท่านั้น
   if (API_ORIGIN.includes(".loca.lt")) {
     requestHeaders.set("bypass-tunnel-reminder", "1");
@@ -134,6 +191,7 @@ async function request<T>(
       method: rest.method ?? "GET",
       url,
       params,
+      hasToken: Boolean(token),
       body: isFormData ? "[FormData]" : body,
     });
   }
@@ -170,6 +228,10 @@ async function request<T>(
         ? (responseData as Record<string, unknown>).detail
         : responseData,
     );
+
+    if (response.status === 401) {
+      throw new Error(errorMessage || "Unauthorized หรือ session หมดอายุ");
+    }
 
     throw new Error(errorMessage || `HTTP ${response.status}`);
   }

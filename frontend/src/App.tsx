@@ -99,19 +99,59 @@ const ACCESS_TOKEN_KEY = "access_token";
 const AUTH_EXPIRES_AT_KEY = "auth_expires_at";
 const EMP_CODE_KEY = "emp_code";
 const DISPLAY_NAME_KEY = "display_name";
+const APP_ROUTE_KEY = "app_route";
+const APP_CHECK_IN_OUT_MODE_KEY = "app_check_in_out_mode";
+
+// 12 ชั่วโมง ให้ตรงกับ auth.ts
+const SESSION_TIMEOUT_MS = 12 * 60 * 60 * 1000;
+
+const RESTORABLE_ROUTES: Route[] = [
+  "home",
+  "checkpoint",
+  "checkInOut",
+  "patrolReport",
+  "shifts",
+  "faceProfiles",
+];
 
 function getEmployeeDisplayName(emp: AuthEmployee): string {
   return `${emp.first_name} ${emp.last_name}`.trim() || emp.employee_code;
 }
 
+function hasInitialAuthPayload(): boolean {
+  return Boolean(
+    localStorage.getItem(AUTH_EMPLOYEE_KEY) ||
+      localStorage.getItem(AUTH_TOKEN_KEY) ||
+      localStorage.getItem(ACCESS_TOKEN_KEY),
+  );
+}
+
+function touchInitialAuthSession(): number {
+  const expiresAt = Date.now() + SESSION_TIMEOUT_MS;
+  localStorage.setItem(AUTH_EXPIRES_AT_KEY, String(expiresAt));
+
+  return expiresAt;
+}
+
 function isInitialAuthExpired(): boolean {
   const rawExpiresAt = localStorage.getItem(AUTH_EXPIRES_AT_KEY);
 
-  if (!rawExpiresAt) return true;
+  // รองรับ session เก่าที่ login ไว้ก่อนมี auth_expires_at
+  // ถ้ามี auth_employee/auth_token อยู่ ให้ต่ออายุ session แทนการเด้งกลับหน้า login
+  if (!rawExpiresAt) {
+    if (hasInitialAuthPayload()) {
+      touchInitialAuthSession();
+      return false;
+    }
+
+    return true;
+  }
 
   const expiresAt = Number(rawExpiresAt);
 
-  if (!Number.isFinite(expiresAt)) return true;
+  if (!Number.isFinite(expiresAt)) {
+    return true;
+  }
 
   return Date.now() > expiresAt;
 }
@@ -122,6 +162,8 @@ function clearInitialAuthSession() {
   localStorage.removeItem(ACCESS_TOKEN_KEY);
   localStorage.removeItem(AUTH_EXPIRES_AT_KEY);
   localStorage.removeItem(DISPLAY_NAME_KEY);
+  localStorage.removeItem(APP_ROUTE_KEY);
+  localStorage.removeItem(APP_CHECK_IN_OUT_MODE_KEY);
 
   // ตั้งใจไม่ลบ emp_code เพื่อให้ช่องรหัสพนักงานยังจำค่าเดิมได้
   // ถ้าต้องการลบด้วย ให้เปิดบรรทัดนี้
@@ -141,6 +183,8 @@ function loadInitialAppAuth(): InitialAppAuth | null {
       const emp = JSON.parse(rawEmployee) as AuthEmployee;
 
       if (emp?.employee_code) {
+        touchInitialAuthSession();
+
         return {
           employeeCode: emp.employee_code,
           displayName:
@@ -154,6 +198,8 @@ function loadInitialAppAuth(): InitialAppAuth | null {
     const storedDisplayName = localStorage.getItem(DISPLAY_NAME_KEY);
 
     if (storedEmpCode && storedDisplayName) {
+      touchInitialAuthSession();
+
       return {
         employeeCode: storedEmpCode,
         displayName: storedDisplayName,
@@ -165,6 +211,50 @@ function loadInitialAppAuth(): InitialAppAuth | null {
     console.error("loadInitialAppAuth error:", error);
     clearInitialAuthSession();
     return null;
+  }
+}
+
+function loadInitialCheckInOutMode(): "attendance" | "checkpoint" {
+  return localStorage.getItem(APP_CHECK_IN_OUT_MODE_KEY) === "checkpoint"
+    ? "checkpoint"
+    : "attendance";
+}
+
+function loadInitialRoute(): Route {
+  const rawRoute = localStorage.getItem(APP_ROUTE_KEY);
+
+  /**
+   * หน้า checkInOut มี 2 โหมด:
+   * - attendance  = เมนูลงเวลาเข้า-ออกงานปกติ สามารถ restore กลับหน้าเดิมได้
+   * - checkpoint  = มาจากตารางงานสายตรวจ มี state ชั่วคราว เช่น assignmentId/shiftId/passedLocation
+   *                 หลัง refresh state เหล่านี้จะหาย จึงให้กลับหน้า checkpoint แทน
+   */
+  if (rawRoute === "checkInOut") {
+    return loadInitialCheckInOutMode() === "checkpoint"
+      ? "checkpoint"
+      : "checkInOut";
+  }
+
+  if (rawRoute && RESTORABLE_ROUTES.includes(rawRoute as Route)) {
+    return rawRoute as Route;
+  }
+
+  return "home";
+}
+
+function saveCurrentRoute(route: Route) {
+  if (route === "login") {
+    localStorage.removeItem(APP_ROUTE_KEY);
+    localStorage.removeItem(APP_CHECK_IN_OUT_MODE_KEY);
+    return;
+  }
+
+  if (RESTORABLE_ROUTES.includes(route)) {
+    localStorage.setItem(APP_ROUTE_KEY, route);
+  }
+
+  if (route !== "checkInOut") {
+    localStorage.removeItem(APP_CHECK_IN_OUT_MODE_KEY);
   }
 }
 
@@ -211,9 +301,13 @@ export default function App() {
       : loadInitialAppAuth();
 
   const [stack, setStack] = useState<Route[]>(() =>
-    initialAppAuth ? ["home"] : ["login"],
+    initialAppAuth ? [loadInitialRoute()] : ["login"],
   );
   const route = stack[stack.length - 1];
+
+  useEffect(() => {
+    saveCurrentRoute(route);
+  }, [route]);
 
   const [empCode, setEmpCode] = useState(
     () => initialAppAuth?.employeeCode ?? "",
@@ -246,7 +340,19 @@ export default function App() {
   const push = (r: Route) =>
     setStack((s) => (s[s.length - 1] === r ? s : [...s, r]));
 
-  const back = () => setStack((s) => (s.length > 1 ? s.slice(0, -1) : s));
+  const back = () =>
+    setStack((s) => {
+      /**
+       * กรณีเข้าหน้าเดิมจากการ Refresh เช่น patrolReport
+       * stack จะเหลือแค่ ["patrolReport"] ทำให้ย้อนกลับแบบ slice ไม่ได้
+       * ดังนั้นให้ย้อนกลับไปหน้า Home แทน
+       */
+      if (s.length <= 1) {
+        return s[0] === "home" || s[0] === "login" ? s : ["home"];
+      }
+
+      return s.slice(0, -1);
+    });
 
   function clearCheckInOutTimeState() {
     setOpenTimeRecord(null);
@@ -259,6 +365,7 @@ export default function App() {
    * ห้ามล้างข้อมูลใน DB เพราะ time_record บันทึกเรียบร้อยแล้ว
    */
   function clearCheckpointFlowState() {
+    localStorage.removeItem(APP_CHECK_IN_OUT_MODE_KEY);
     setSelectedCheckpoint(null);
     clearCheckInOutTimeState();
     setPunchType("in");
@@ -298,14 +405,39 @@ export default function App() {
   }, [authEmployee]);
 
   useEffect(() => {
+    if (route !== "checkInOut") return;
+    if (!empCode) return;
+
+    /**
+     * กรณี refresh หน้า checkInOut:
+     * - attendance ปกติ ให้เปิดหน้าเดิมและโหลด time_record ที่ค้างอยู่กลับมา
+     * - checkpoint ให้กลับหน้า checkpoint เพราะข้อมูล assignmentId/shiftId/passedLocation เป็น state ชั่วคราว
+     */
+    if (loadInitialCheckInOutMode() === "checkpoint") {
+      reset("checkpoint");
+      return;
+    }
+
+    const context = attendanceTimeContext ?? makeAttendanceTimeContext();
+
+    setAttendanceTimeContext(context);
+
+    void loadOpenAttendanceTimeRecord(empCode, context);
+  }, [route, empCode]);
+
+  useEffect(() => {
     if (!empCode) return;
 
     const rawExpiresAt = localStorage.getItem(AUTH_EXPIRES_AT_KEY);
-    const expiresAt = Number(rawExpiresAt);
+    let expiresAt = Number(rawExpiresAt);
 
     if (!rawExpiresAt || !Number.isFinite(expiresAt)) {
-      void onLogout();
-      return;
+      if (hasInitialAuthPayload()) {
+        expiresAt = touchInitialAuthSession();
+      } else {
+        void onLogout();
+        return;
+      }
     }
 
     const remainingMs = expiresAt - Date.now();
@@ -405,6 +537,8 @@ export default function App() {
     }
 
     localStorage.removeItem("emp_code");
+    localStorage.removeItem(APP_ROUTE_KEY);
+    localStorage.removeItem(APP_CHECK_IN_OUT_MODE_KEY);
 
     setEmpCode("");
     setDisplayName("");
@@ -424,6 +558,7 @@ export default function App() {
      * - ไม่ส่ง shift_id
      */
     setSelectedCheckpoint(null);
+    localStorage.setItem(APP_CHECK_IN_OUT_MODE_KEY, "attendance");
 
     const context = makeAttendanceTimeContext();
 
@@ -434,6 +569,7 @@ export default function App() {
   }
 
   async function goCheckpoint() {
+    localStorage.removeItem(APP_CHECK_IN_OUT_MODE_KEY);
     setSelectedCheckpoint(null);
     setAttendanceTimeContext(null);
     clearCheckInOutTimeState();
@@ -442,6 +578,8 @@ export default function App() {
   }
 
   async function goCheckInOut(payload: GoCheckInOutPayload) {
+    localStorage.setItem(APP_CHECK_IN_OUT_MODE_KEY, "checkpoint");
+
     /**
      * กรณีมาจากหน้า Checkpoint / ตารางงานสายตรวจ:
      * - ต้องเก็บ assignmentId
@@ -854,6 +992,7 @@ export default function App() {
    * - พอกดเมนูลงเวลาอีกครั้ง จะขึ้นหน้าเริ่มต้น
    */
   function goHomeAfterAttendanceCheckout() {
+    localStorage.removeItem(APP_CHECK_IN_OUT_MODE_KEY);
     setSelectedCheckpoint(null);
 
     const context = makeAttendanceTimeContext();

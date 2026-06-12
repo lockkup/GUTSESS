@@ -1184,30 +1184,35 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
   }, [filterOptions.divisions, selectedDepartmentId]);
 
   const routeOptions = useMemo(() => {
-    if (selectedDepartmentId === undefined) {
+    // ต้องเลือก ภาค + เขต ก่อน จึงค่อยแสดงเส้นทาง
+    // ส่วนการเช็ก routes.is_active ต้องให้ backend กรองออกมาก่อน
+    if (
+      selectedDepartmentId === undefined ||
+      selectedDivisionId === undefined
+    ) {
       return [];
     }
 
     return filterOptions.routes.filter((route) => {
-      const matchDepartment = route.departmentId === selectedDepartmentId;
-      const matchDivision =
-        selectedDivisionId === undefined ||
-        route.divisionId === selectedDivisionId;
-
-      return matchDepartment && matchDivision;
+      return (
+        route.departmentId === selectedDepartmentId &&
+        route.divisionId === selectedDivisionId
+      );
     });
   }, [filterOptions.routes, selectedDepartmentId, selectedDivisionId]);
 
   const locationOptions = useMemo(() => {
-    if (selectedDepartmentId === undefined) {
+    // ต้องเลือก ภาค + เขต ก่อน จึงค่อยแสดงรายหน่วยงาน
+    if (
+      selectedDepartmentId === undefined ||
+      selectedDivisionId === undefined
+    ) {
       return [];
     }
 
     return filterOptions.locations.filter((location) => {
       const matchDepartment = location.departmentId === selectedDepartmentId;
-      const matchDivision =
-        selectedDivisionId === undefined ||
-        location.divisionId === selectedDivisionId;
+      const matchDivision = location.divisionId === selectedDivisionId;
       const matchRoute =
         selectedRouteId === undefined || location.routeId === selectedRouteId;
 
@@ -1221,12 +1226,28 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
   ]);
 
   const employeeOptions = useMemo(() => {
-    if (selectedDepartmentId === undefined) {
+    // ป้องกันไม่ให้รายสายตรวจแสดงก่อนเลือก ภาค + เขต
+    if (
+      selectedDepartmentId === undefined ||
+      selectedDivisionId === undefined
+    ) {
+      return [];
+    }
+
+    // ถ้าเลือกเส้นทางแล้ว แต่เส้นทางนั้นไม่มีรายหน่วยงานผูกอยู่
+    // ต้องไม่แสดงรายสายตรวจของเส้นทางอื่น
+    if (selectedRouteId !== undefined && locationOptions.length === 0) {
       return [];
     }
 
     return filterOptions.employees;
-  }, [filterOptions.employees, selectedDepartmentId]);
+  }, [
+    filterOptions.employees,
+    selectedDepartmentId,
+    selectedDivisionId,
+    selectedRouteId,
+    locationOptions.length,
+  ]);
 
   const reportCountText = getReportCountText(filteredRows.length);
 
@@ -1580,7 +1601,7 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                 setEmptyErrorMessage(null);
               }}
               className={styles.select}
-              disabled={!hasSelectedDepartment}
+              disabled={!hasRequiredReportScope}
             >
               <option value="">ทั้งหมด</option>
               {routeOptions.map((option, index) => (
@@ -1607,7 +1628,7 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                 setEmptyErrorMessage(null);
               }}
               className={styles.select}
-              disabled={!hasSelectedDepartment}
+              disabled={!hasRequiredReportScope}
             >
               <option value="">ทั้งหมด</option>
               {locationOptions.map((option, index) => (
@@ -1637,7 +1658,7 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                 setEmptyErrorMessage(null);
               }}
               className={styles.select}
-              disabled={!hasSelectedDepartment}
+              disabled={!hasRequiredReportScope || employeeOptions.length === 0}
             >
               <option value="">ทั้งหมด</option>
               {employeeOptions.map((option, index) => (
@@ -1663,7 +1684,7 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                 setStatusValue(event.target.value as StatusFilterValue)
               }
               className={styles.select}
-              disabled={!hasSelectedDepartment}
+              disabled={!hasRequiredReportScope}
             >
               <option value="all">ทั้งหมด</option>
               <option value="completed">ตรวจแล้ว</option>
@@ -1731,7 +1752,7 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                 setShiftValue(event.target.value as ShiftValue)
               }
               className={styles.select}
-              disabled={!hasSelectedDepartment}
+              disabled={!hasRequiredReportScope}
             >
               <option value="all">ทั้งหมด</option>
               <option value="day">ผลัดกลางวัน</option>
