@@ -169,7 +169,18 @@ function getBestPositionAsync(opts: {
   const { desiredAccuracyM, watchWindowMs, hardTimeoutMs } = opts;
 
   return new Promise<GeolocationPosition>(async (resolve, reject) => {
+    logDev("[Checkpoint] GPS START", {
+      desiredAccuracyM,
+      watchWindowMs,
+      hardTimeoutMs,
+      hasGeolocation: Boolean(navigator.geolocation),
+    });
+
     if (!navigator.geolocation) {
+      logDevError("[Checkpoint] GPS NOT SUPPORTED", {
+        hasGeolocation: false,
+      });
+
       reject(new Error("unavailable"));
       return;
     }
@@ -179,12 +190,23 @@ function getBestPositionAsync(opts: {
         name: "geolocation",
       });
 
+      logDev("[Checkpoint] GPS PERMISSION STATE", {
+        state: perm?.state,
+      });
+
       if (perm?.state === "denied") {
-        reject({ code: 1 });
+        logDevError("[Checkpoint] GPS PERMISSION DENIED", {
+          state: perm?.state,
+        });
+
+        reject({
+          code: 1,
+          message: "permission denied",
+        });
         return;
       }
-    } catch {
-      // ignore
+    } catch (error) {
+      logDevError("[Checkpoint] GPS PERMISSION CHECK ERROR", error);
     }
 
     let best: GeolocationPosition | null = null;
@@ -198,9 +220,23 @@ function getBestPositionAsync(opts: {
       if (done) return;
       done = true;
 
-      if (watchId != null) navigator.geolocation.clearWatch(watchId);
-      if (tWindow) clearTimeout(tWindow);
-      if (tHard) clearTimeout(tHard);
+      if (watchId != null) {
+        navigator.geolocation.clearWatch(watchId);
+      }
+
+      if (tWindow) {
+        clearTimeout(tWindow);
+      }
+
+      if (tHard) {
+        clearTimeout(tHard);
+      }
+
+      logDev("[Checkpoint] GPS FINISH", {
+        ok,
+        hasPayload: Boolean(payload),
+        bestAccuracy: best?.coords?.accuracy ?? null,
+      });
 
       if (ok) {
         resolve(payload as GeolocationPosition);
@@ -210,13 +246,29 @@ function getBestPositionAsync(opts: {
     };
 
     tHard = setTimeout(() => {
-      if (best) finish(true, best);
-      else finish(false, new Error("timeout"));
+      logDevError("[Checkpoint] GPS HARD TIMEOUT", {
+        hardTimeoutMs,
+        hasBest: Boolean(best),
+        bestAccuracy: best?.coords?.accuracy ?? null,
+      });
+
+      if (best) {
+        finish(true, best);
+      } else {
+        finish(false, new Error("GPS timeout"));
+      }
     }, hardTimeoutMs);
 
     tWindow = setTimeout(() => {
-      if (best) finish(true, best);
-      else finish(false, new Error("timeout"));
+      logDev("[Checkpoint] GPS WATCH WINDOW TIMEOUT", {
+        watchWindowMs,
+        hasBest: Boolean(best),
+        bestAccuracy: best?.coords?.accuracy ?? null,
+      });
+
+      if (best) {
+        finish(true, best);
+      }
     }, watchWindowMs);
 
     const onPos = (pos: GeolocationPosition) => {
@@ -229,25 +281,63 @@ function getBestPositionAsync(opts: {
           ? best.coords.accuracy
           : Number.POSITIVE_INFINITY;
 
+      logDev("[Checkpoint] GPS POSITION RECEIVED", {
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+        accuracy,
+        bestAccuracy,
+        desiredAccuracyM,
+      });
+
       if (!best || accuracy < bestAccuracy) {
         best = pos;
+
+        logDev("[Checkpoint] GPS BEST POSITION UPDATED", {
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          accuracy,
+        });
       }
 
       if (accuracy <= desiredAccuracyM) {
+        logDev("[Checkpoint] GPS DESIRED ACCURACY PASSED", {
+          accuracy,
+          desiredAccuracyM,
+        });
+
         finish(true, pos);
       }
     };
 
     const onErr = (err: GeolocationPositionError) => {
-      if (best) finish(true, best);
-      else finish(false, err);
+      logDevError("[Checkpoint] GPS POSITION ERROR", {
+        code: err.code,
+        message: err.message,
+        hasBest: Boolean(best),
+        bestAccuracy: best?.coords?.accuracy ?? null,
+      });
+
+      if (best) {
+        finish(true, best);
+      } else {
+        finish(false, err);
+      }
     };
 
-    watchId = navigator.geolocation.watchPosition(onPos, onErr, {
-      enableHighAccuracy: true,
-      maximumAge: 0,
-      timeout: hardTimeoutMs,
-    });
+    try {
+      watchId = navigator.geolocation.watchPosition(onPos, onErr, {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: hardTimeoutMs,
+      });
+
+      logDev("[Checkpoint] GPS WATCH STARTED", {
+        watchId,
+      });
+    } catch (error) {
+      logDevError("[Checkpoint] GPS WATCH START ERROR", error);
+      finish(false, error);
+    }
   });
 }
 
@@ -506,14 +596,6 @@ function getRequestErrorStatus(error: any): number | null {
   return error?.response?.status ?? error?.status ?? null;
 }
 
-function getRequestErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return "";
-}
-
 function splitUnitName(unitName: string) {
   const cleanUnitName = unitName.trim();
 
@@ -665,6 +747,25 @@ export default function Checkpoint({
     }
   }, [empCode, selectedShift, selectedWorkDateText, currentShift]);
 
+  const fetchLatestLocationSetting =
+    useCallback(async (): Promise<AttendanceLocationSetting | null> => {
+      try {
+        const data = await getAttendanceLocationSetting();
+
+        setSetting(data);
+
+        logDev("[Checkpoint] LATEST LOCATION SETTING", {
+          geoSetting: data.geo,
+        });
+
+        return data;
+      } catch (error) {
+        logDevError("[Checkpoint] LOAD LATEST LOCATION SETTING ERROR", error);
+
+        return null;
+      }
+    }, []);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -724,6 +825,7 @@ export default function Checkpoint({
     const refreshWhenPageActive = () => {
       if (document.visibilityState === "visible") {
         void fetchCheckpointAssignments();
+        void fetchLatestLocationSetting();
       }
     };
 
@@ -734,7 +836,7 @@ export default function Checkpoint({
       window.removeEventListener("focus", refreshWhenPageActive);
       document.removeEventListener("visibilitychange", refreshWhenPageActive);
     };
-  }, [fetchCheckpointAssignments]);
+  }, [fetchCheckpointAssignments, fetchLatestLocationSetting]);
 
   const resetCallForm = () => {
     setContactDetail("");
@@ -745,6 +847,18 @@ export default function Checkpoint({
   const openOutOfAreaModal = (message: string) => {
     setOutOfAreaHint(message);
     setOutOfAreaOpen(true);
+  };
+
+  const showLocationFailModal = (message: string) => {
+    /**
+     * ปิด LoadingModal ก่อน แล้วค่อยเปิด OutOfAreaModal
+     * กันเคส modal ถูก LoadingModal ทับ หรือ state ชนกัน
+     */
+    setIsCheckingLocation(false);
+
+    window.setTimeout(() => {
+      openOutOfAreaModal(message);
+    }, 0);
   };
 
   const openCallModal = (row: CheckRow) => {
@@ -766,6 +880,7 @@ export default function Checkpoint({
 
   const handleRefresh = () => {
     void fetchCheckpointAssignments();
+    void fetchLatestLocationSetting();
   };
 
   const openCheckpointMapModal = async (row: CheckRow) => {
@@ -837,18 +952,7 @@ export default function Checkpoint({
     row: CheckRow,
   ): Promise<PassedLocation | null> => {
     if (isCheckingLocation) {
-      return null;
-    }
-
-    if (!setting) {
-      logDevError("[Checkpoint] LOCATION SETTING NOT FOUND", {
-        assignmentId: row.assignmentId,
-        unitName: row.unitName,
-        shiftId: row.shiftId,
-        row,
-      });
-
-      openOutOfAreaModal("ยังไม่พบค่าตั้งค่าการตรวจสอบตำแหน่ง");
+      showLocationFailModal("ระบบกำลังตรวจสอบตำแหน่งอยู่ กรุณารอสักครู่");
       return null;
     }
 
@@ -857,10 +961,27 @@ export default function Checkpoint({
       setOutOfAreaHint("");
       setOutOfAreaOpen(false);
 
+      const latestSetting = await fetchLatestLocationSetting();
+      const activeSetting = latestSetting ?? setting;
+
+      if (!activeSetting) {
+        logDevError("[Checkpoint] LOCATION SETTING NOT FOUND", {
+          assignmentId: row.assignmentId,
+          unitName: row.unitName,
+          shiftId: row.shiftId,
+          row,
+        });
+
+        showLocationFailModal(
+          "ยังไม่พบค่าตั้งค่าการตรวจสอบตำแหน่ง กรุณาลองใหม่อีกครั้ง",
+        );
+        return null;
+      }
+
       const pos = await getBestPositionAsync({
-        desiredAccuracyM: setting.geo.desiredAccuracyM,
-        watchWindowMs: setting.geo.watchWindowMs,
-        hardTimeoutMs: setting.geo.hardTimeoutMs,
+        desiredAccuracyM: activeSetting.geo.desiredAccuracyM,
+        watchWindowMs: activeSetting.geo.watchWindowMs,
+        hardTimeoutMs: activeSetting.geo.hardTimeoutMs,
       });
 
       const currentLatitude = pos.coords.latitude;
@@ -880,7 +1001,7 @@ export default function Checkpoint({
         accuracy: roundedAccuracy,
       };
 
-      if (currentAccuracy > setting.geo.maxAccuracyM) {
+      if (currentAccuracy > activeSetting.geo.maxAccuracyM) {
         const message = `สัญญาณ GPS ยังไม่ดี ค่าความคลาดเคลื่อนประมาณ ${roundedAccuracy} เมตร กรุณาไปที่โล่งหรือเปิด Wi-Fi แล้วตรวจสอบตำแหน่งอีกครั้ง`;
 
         logDevError("[Checkpoint] GPS ACCURACY TOO HIGH", {
@@ -891,11 +1012,11 @@ export default function Checkpoint({
           currentLocation,
           currentAccuracy,
           roundedAccuracy,
-          geoSetting: setting.geo,
-          maxAccuracyM: setting.geo.maxAccuracyM,
+          geoSetting: activeSetting.geo,
+          maxAccuracyM: activeSetting.geo.maxAccuracyM,
         });
 
-        openOutOfAreaModal(message);
+        showLocationFailModal(message);
         return null;
       }
 
@@ -912,6 +1033,21 @@ export default function Checkpoint({
       const verifyResult = await verifyCheckpointLocation(verifyPayload);
 
       logDev("VERIFY CHECKPOINT LOCATION RESULT", verifyResult);
+
+      if (!verifyResult || typeof verifyResult.allowed !== "boolean") {
+        logDevError("[Checkpoint] VERIFY LOCATION INVALID RESPONSE", {
+          assignmentId: row.assignmentId,
+          unitName: row.unitName,
+          shiftId: row.shiftId,
+          verifyPayload,
+          verifyResult,
+        });
+
+        showLocationFailModal(
+          "ตรวจสอบพื้นที่กับระบบไม่สำเร็จ ผลลัพธ์จาก backend ไม่ถูกต้อง",
+        );
+        return null;
+      }
 
       if (!verifyResult.allowed) {
         const distanceMeter =
@@ -940,7 +1076,7 @@ export default function Checkpoint({
           unitName: row.unitName,
           shiftId: row.shiftId,
           currentLocation,
-          geoSetting: setting.geo,
+          geoSetting: activeSetting.geo,
           distanceMeter,
           distanceText:
             distanceMeter !== null ? formatDistanceMeter(distanceMeter) : null,
@@ -948,8 +1084,7 @@ export default function Checkpoint({
           verifyResult,
         });
 
-        openOutOfAreaModal(message);
-
+        showLocationFailModal(message);
         return null;
       }
 
@@ -960,7 +1095,14 @@ export default function Checkpoint({
       };
     } catch (error: any) {
       const status = getRequestErrorStatus(error);
-      const message = getRequestErrorMessage(error);
+
+      const apiDetail =
+        error?.response?.data?.detail ??
+        error?.data?.detail ??
+        error?.message ??
+        "";
+
+      const message = typeof apiDetail === "string" ? apiDetail : "";
 
       logDevError("[Checkpoint] VERIFY LOCATION ERROR", {
         assignmentId: row.assignmentId,
@@ -972,28 +1114,48 @@ export default function Checkpoint({
       });
 
       if (status === 405 || message.includes("405")) {
-        openOutOfAreaModal(
+        showLocationFailModal(
           "Backend ยังไม่มี POST /api/checkpoint-assignments/verify-location กรุณาเพิ่ม endpoint ตรวจสอบตำแหน่งในฝั่ง backend ก่อน",
         );
         return null;
       }
 
+      if (status === 400 || status === 404 || status === 422) {
+        showLocationFailModal(
+          message ||
+            "ตรวจสอบพื้นที่ไม่ผ่าน กรุณาตรวจสอบพิกัดหรือข้อมูลหน่วยงานของรายการนี้",
+        );
+        return null;
+      }
+
       if (error?.code === 1) {
-        openOutOfAreaModal(
+        showLocationFailModal(
           "ไม่อนุญาตให้เข้าถึงตำแหน่ง กรุณาเปิด Location และอนุญาตสิทธิ์ตำแหน่ง",
         );
         return null;
       }
 
-      if (String(error?.message).includes("unavailable")) {
-        openOutOfAreaModal("อุปกรณ์หรือเบราว์เซอร์ไม่รองรับการอ่านตำแหน่ง");
+      if (
+        String(error?.message).includes("unavailable") ||
+        String(message).includes("unavailable")
+      ) {
+        showLocationFailModal("อุปกรณ์หรือเบราว์เซอร์ไม่รองรับการอ่านตำแหน่ง");
         return null;
       }
 
-      openOutOfAreaModal(
-        error instanceof Error
-          ? error.message
-          : "ตรวจสอบพื้นที่กับระบบไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
+      if (
+        String(error?.message).toLowerCase().includes("timeout") ||
+        String(message).toLowerCase().includes("timeout")
+      ) {
+        showLocationFailModal(
+          "อ่านตำแหน่ง GPS ไม่สำเร็จภายในเวลาที่กำหนด กรุณาลองใหม่อีกครั้ง",
+        );
+        return null;
+      }
+
+      showLocationFailModal(
+        message ||
+          "ตรวจสอบตำแหน่งไม่ผ่าน กรุณาลองใหม่อีกครั้ง หรือแจ้งผู้ดูแลระบบตรวจพิกัดของหน่วยงานนี้",
       );
 
       return null;
@@ -1010,7 +1172,29 @@ export default function Checkpoint({
           ? "checkout"
           : null;
 
+    logDev("[Checkpoint] ACTION BUTTON CLICK", {
+      assignmentId: row.assignmentId,
+      unitName: row.unitName,
+      shiftId: row.shiftId,
+      rowStatus: row.status,
+      assignmentStatus: row.assignmentStatus,
+      canAction: row.canAction,
+      isSelectedCurrentShift,
+      selectedShift,
+      currentShift,
+      mode,
+      row,
+    });
+
     if (!mode) {
+      logDevError("[Checkpoint] STOP BECAUSE MODE NOT ALLOWED", {
+        assignmentId: row.assignmentId,
+        unitName: row.unitName,
+        rowStatus: row.status,
+        assignmentStatus: row.assignmentStatus,
+        row,
+      });
+
       return;
     }
 
@@ -1060,9 +1244,32 @@ export default function Checkpoint({
 
     const passedLocation = await checkLocationBeforeGoCheckInOut(row);
 
+    logDev("[Checkpoint] PASSED LOCATION RESULT", {
+      assignmentId: row.assignmentId,
+      unitName: row.unitName,
+      shiftId: row.shiftId,
+      mode,
+      passedLocation,
+    });
+
     if (!passedLocation) {
+      logDevError("[Checkpoint] STOP GO CHECKINOUT BECAUSE LOCATION NOT PASSED", {
+        assignmentId: row.assignmentId,
+        unitName: row.unitName,
+        shiftId: row.shiftId,
+        mode,
+      });
+
       return;
     }
+
+    logDev("[Checkpoint] GO CHECKINOUT PAGE", {
+      assignmentId: row.assignmentId,
+      unitName: row.unitName,
+      shiftId: row.shiftId,
+      mode,
+      passedLocation,
+    });
 
     onGoCheckInOut({
       assignmentId: row.assignmentId,
@@ -1341,7 +1548,6 @@ export default function Checkpoint({
                       !isSelectedCurrentShift ||
                       !row.canAction ||
                       settingLoading ||
-                      !setting ||
                       isCheckingLocation ||
                       isSavingCall;
 

@@ -409,12 +409,18 @@ export default function App() {
     if (!empCode) return;
 
     /**
-     * กรณี refresh หน้า checkInOut:
-     * - attendance ปกติ ให้เปิดหน้าเดิมและโหลด time_record ที่ค้างอยู่กลับมา
-     * - checkpoint ให้กลับหน้า checkpoint เพราะข้อมูล assignmentId/shiftId/passedLocation เป็น state ชั่วคราว
+     * กรณี checkpoint mode:
+     * - ถ้ามาจากหน้า Checkpoint ปกติ selectedCheckpoint จะมีค่าอยู่แล้ว
+     *   ให้เปิดหน้า CheckInOut ต่อได้
+     *
+     * - ถ้า refresh หน้า checkInOut แล้ว state ชั่วคราวหาย selectedCheckpoint จะเป็น null
+     *   ให้กลับหน้า checkpoint แทน
      */
     if (loadInitialCheckInOutMode() === "checkpoint") {
-      reset("checkpoint");
+      if (!selectedCheckpoint) {
+        reset("checkpoint");
+      }
+
       return;
     }
 
@@ -423,7 +429,7 @@ export default function App() {
     setAttendanceTimeContext(context);
 
     void loadOpenAttendanceTimeRecord(empCode, context);
-  }, [route, empCode]);
+  }, [route, empCode, selectedCheckpoint]);
 
   useEffect(() => {
     if (!empCode) return;
@@ -1080,7 +1086,18 @@ export default function App() {
           displayName={displayName}
           onBack={back}
           onGoCheckInOut={(payload) => {
-            void goCheckInOut(payload);
+            void goCheckInOut(payload).catch((error) => {
+              console.error("[App] GO CHECKINOUT ERROR FROM CHECKPOINT", {
+                payload,
+                error,
+              });
+
+              alert(
+                error instanceof Error
+                  ? error.message
+                  : "ไม่สามารถไปหน้าลงเวลาเข้า-ออกงานได้ กรุณาลองใหม่อีกครั้ง",
+              );
+            });
           }}
         />
       )}

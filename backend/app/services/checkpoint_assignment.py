@@ -1085,7 +1085,14 @@ class CheckpointAssignmentService:
                 distance_meter=None,
                 radius_meter=None,
                 accuracy=payload.accuracy,
+                assignment_id=payload.assignment_id,
+                unit_name=payload.unit_name,
             )
+
+        unit_name = CheckpointAssignmentService._build_unit_name(
+            contract_code=row["contract_code"],
+            location_name=row["location_name"],
+        )
 
         if not bool(row["assignment_is_active"]):
             return VerifyCheckpointLocationResponse(
@@ -1094,6 +1101,8 @@ class CheckpointAssignmentService:
                 distance_meter=None,
                 radius_meter=None,
                 accuracy=payload.accuracy,
+                assignment_id=payload.assignment_id,
+                unit_name=unit_name,
             )
 
         site_latitude_raw = row["site_latitude"]
@@ -1106,6 +1115,8 @@ class CheckpointAssignmentService:
                 distance_meter=None,
                 radius_meter=None,
                 accuracy=payload.accuracy,
+                assignment_id=payload.assignment_id,
+                unit_name=unit_name,
             )
 
         site_latitude = float(site_latitude_raw)
@@ -1122,6 +1133,8 @@ class CheckpointAssignmentService:
                 distance_meter=None,
                 radius_meter=0,
                 accuracy=payload.accuracy,
+                assignment_id=payload.assignment_id,
+                unit_name=unit_name,
             )
 
         distance_meter = CheckpointAssignmentService._calculate_distance_meter(
@@ -1132,11 +1145,6 @@ class CheckpointAssignmentService:
         )
 
         allowed = distance_meter <= allowed_radius
-
-        unit_name = CheckpointAssignmentService._build_unit_name(
-            contract_code=row["contract_code"],
-            location_name=row["location_name"],
-        )
 
         if allowed:
             message = "อยู่ในพื้นที่ที่กำหนด"
@@ -1150,6 +1158,8 @@ class CheckpointAssignmentService:
             distance_meter=round(distance_meter, 2),
             radius_meter=round(allowed_radius, 2),
             accuracy=payload.accuracy,
+            assignment_id=payload.assignment_id,
+            unit_name=unit_name,
         )
 
     @staticmethod

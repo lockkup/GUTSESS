@@ -46,11 +46,40 @@ export type VerifyCheckpointLocationResponse = {
   unit_name?: string | null;
 };
 
-export function verifyCheckpointLocation(
+function logDev(message: string, payload?: unknown) {
+  console.log(message, payload);
+}
+
+function logDevError(message: string, error: unknown) {
+  console.error(message, error);
+}
+
+export async function verifyCheckpointLocation(
   payload: VerifyCheckpointLocationPayload,
-) {
-  return api.post<VerifyCheckpointLocationResponse>(
-    "/checkpoint-assignments/verify-location",
+): Promise<VerifyCheckpointLocationResponse> {
+  logDev("[CheckpointLocationService] VERIFY LOCATION REQUEST", {
+    endpoint: "/checkpoint-assignments/verify-location",
     payload,
-  );
+  });
+
+  try {
+    const result = await api.post<VerifyCheckpointLocationResponse>(
+      "/checkpoint-assignments/verify-location",
+      payload,
+    );
+
+    logDev("[CheckpointLocationService] VERIFY LOCATION RESPONSE", {
+      payload,
+      result,
+    });
+
+    return result;
+  } catch (error) {
+    logDevError("[CheckpointLocationService] VERIFY LOCATION ERROR", {
+      payload,
+      error,
+    });
+
+    throw error;
+  }
 }
