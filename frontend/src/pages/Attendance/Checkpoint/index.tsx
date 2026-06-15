@@ -911,13 +911,18 @@ export default function Checkpoint({
         data,
       });
 
+      const mapData = data as typeof data & {
+        location_detail?: string | null;
+      };
+
       setMapLocation({
-        contractCode: data.contract_code,
-        locationName: data.location_name,
-        latitude: data.latitude,
-        longitude: data.longitude,
-        radiusMeter: data.radius_meter,
-        graceMeter: data.grace_meter,
+        contractCode: mapData.contract_code,
+        locationName: mapData.location_name,
+        latitude: mapData.latitude,
+        longitude: mapData.longitude,
+        radiusMeter: mapData.radius_meter,
+        graceMeter: mapData.grace_meter,
+        locationDetail: mapData.location_detail ?? null,
       });
     } catch (error) {
       logDevError("[Checkpoint] LOAD MAP LOCATION ERROR", error);
@@ -929,6 +934,7 @@ export default function Checkpoint({
         longitude: null,
         radiusMeter: null,
         graceMeter: null,
+        locationDetail: null,
       });
 
       setMapErrorMessage(

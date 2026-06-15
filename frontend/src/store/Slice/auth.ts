@@ -71,8 +71,8 @@ const AUTH_EXPIRES_AT_KEY = "auth_expires_at";
 const EMP_CODE_KEY = "emp_code";
 const DISPLAY_NAME_KEY = "display_name";
 
-// 12 ชั่วโมง เหมาะกับกะงาน 08:00-20:00 / 20:00-08:00
-const SESSION_TIMEOUT_MS = 12 * 60 * 60 * 1000;
+// 2 ชั่วโมง สำหรับทดสอบ auto logout ให้ตรงกับ App.tsx
+const SESSION_TIMEOUT_MS = 2 * 60 * 60 * 1000;
 
 function isLoginData(data: unknown): data is LoginData {
   if (!data || typeof data !== "object") return false;

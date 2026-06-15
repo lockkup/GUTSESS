@@ -1,3 +1,5 @@
+// src/types/checkpointAssignment.ts
+
 export type CheckpointAssignmentStatus =
   | "pending"
   | "in_progress"
@@ -118,4 +120,9 @@ export type CheckpointMapLocationResponse = {
   longitude: number | string | null;
   radius_meter: number | string | null;
   grace_meter: number | string | null;
+
+  /**
+   * หมายเหตุ / รายละเอียดเพิ่มเติมจาก site_location.location_detail
+   */
+  location_detail?: string | null;
 };

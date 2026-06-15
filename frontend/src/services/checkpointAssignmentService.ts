@@ -26,6 +26,10 @@ type GetDailyCheckpointAssignmentsParams = {
   employeeCode: string;
 };
 
+type RawCheckpointMapLocationResponse = CheckpointMapLocationResponse & {
+  locationDetail?: string | null;
+};
+
 export function getDailyCheckpointAssignments({
   workDate,
   shiftType,
@@ -47,7 +51,7 @@ export function getDailyCheckpointAssignments({
   });
 }
 
-export function getCheckpointMapLocation({
+export async function getCheckpointMapLocation({
   contractCode,
   locationName,
 }: GetCheckpointMapLocationParams): Promise<CheckpointMapLocationResponse> {
@@ -58,11 +62,18 @@ export function getCheckpointMapLocation({
     return Promise.reject(new Error("กรุณาระบุรหัสสัญญาและชื่อหน่วยงาน"));
   }
 
-  return api.get<CheckpointMapLocationResponse>(
+  const result = await api.get<RawCheckpointMapLocationResponse>(
     "/checkpoint-assignments/map-location",
     {
       contract_code: normalizedContractCode,
       location_name: normalizedLocationName,
     },
   );
+
+  console.log("[checkpointAssignmentService] MAP LOCATION RESPONSE", result);
+
+  return {
+    ...result,
+    location_detail: result.location_detail ?? result.locationDetail ?? null,
+  };
 }

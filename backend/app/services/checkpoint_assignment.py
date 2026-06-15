@@ -702,6 +702,7 @@ class CheckpointAssignmentService:
                 SiteLocation.longitude.label("longitude"),
                 SiteLocation.radius_meter.label("radius_meter"),
                 SiteLocation.grace_meter.label("grace_meter"),
+                SiteLocation.location_detail.label("location_detail"),
             )
             .where(
                 func.trim(SiteLocation.contract_code) == clean_contract_code,
@@ -741,6 +742,8 @@ class CheckpointAssignmentService:
             else None
         )
 
+        location_detail = str(row["location_detail"] or "").strip() or None
+
         return CheckpointMapLocationResponse(
             contract_code=str(row["contract_code"] or "").strip(),
             location_name=str(row["location_name"] or "").strip(),
@@ -748,6 +751,7 @@ class CheckpointAssignmentService:
             longitude=longitude,
             radius_meter=radius_meter,
             grace_meter=grace_meter,
+            location_detail=location_detail,
         )
 
     @staticmethod
@@ -1049,6 +1053,7 @@ class CheckpointAssignmentService:
                 SiteLocation.longitude.label("site_longitude"),
                 SiteLocation.radius_meter.label("radius_meter"),
                 SiteLocation.grace_meter.label("grace_meter"),
+                SiteLocation.location_detail.label("location_detail"),
                 SiteLocation.contract_code.label("contract_code"),
                 SiteLocation.location_name.label("location_name"),
             )

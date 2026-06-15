@@ -1,3 +1,4 @@
+// src/components/CheckpointMapModal/index.tsx
 import { useEffect, useMemo } from "react";
 import { X } from "lucide-react";
 
@@ -10,6 +11,11 @@ export type CheckpointMapLocation = {
   longitude: number | string | null;
   radiusMeter?: number | string | null;
   graceMeter?: number | string | null;
+
+  /**
+   * หมายเหตุ / รายละเอียดเพิ่มเติมจาก site_location.location_detail
+   */
+  locationDetail?: string | null;
 };
 
 type CheckpointMapModalProps = {
@@ -59,6 +65,8 @@ export default function CheckpointMapModal({
   const unitName = location
     ? `${location.contractCode}-${location.locationName}`
     : "-";
+
+  const locationDetail = location?.locationDetail?.trim() || "-";
 
   const mapEmbedUrl = hasValidCoordinate
     ? `https://maps.google.com/maps?q=${lat},${lng}&z=18&output=embed`
@@ -137,6 +145,11 @@ export default function CheckpointMapModal({
               <p className={styles.infoText}>
                 <span className={styles.infoLabel}>รัศมีที่อนุญาต:</span>{" "}
                 {totalRadiusMeter > 0 ? `${totalRadiusMeter} เมตร` : "-"}
+              </p>
+
+              <p className={styles.infoText}>
+                <span className={styles.infoLabel}>หมายเหตุ:</span>{" "}
+                {locationDetail}
               </p>
             </>
           ) : (

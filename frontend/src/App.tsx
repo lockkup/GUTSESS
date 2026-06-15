@@ -102,8 +102,8 @@ const DISPLAY_NAME_KEY = "display_name";
 const APP_ROUTE_KEY = "app_route";
 const APP_CHECK_IN_OUT_MODE_KEY = "app_check_in_out_mode";
 
-// 12 ชั่วโมง ให้ตรงกับ auth.ts
-const SESSION_TIMEOUT_MS = 12 * 60 * 60 * 1000;
+// 2 นาที ให้ตรงกับ auth.ts
+const SESSION_TIMEOUT_MS = 2 * 60 * 60 * 1000;
 
 const RESTORABLE_ROUTES: Route[] = [
   "home",

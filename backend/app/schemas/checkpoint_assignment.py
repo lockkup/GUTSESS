@@ -1,3 +1,4 @@
+# app/schemas/checkpoint_assignment.py
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -238,3 +239,6 @@ class CheckpointMapLocationResponse(BaseModel):
     radius_meter: int | None = None
 
     grace_meter: int | None = None
+
+    # หมายเหตุ / รายละเอียดเพิ่มเติมจาก site_location.location_detail
+    location_detail: str | None = None
