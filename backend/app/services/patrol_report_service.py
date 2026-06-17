@@ -1489,6 +1489,12 @@ def _get_patrol_report_unplanned_rows(
         f"""
         ORDER BY
             v.{PatrolReportConstants.COLUMN_WORK_DATE} DESC,
+            {shift_id_select} ASC,
+            CASE
+                WHEN v.{PatrolReportConstants.COLUMN_COMPLETED_AT} IS NULL
+                    THEN 1
+                ELSE 2
+            END ASC,
             CASE
                 WHEN {unplanned_started_sort_column} IS NULL THEN 1
                 WHEN TRIM(CAST({unplanned_started_sort_column} AS CHAR)) = '' THEN 1
@@ -1496,6 +1502,8 @@ def _get_patrol_report_unplanned_rows(
                 ELSE 0
             END ASC,
             {unplanned_started_sort_column} ASC,
+            {division_id_select} ASC,
+            {route_id_select} ASC,
             v.{PatrolReportConstants.COLUMN_CONTRACT_CODE} ASC,
             v.{PatrolReportConstants.COLUMN_LOCATION_NAME} ASC
         """
@@ -1526,9 +1534,28 @@ def _get_patrol_report_unplanned_rows(
 
     filtered_rows.sort(
         key=lambda row: (
-            _to_optional_date(row.get(PatrolReportConstants.COLUMN_WORKDAY)) or date.min,
+            -(
+                _to_optional_date(row.get(PatrolReportConstants.COLUMN_WORKDAY))
+                or date.min
+            ).toordinal(),
+            _to_optional_positive_int(row.get(PatrolReportConstants.COLUMN_SHIFT_ID))
+            or 999999,
+            1
+            if _normalize_status(row.get(PatrolReportConstants.COLUMN_ASSIGNMENT_STATUS))
+            == PatrolReportConstants.STATUS_IN_PROGRESS
+            else 2
+            if _normalize_status(row.get(PatrolReportConstants.COLUMN_ASSIGNMENT_STATUS))
+            == PatrolReportConstants.STATUS_COMPLETED
+            else 3
+            if _normalize_status(row.get(PatrolReportConstants.COLUMN_ASSIGNMENT_STATUS))
+            == PatrolReportConstants.STATUS_PENDING
+            else 9,
             0 if _format_time(row.get(PatrolReportConstants.COLUMN_STARTED_AT)) else 1,
             _format_time(row.get(PatrolReportConstants.COLUMN_STARTED_AT)) or "99:99",
+            _to_optional_positive_int(row.get(PatrolReportConstants.COLUMN_DIVISION_ID))
+            or 999999,
+            _to_optional_positive_int(row.get(PatrolReportConstants.COLUMN_ROUTE_ID))
+            or 999999,
             _to_text(row.get(PatrolReportConstants.COLUMN_CONTRACT_CODE)),
             _to_text(row.get(PatrolReportConstants.COLUMN_LOCATION_NAME)),
         ),
@@ -1752,6 +1779,7 @@ def get_patrol_report_rows(
         f"""
         ORDER BY
             v.{PatrolReportConstants.COLUMN_WORKDAY} DESC,
+            v.{PatrolReportConstants.COLUMN_SHIFT_ID} ASC,
             CASE v.{PatrolReportConstants.COLUMN_ASSIGNMENT_STATUS}
                 WHEN '{PatrolReportConstants.STATUS_IN_PROGRESS}' THEN 1
                 WHEN '{PatrolReportConstants.STATUS_COMPLETED}' THEN 2
@@ -1765,7 +1793,6 @@ def get_patrol_report_rows(
                 ELSE 0
             END ASC,
             {planned_started_sort_column} ASC,
-            v.{PatrolReportConstants.COLUMN_SHIFT_ID} ASC,
             v.{PatrolReportConstants.COLUMN_DIVISION_ID} ASC,
             v.{PatrolReportConstants.COLUMN_ROUTE_ID} ASC,
             v.{PatrolReportConstants.COLUMN_CONTRACT_CODE} ASC,
