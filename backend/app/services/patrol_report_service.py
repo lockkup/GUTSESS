@@ -49,6 +49,7 @@ CHECKOUT_IMAGE_ALIAS = "checkout_image_url"
 # ถ้า view vw_checkin_report / vw_checkin_unplanned มีคอลัมน์นี้
 # ระบบจะใช้ datetime จริงแทน started_at ที่มักเป็นข้อความ HH:MM
 STARTED_DATETIME_COLUMN = "started_datetime"
+COMPLETED_DATETIME_COLUMN = "completed_datetime"
 
 CHECKIN_IMAGE_COLUMN_CANDIDATES = (
     # ชื่อ column จริงในตาราง time_record / view รายงาน
@@ -261,6 +262,28 @@ def _to_optional_date(value: Any) -> date | None:
         return _parse_display_date_text(text_value)
 
 
+def _to_optional_datetime(value: Any) -> datetime | None:
+    if value is None:
+        return None
+
+    if isinstance(value, datetime):
+        return value
+
+    text_value = str(value).strip()
+    if not text_value:
+        return None
+
+    try:
+        return datetime.fromisoformat(text_value)
+    except ValueError:
+        pass
+
+    try:
+        return datetime.strptime(text_value, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return None
+
+
 def _format_time(value: Any) -> str | None:
     if value is None:
         return None
@@ -286,6 +309,29 @@ def _format_time(value: Any) -> str | None:
         return text_value[:5]
 
     return text_value
+
+
+def _get_started_datetime_sort_key(row: Mapping[str, Any]) -> datetime:
+    started_datetime = _to_optional_datetime(row.get(STARTED_DATETIME_COLUMN))
+
+    if started_datetime is not None:
+        return started_datetime
+
+    report_workday = _to_optional_date(
+        row.get(PatrolReportConstants.COLUMN_WORKDAY),
+    )
+    started_time_text = _format_time(
+        row.get(PatrolReportConstants.COLUMN_STARTED_AT),
+    )
+
+    if report_workday is not None and started_time_text:
+        try:
+            parsed_time = datetime.strptime(started_time_text, "%H:%M").time()
+            return datetime.combine(report_workday, parsed_time)
+        except ValueError:
+            pass
+
+    return datetime.max
 
 
 def _get_first_existing_text(
@@ -791,6 +837,12 @@ def _map_patrol_report_row(
         checkOutTime=_format_time(
             row.get(PatrolReportConstants.COLUMN_COMPLETED_AT),
         ),
+        checkInDateTime=_to_optional_datetime(
+            row.get(STARTED_DATETIME_COLUMN),
+        ),
+        checkOutDateTime=_to_optional_datetime(
+            row.get(COMPLETED_DATETIME_COLUMN),
+        ),
 
         checkInImageUrl=_get_first_existing_text(
             row,
@@ -1259,6 +1311,16 @@ def _get_patrol_report_unplanned_rows(
         EMPLOYEE_LAST_NAME_COLUMN,
         alias=OPERATOR_LAST_NAME_ALIAS,
     )
+    started_datetime_select = _select_view_column(
+        view_column_names,
+        STARTED_DATETIME_COLUMN,
+        alias=STARTED_DATETIME_COLUMN,
+    )
+    completed_datetime_select = _select_view_column(
+        view_column_names,
+        COMPLETED_DATETIME_COLUMN,
+        alias=COMPLETED_DATETIME_COLUMN,
+    )
 
     join_parts: list[str] = []
 
@@ -1354,6 +1416,8 @@ def _get_patrol_report_unplanned_rows(
             v.{PatrolReportConstants.COLUMN_WORK_DATE},
             v.{PatrolReportConstants.COLUMN_STARTED_AT},
             v.{PatrolReportConstants.COLUMN_COMPLETED_AT},
+            {started_datetime_select},
+            {completed_datetime_select},
             {checkin_image_select},
             {checkout_image_select},
             v.{PatrolReportConstants.COLUMN_EMPLOYEE_CODE},
@@ -1550,8 +1614,8 @@ def _get_patrol_report_unplanned_rows(
             if _normalize_status(row.get(PatrolReportConstants.COLUMN_ASSIGNMENT_STATUS))
             == PatrolReportConstants.STATUS_PENDING
             else 9,
-            0 if _format_time(row.get(PatrolReportConstants.COLUMN_STARTED_AT)) else 1,
-            _format_time(row.get(PatrolReportConstants.COLUMN_STARTED_AT)) or "99:99",
+            0 if _get_started_datetime_sort_key(row) != datetime.max else 1,
+            _get_started_datetime_sort_key(row),
             _to_optional_positive_int(row.get(PatrolReportConstants.COLUMN_DIVISION_ID))
             or 999999,
             _to_optional_positive_int(row.get(PatrolReportConstants.COLUMN_ROUTE_ID))
@@ -1676,6 +1740,16 @@ def get_patrol_report_rows(
         EMPLOYEE_LAST_NAME_COLUMN,
         alias=OPERATOR_LAST_NAME_ALIAS,
     )
+    started_datetime_select = _select_view_column(
+        view_column_names,
+        STARTED_DATETIME_COLUMN,
+        alias=STARTED_DATETIME_COLUMN,
+    )
+    completed_datetime_select = _select_view_column(
+        view_column_names,
+        COMPLETED_DATETIME_COLUMN,
+        alias=COMPLETED_DATETIME_COLUMN,
+    )
 
     sql_parts = [
         f"""
@@ -1687,6 +1761,8 @@ def get_patrol_report_rows(
             v.{PatrolReportConstants.COLUMN_WORK_DATE},
             v.{PatrolReportConstants.COLUMN_STARTED_AT},
             v.{PatrolReportConstants.COLUMN_COMPLETED_AT},
+            {started_datetime_select},
+            {completed_datetime_select},
             {checkin_image_select},
             {checkout_image_select},
             v.{PatrolReportConstants.COLUMN_EMPLOYEE_CODE},

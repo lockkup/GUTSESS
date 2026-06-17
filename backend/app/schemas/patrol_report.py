@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from typing import Literal, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -75,8 +75,20 @@ class PatrolReportResponse(BaseModel):
 
     # started_at -> checkInTime
     # completed_at -> checkOutTime
+    #
+    # คงไว้ชั่วคราวเพื่อกันกระทบ service/frontend เดิม
+    # หน้า Report ใหม่ไม่จำเป็นต้องใช้สอง field นี้แล้ว
     checkInTime: str | None = None
     checkOutTime: str | None = None
+
+    # started_datetime -> checkInDateTime
+    # completed_datetime -> checkOutDateTime
+    #
+    # ใช้แสดงวันเวลาเข้า/ออกจริง เช่น:
+    # 2026-06-17 00:26:47
+    # Frontend format เป็น 17 มิ.ย. 2569 00:26
+    checkInDateTime: datetime | None = None
+    checkOutDateTime: datetime | None = None
 
     # รูปภาพเวลาเข้า / เวลาออก
     #

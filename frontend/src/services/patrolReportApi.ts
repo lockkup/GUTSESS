@@ -71,8 +71,13 @@ export type PatrolReportRow = {
 
   scheduleText: string;
 
-  checkInTime: string | null;
-  checkOutTime: string | null;
+  checkInDateTime: string | null;
+  check_in_date_time: string | null;
+  check_in_datetime: string | null;
+
+  checkOutDateTime: string | null;
+  check_out_date_time: string | null;
+  check_out_datetime: string | null;
 
   // รูปภาพเวลาเข้า / เวลาออก
   // ระยะสั้นรองรับ URL, path และ data:image/jpeg;base64,...
@@ -228,13 +233,15 @@ type PatrolReportApiRow = {
   scheduleText?: string | null;
   schedule_text?: string | null;
 
-  checkInTime?: string | null;
-  check_in_time?: string | null;
-  started_at?: string | null;
+  checkInDateTime?: string | null;
+  check_in_date_time?: string | null;
+  check_in_datetime?: string | null;
+  started_datetime?: string | null;
 
-  checkOutTime?: string | null;
-  check_out_time?: string | null;
-  completed_at?: string | null;
+  checkOutDateTime?: string | null;
+  check_out_date_time?: string | null;
+  check_out_datetime?: string | null;
+  completed_datetime?: string | null;
 
   // รูปภาพเวลาเข้า
   checkInImageUrl?: string | null;
@@ -383,26 +390,6 @@ function normalizeNotificationLevel(value: unknown): PatrolNotificationLevel {
   return "none";
 }
 
-function formatTime(value: unknown) {
-  const text = toNullableText(value);
-
-  if (!text) return null;
-
-  // กรณี backend ส่งเป็น HH:mm หรือ HH:mm:ss
-  const timeMatch = text.match(/^(\d{2}):(\d{2})(?::\d{2})?$/);
-  if (timeMatch) {
-    return `${timeMatch[1]}:${timeMatch[2]}`;
-  }
-
-  // กรณี backend ส่งเป็น datetime เช่น 2026-05-25T15:09:00
-  const dateTimeMatch = text.match(/[T\s](\d{2}):(\d{2})(?::\d{2})?/);
-  if (dateTimeMatch) {
-    return `${dateTimeMatch[1]}:${dateTimeMatch[2]}`;
-  }
-
-  return text;
-}
-
 function mapPatrolReportRow(
   row: PatrolReportApiRow,
   index: number,
@@ -467,12 +454,18 @@ function mapPatrolReportRow(
 
   const scheduleText = toText(row.scheduleText ?? row.schedule_text, "-");
 
-  const checkInTime = formatTime(
-    row.checkInTime ?? row.check_in_time ?? row.started_at,
+  const checkInDateTime = toNullableText(
+    row.checkInDateTime ??
+      row.check_in_date_time ??
+      row.check_in_datetime ??
+      row.started_datetime,
   );
 
-  const checkOutTime = formatTime(
-    row.checkOutTime ?? row.check_out_time ?? row.completed_at,
+  const checkOutDateTime = toNullableText(
+    row.checkOutDateTime ??
+      row.check_out_date_time ??
+      row.check_out_datetime ??
+      row.completed_datetime,
   );
 
   const imagesCheckin1 = toNullableText(
@@ -587,8 +580,13 @@ function mapPatrolReportRow(
 
     scheduleText,
 
-    checkInTime,
-    checkOutTime,
+    checkInDateTime,
+    check_in_date_time: checkInDateTime,
+    check_in_datetime: checkInDateTime,
+
+    checkOutDateTime,
+    check_out_date_time: checkOutDateTime,
+    check_out_datetime: checkOutDateTime,
 
     checkInImageUrl,
     check_in_image_url: checkInImageUrl,

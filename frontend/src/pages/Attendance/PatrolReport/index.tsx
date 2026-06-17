@@ -74,6 +74,14 @@ type PatrolReportDisplayRow = PatrolReportRow & {
   assignmentStatus?: PatrolStatus | null;
   assignment_status?: PatrolStatus | null;
 
+  checkInDateTime?: string | null;
+  check_in_date_time?: string | null;
+  check_in_datetime?: string | null;
+
+  checkOutDateTime?: string | null;
+  check_out_date_time?: string | null;
+  check_out_datetime?: string | null;
+
   checkInImageUrl?: string | null;
   check_in_image_url?: string | null;
   checkinImageUrl?: string | null;
@@ -187,47 +195,91 @@ const EMPTY_FILTER_OPTIONS: PatrolReportFilterOptions = {
   employees: [],
 };
 
-const THAI_MONTH_SHORT = [
-  "ม.ค.",
-  "ก.พ.",
-  "มี.ค.",
-  "เม.ย.",
-  "พ.ค.",
-  "มิ.ย.",
-  "ก.ค.",
-  "ส.ค.",
-  "ก.ย.",
-  "ต.ค.",
-  "พ.ย.",
-  "ธ.ค.",
-];
+const THAI_DATE_LOCALE = "th-TH-u-ca-buddhist";
+const THAI_WEEKDAY_LOCALE = "th-TH";
 
-const THAI_MONTH_FULL = [
-  "มกราคม",
-  "กุมภาพันธ์",
-  "มีนาคม",
-  "เมษายน",
-  "พฤษภาคม",
-  "มิถุนายน",
-  "กรกฎาคม",
-  "สิงหาคม",
-  "กันยายน",
-  "ตุลาคม",
-  "พฤศจิกายน",
-  "ธันวาคม",
-];
+type IntlDateTimePartType =
+  | "weekday"
+  | "day"
+  | "month"
+  | "year"
+  | "hour"
+  | "minute";
 
-const THAI_WEEKDAYS = ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"];
+const thaiShortDatePartsFormatter = new Intl.DateTimeFormat(THAI_DATE_LOCALE, {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+});
 
-const THAI_WEEKDAYS_FULL = [
-  "วันอาทิตย์",
-  "วันจันทร์",
-  "วันอังคาร",
-  "วันพุธ",
-  "วันพฤหัสบดี",
-  "วันศุกร์",
-  "วันเสาร์",
-];
+const thaiLongDatePartsFormatter = new Intl.DateTimeFormat(THAI_DATE_LOCALE, {
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+});
+
+const thaiMonthYearPartsFormatter = new Intl.DateTimeFormat(
+  THAI_DATE_LOCALE,
+  {
+    month: "long",
+    year: "numeric",
+  },
+);
+
+const thaiDateTimePartsFormatter = new Intl.DateTimeFormat(THAI_DATE_LOCALE, {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
+const thaiWeekdayShortFormatter = new Intl.DateTimeFormat(
+  THAI_WEEKDAY_LOCALE,
+  {
+    weekday: "short",
+  },
+);
+
+function getIntlPart(
+  formatter: Intl.DateTimeFormat,
+  date: Date,
+  type: IntlDateTimePartType,
+) {
+  return (
+    formatter.formatToParts(date).find((part) => part.type === type)?.value ??
+    ""
+  );
+}
+
+function normalizeThaiWeekdayShort(value: string) {
+  return value.replace(/\.$/, "");
+}
+
+function normalizeHourPart(value: string) {
+  const hour = value.padStart(2, "0");
+
+  return hour === "24" ? "00" : hour;
+}
+
+function getThaiWeekdaysShort() {
+  const startDate = new Date();
+
+  startDate.setHours(12, 0, 0, 0);
+  startDate.setDate(startDate.getDate() - startDate.getDay());
+
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(startDate);
+
+    date.setDate(startDate.getDate() + index);
+
+    return normalizeThaiWeekdayShort(thaiWeekdayShortFormatter.format(date));
+  });
+}
+
+const THAI_WEEKDAYS = getThaiWeekdaysShort();
 
 function getTodayYYYYMMDD() {
   const today = new Date();
@@ -265,9 +317,11 @@ function formatDateThaiShort(value: string) {
 
   if (!date) return "เลือกวันที่";
 
-  return `${date.getDate()} ${THAI_MONTH_SHORT[date.getMonth()]} ${
-    date.getFullYear() + 543
-  }`;
+  const day = getIntlPart(thaiShortDatePartsFormatter, date, "day");
+  const month = getIntlPart(thaiShortDatePartsFormatter, date, "month");
+  const year = getIntlPart(thaiShortDatePartsFormatter, date, "year");
+
+  return `${day} ${month} ${year}`;
 }
 
 function formatDateThaiLong(value: string) {
@@ -275,9 +329,12 @@ function formatDateThaiLong(value: string) {
 
   if (!date) return "-";
 
-  return `${THAI_WEEKDAYS_FULL[date.getDay()]}ที่ ${date.getDate()} ${
-    THAI_MONTH_FULL[date.getMonth()]
-  } ${date.getFullYear() + 543}`;
+  const weekday = getIntlPart(thaiLongDatePartsFormatter, date, "weekday");
+  const day = getIntlPart(thaiLongDatePartsFormatter, date, "day");
+  const month = getIntlPart(thaiLongDatePartsFormatter, date, "month");
+  const year = getIntlPart(thaiLongDatePartsFormatter, date, "year");
+
+  return `${weekday}ที่ ${day} ${month} ${year}`;
 }
 
 function formatReportDateText(value: string | null | undefined) {
@@ -306,8 +363,68 @@ function formatReportDateText(value: string | null | undefined) {
   });
 }
 
+
+function parseApiDateTime(value: string | null | undefined) {
+  if (!value) return null;
+
+  const text = String(value).trim();
+
+  if (!text) return null;
+
+  const match = text.match(
+    /^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2}))?/,
+  );
+
+  if (!match) return null;
+
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText] =
+    match;
+
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  const second = Number(secondText ?? "0");
+
+  if (
+    !Number.isFinite(year) ||
+    !Number.isFinite(month) ||
+    !Number.isFinite(day) ||
+    !Number.isFinite(hour) ||
+    !Number.isFinite(minute) ||
+    !Number.isFinite(second)
+  ) {
+    return null;
+  }
+
+  return new Date(year, month - 1, day, hour, minute, second);
+}
+
+function formatDateTimeThaiShort(value: string | null | undefined) {
+  const date = parseApiDateTime(value);
+
+  if (!date || Number.isNaN(date.getTime())) {
+    return "-";
+  }
+
+  const day = getIntlPart(thaiDateTimePartsFormatter, date, "day");
+  const month = getIntlPart(thaiDateTimePartsFormatter, date, "month");
+  const year = getIntlPart(thaiDateTimePartsFormatter, date, "year");
+  const hour = normalizeHourPart(
+    getIntlPart(thaiDateTimePartsFormatter, date, "hour"),
+  );
+  const minute = getIntlPart(thaiDateTimePartsFormatter, date, "minute")
+    .padStart(2, "0");
+
+  return `${day} ${month} ${year} ${hour}:${minute}`;
+}
+
 function getCalendarTitle(date: Date) {
-  return `${THAI_MONTH_FULL[date.getMonth()]} ${date.getFullYear() + 543}`;
+  const month = getIntlPart(thaiMonthYearPartsFormatter, date, "month");
+  const year = getIntlPart(thaiMonthYearPartsFormatter, date, "year");
+
+  return `${month} ${year}`;
 }
 
 function getCalendarCells(monthDate: Date): CalendarCell[] {
@@ -654,6 +771,24 @@ function getContactDetail(row: PatrolReportDisplayRow) {
 
 function getCallNote(row: PatrolReportDisplayRow) {
   return row.callNote ?? row.call_note ?? "-";
+}
+
+function getCheckInDateTimeText(row: PatrolReportDisplayRow) {
+  return formatDateTimeThaiShort(
+    row.checkInDateTime ??
+      row.check_in_date_time ??
+      row.check_in_datetime ??
+      null,
+  );
+}
+
+function getCheckOutDateTimeText(row: PatrolReportDisplayRow) {
+  return formatDateTimeThaiShort(
+    row.checkOutDateTime ??
+      row.check_out_date_time ??
+      row.check_out_datetime ??
+      null,
+  );
 }
 
 function getOperatorText(row: PatrolReportDisplayRow) {
@@ -1828,9 +1963,9 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                     <th hidden={HIDE_CONTRACT_COLUMNS}>วันที่เริ่มสัญญา</th>
                     <th hidden={HIDE_CONTRACT_COLUMNS}>แจ้งเตือน</th>
                     <th hidden={HIDE_CONTRACT_COLUMNS}>ตามสัญญา</th>
-                    <th>วันที่</th>
-                    <th>เวลาเข้า</th>
-                    <th>เวลาออก</th>
+                    <th>ตารางแผนงาน</th>
+                    <th>วันเวลาเข้า</th>
+                    <th>วันเวลาออก</th>
                     <th>ผู้ดำเนินการ</th>
                     <th>รายละเอียดการติดต่อ</th>
                     <th>หมายเหตุ</th>
@@ -1857,6 +1992,8 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                       const checkInImageUrl = getCheckInImageUrl(row);
                       const checkOutImageUrl = getCheckOutImageUrl(row);
                       const contractText = getContractCodeText(row.contractCode);
+                      const checkInDateTimeText = getCheckInDateTimeText(row);
+                      const checkOutDateTimeText = getCheckOutDateTimeText(row);
 
                       return (
                         <tr
@@ -1906,22 +2043,18 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
 
                           <td>
                             <ReportTimePhotoCell
-                              time={row.checkInTime}
+                              time={checkInDateTimeText}
                               imageUrl={checkInImageUrl}
-                              imageTitle={`${contractText} - ${row.siteName} | รูปเวลาเข้า ${
-                                row.checkInTime ?? "-"
-                              }`}
+                              imageTitle={`${contractText} - ${row.siteName} | รูปเวลาเข้า ${checkInDateTimeText}`}
                               onPreview={handleOpenImagePreview}
                             />
                           </td>
 
                           <td>
                             <ReportTimePhotoCell
-                              time={row.checkOutTime}
+                              time={checkOutDateTimeText}
                               imageUrl={checkOutImageUrl}
-                              imageTitle={`${contractText} - ${row.siteName} | รูปเวลาออก ${
-                                row.checkOutTime ?? "-"
-                              }`}
+                              imageTitle={`${contractText} - ${row.siteName} | รูปเวลาออก ${checkOutDateTimeText}`}
                               onPreview={handleOpenImagePreview}
                             />
                           </td>
@@ -1979,6 +2112,8 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                 const checkInImageUrl = getCheckInImageUrl(row);
                 const checkOutImageUrl = getCheckOutImageUrl(row);
                 const contractText = getContractCodeText(row.contractCode);
+                const checkInDateTimeText = getCheckInDateTimeText(row);
+                const checkOutDateTimeText = getCheckOutDateTimeText(row);
 
                 return (
                   <article
@@ -2073,33 +2208,29 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                         )}
 
                         <div className={styles.detailRow}>
-                          <span>วันที่</span>
+                          <span>ตารางแผนงาน</span>
                           <strong>{formatReportDateText(row.dateText)}</strong>
                         </div>
 
                         <div className={styles.detailRow}>
-                          <span>เวลาเข้า</span>
+                          <span>วันเวลาเข้า</span>
 
                           <ReportTimePhotoCell
-                            time={row.checkInTime}
+                            time={checkInDateTimeText}
                             imageUrl={checkInImageUrl}
-                            imageTitle={`${contractText} - ${row.siteName} | รูปเวลาเข้า ${
-                              row.checkInTime ?? "-"
-                            }`}
+                            imageTitle={`${contractText} - ${row.siteName} | รูปเวลาเข้า ${checkInDateTimeText}`}
                             align="right"
                             onPreview={handleOpenImagePreview}
                           />
                         </div>
 
                         <div className={styles.detailRow}>
-                          <span>เวลาออก</span>
+                          <span>วันเวลาออก</span>
 
                           <ReportTimePhotoCell
-                            time={row.checkOutTime}
+                            time={checkOutDateTimeText}
                             imageUrl={checkOutImageUrl}
-                            imageTitle={`${contractText} - ${row.siteName} | รูปเวลาออก ${
-                              row.checkOutTime ?? "-"
-                            }`}
+                            imageTitle={`${contractText} - ${row.siteName} | รูปเวลาออก ${checkOutDateTimeText}`}
                             align="right"
                             onPreview={handleOpenImagePreview}
                           />

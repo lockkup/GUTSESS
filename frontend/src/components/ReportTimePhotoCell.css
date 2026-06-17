@@ -1,38 +1,58 @@
 /* src/pages/Attendance/PatrolReport/components/ReportTimePhotoCell.css */
 
+/* =========================
+   Desktop / PC
+   ให้วันเวลาแสดงเต็ม และรูปอยู่ช่องของตัวเอง
+========================= */
+
 .report-time-photo-cell {
-  display: inline-grid;
-  grid-template-columns: 56px 64px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  column-gap: 16px;
-  min-width: 140px;
+  gap: 10px;
+
+  width: max-content;
+  max-width: none;
+  min-width: 218px;
+
+  vertical-align: middle;
+  white-space: nowrap;
 }
 
 .report-time-photo-cell--right {
-  justify-content: end;
+  justify-content: flex-end;
+  margin-left: auto;
 }
 
 .report-time-photo-cell__time {
-  min-width: 56px;
+  flex: 0 0 160px;
+  min-width: 160px;
+  max-width: none;
+
   text-align: right;
   font-weight: inherit;
   color: inherit;
   font-variant-numeric: tabular-nums;
+
   white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .report-time-photo-cell__thumb-button {
-  justify-self: center;
+  flex: 0 0 48px;
+
   width: 48px;
   height: 48px;
   padding: 0;
+
   border: 0;
   border-radius: 10px;
   overflow: hidden;
   background: #e2e8f0;
   cursor: pointer;
   box-shadow: 0 0 0 1px #cbd5e1;
+
   transition:
     transform 0.14s ease,
     box-shadow 0.14s ease;
@@ -51,9 +71,11 @@
 }
 
 .report-time-photo-cell__no-image {
-  justify-self: center;
-  width: 64px;
+  flex: 0 0 48px;
+
+  width: 48px;
   height: 48px;
+
   border-radius: 10px;
   border: 1px dashed #cbd5e1;
   background: #f8fafc;
@@ -63,7 +85,7 @@
   align-items: center;
   justify-content: center;
 
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 500;
   line-height: 1.1;
   text-align: center;
@@ -72,33 +94,71 @@
 
 /* =========================
    Mobile
+   มือถือใช้ขนาดเดิมที่ไม่ทับข้อความ
 ========================= */
 
 @media (max-width: 768px) {
   .report-time-photo-cell {
-    grid-template-columns: 48px 58px;
-    column-gap: 10px;
-    min-width: 116px;
+    gap: 8px;
+    max-width: 100%;
+    min-width: 154px;
+  }
+
+  .report-time-photo-cell--right {
+    margin-left: auto;
   }
 
   .report-time-photo-cell__time {
-    min-width: 48px;
-    font-size: 11px;
+    flex: 0 0 104px;
+    min-width: 104px;
+    max-width: 104px;
+
+    font-size: 10.5px;
     font-weight: inherit;
     color: inherit;
+
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .report-time-photo-cell__thumb-button {
+    flex: 0 0 42px;
+
     width: 42px;
     height: 42px;
     border-radius: 9px;
   }
 
   .report-time-photo-cell__no-image {
-    width: 58px;
+    flex: 0 0 42px;
+
+    width: 42px;
     height: 42px;
     border-radius: 9px;
-    font-size: 10px;
+
+    font-size: 9px;
     font-weight: 500;
+  }
+}
+
+@media (max-width: 380px) {
+  .report-time-photo-cell {
+    gap: 6px;
+    min-width: 140px;
+  }
+
+  .report-time-photo-cell__time {
+    flex-basis: 92px;
+    min-width: 92px;
+    max-width: 92px;
+    font-size: 10px;
+  }
+
+  .report-time-photo-cell__thumb-button,
+  .report-time-photo-cell__no-image {
+    flex-basis: 42px;
+    width: 42px;
+    height: 42px;
   }
 }
