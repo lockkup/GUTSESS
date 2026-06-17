@@ -45,6 +45,11 @@ OPERATOR_LAST_NAME_ALIAS = "operator_last_name"
 CHECKIN_IMAGE_ALIAS = "checkin_image_url"
 CHECKOUT_IMAGE_ALIAS = "checkout_image_url"
 
+# ใช้สำหรับเรียงรายงานตามเวลาเช็กอินจริง
+# ถ้า view vw_checkin_report / vw_checkin_unplanned มีคอลัมน์นี้
+# ระบบจะใช้ datetime จริงแทน started_at ที่มักเป็นข้อความ HH:MM
+STARTED_DATETIME_COLUMN = "started_datetime"
+
 CHECKIN_IMAGE_COLUMN_CANDIDATES = (
     # ชื่อ column จริงในตาราง time_record / view รายงาน
     "images_checkin_1",
@@ -1474,13 +1479,25 @@ def _get_patrol_report_unplanned_rows(
         )
         params["keyword"] = f"%{keyword.strip()}%"
 
+    unplanned_started_sort_column = (
+        f"v.{STARTED_DATETIME_COLUMN}"
+        if STARTED_DATETIME_COLUMN in view_column_names
+        else f"v.{PatrolReportConstants.COLUMN_STARTED_AT}"
+    )
+
     sql_parts.append(
         f"""
         ORDER BY
             v.{PatrolReportConstants.COLUMN_WORK_DATE} DESC,
-            v.{PatrolReportConstants.COLUMN_STARTED_AT} DESC,
-            v.{PatrolReportConstants.COLUMN_CONTRACT_CODE},
-            v.{PatrolReportConstants.COLUMN_LOCATION_NAME}
+            CASE
+                WHEN {unplanned_started_sort_column} IS NULL THEN 1
+                WHEN TRIM(CAST({unplanned_started_sort_column} AS CHAR)) = '' THEN 1
+                WHEN TRIM(CAST({unplanned_started_sort_column} AS CHAR)) = '-' THEN 1
+                ELSE 0
+            END ASC,
+            {unplanned_started_sort_column} ASC,
+            v.{PatrolReportConstants.COLUMN_CONTRACT_CODE} ASC,
+            v.{PatrolReportConstants.COLUMN_LOCATION_NAME} ASC
         """
     )
 
@@ -1510,11 +1527,11 @@ def _get_patrol_report_unplanned_rows(
     filtered_rows.sort(
         key=lambda row: (
             _to_optional_date(row.get(PatrolReportConstants.COLUMN_WORKDAY)) or date.min,
-            _format_time(row.get(PatrolReportConstants.COLUMN_STARTED_AT)) or "",
+            0 if _format_time(row.get(PatrolReportConstants.COLUMN_STARTED_AT)) else 1,
+            _format_time(row.get(PatrolReportConstants.COLUMN_STARTED_AT)) or "99:99",
             _to_text(row.get(PatrolReportConstants.COLUMN_CONTRACT_CODE)),
             _to_text(row.get(PatrolReportConstants.COLUMN_LOCATION_NAME)),
         ),
-        reverse=True,
     )
 
     results: list[PatrolReportResponse] = []
@@ -1725,10 +1742,29 @@ def get_patrol_report_rows(
         )
         params["keyword"] = f"%{keyword.strip()}%"
 
+    planned_started_sort_column = (
+        f"v.{STARTED_DATETIME_COLUMN}"
+        if STARTED_DATETIME_COLUMN in view_column_names
+        else f"v.{PatrolReportConstants.COLUMN_STARTED_AT}"
+    )
+
     sql_parts.append(
         f"""
         ORDER BY
             v.{PatrolReportConstants.COLUMN_WORKDAY} DESC,
+            CASE v.{PatrolReportConstants.COLUMN_ASSIGNMENT_STATUS}
+                WHEN '{PatrolReportConstants.STATUS_IN_PROGRESS}' THEN 1
+                WHEN '{PatrolReportConstants.STATUS_COMPLETED}' THEN 2
+                WHEN '{PatrolReportConstants.STATUS_PENDING}' THEN 3
+                ELSE 9
+            END ASC,
+            CASE
+                WHEN {planned_started_sort_column} IS NULL THEN 1
+                WHEN TRIM(CAST({planned_started_sort_column} AS CHAR)) = '' THEN 1
+                WHEN TRIM(CAST({planned_started_sort_column} AS CHAR)) = '-' THEN 1
+                ELSE 0
+            END ASC,
+            {planned_started_sort_column} ASC,
             v.{PatrolReportConstants.COLUMN_SHIFT_ID} ASC,
             v.{PatrolReportConstants.COLUMN_DIVISION_ID} ASC,
             v.{PatrolReportConstants.COLUMN_ROUTE_ID} ASC,
