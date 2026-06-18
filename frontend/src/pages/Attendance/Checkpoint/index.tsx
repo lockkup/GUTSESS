@@ -409,6 +409,20 @@ const getCheckpointWorkDate = (date: Date, shift: ShiftType) => {
   const totalSeconds = getTotalSeconds(date);
 
   /**
+   * ผลัดกลางวันเปิดรอบใหม่เวลา 08:00:01
+   * ก่อนเวลา 08:00:01 หากผู้ใช้เลือกดูผลัดกลางวัน
+   * ต้องแสดง work_date ของเมื่อวาน และปิดปุ่มทำรายการไว้ตาม currentShift
+   *
+   * ตัวอย่าง:
+   * 18 มิ.ย. 07:31 + เลือกผลัดกลางวัน
+   * ต้องส่ง API เป็น workDate = 17 มิ.ย.
+   */
+  if (shift === "day" && totalSeconds < DAY_SHIFT_START_SECONDS) {
+    workDate.setDate(workDate.getDate() - 1);
+    return workDate;
+  }
+
+  /**
    * ผลัดกลางคืนข้ามวัน:
    * 00:00:00 - 08:00:00 ต้องนับเป็น work_date ของวันก่อนหน้า
    *
@@ -693,12 +707,21 @@ export default function Checkpoint({
     [selectedWorkDate],
   );
 
+  const currentDateText = useMemo(
+    () => formatApiDate(currentDate),
+    [currentDate],
+  );
+
   const shiftText = getShiftText(selectedShift);
   const currentShiftText = getShiftText(currentShift);
   const isSelectedCurrentShift = selectedShift === currentShift;
+  const isShowingPreviousDayShift =
+    selectedShift === "day" && selectedWorkDateText !== currentDateText;
 
   const selectedShiftMismatchMessage = !isSelectedCurrentShift
-    ? `ไม่ใช่ผลัดปัจจุบัน ทำรายการไม่ได้ ขณะนี้เป็น${currentShiftText}`
+    ? isShowingPreviousDayShift
+      ? "ขณะนี้ยังไม่ถึงเวลาเปิดรอบผลัดกลางวันใหม่ ระบบแสดงรายการผลัดกลางวันของเมื่อวาน และไม่สามารถทำรายการได้"
+      : `ไม่ใช่ผลัดปัจจุบัน ทำรายการไม่ได้ ขณะนี้เป็น${currentShiftText}`
     : "";
 
   const orderedCheckRows = useMemo(() => {
@@ -802,7 +825,7 @@ export default function Checkpoint({
   useEffect(() => {
     const timer = window.setInterval(() => {
       setCurrentDate(new Date());
-    }, 60_000);
+    }, 1_000);
 
     return () => window.clearInterval(timer);
   }, []);
@@ -1499,7 +1522,7 @@ export default function Checkpoint({
                     </div>
 
                     <h3 className={styles.emptyTitle}>
-                      ไม่พบตารางงานสายตรวจของวันนี้
+                      ไม่พบตารางงานสายตรวจของรอบนี้
                     </h3>
 
                     <div className={styles.emptyDivider} />
