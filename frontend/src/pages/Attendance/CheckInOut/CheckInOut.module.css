@@ -3,6 +3,7 @@
 :root {
   --checkinout-title-size: 22px;
   --checkinout-unit-size: 16px;
+  --checkinout-patrol-area-size: 16px;
 
   --checkinout-summary-head-size: 21px;
   --checkinout-walk-size: 22px;
@@ -28,6 +29,32 @@
   text-align: left;
 }
 
+/* ภาค / เขต / เส้นทาง ที่รับมาจากหน้า Checkpoint */
+.patrolAreaInfo {
+  width: 100%;
+  align-self: stretch;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 4px 10px;
+
+  margin: 0 0 4px;
+  padding: 0;
+
+  color: #0f172a;
+  font-size: var(--checkinout-patrol-area-size);
+  font-weight: 400;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.patrolAreaValue {
+  font-size: var(--checkinout-patrol-area-size);
+  font-weight: 400;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
 /* หน่วยงาน */
 .unitNameText {
   width: 100%;
@@ -35,7 +62,7 @@
   margin: 0 0 12px;
   color: #0f172a;
   font-size: var(--checkinout-unit-size);
-  font-weight: 800;
+  font-weight: 400;
   line-height: 1.35;
   text-align: left;
   word-break: break-word;

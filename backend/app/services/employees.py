@@ -10,13 +10,50 @@ from sqlalchemy.orm import Session
 
 from app.core.constants import DBConstants
 from app.core.error_messages import EMPLOYEE_NOT_FOUND_DETAIL
+from app.models.departments import Department
+from app.models.divisions import Divisions
 from app.models.employees import Employees
+from app.models.route import Route
+
+
+# ฟิลด์ที่อนุญาตให้ส่งออกผ่าน GET /employees เท่านั้น
+# ไม่ส่ง password ออกไปยัง Frontend
+_EMPLOYEE_RESPONSE_FIELDS: tuple[str, ...] = (
+    "employee_code",
+    "role_id",
+    "name_prefix_id",
+    "first_name",
+    "last_name",
+    "profile_image_path",
+    "profile_image_updated_at",
+    "birth_date",
+    "email",
+    "phone_number",
+    "address_id",
+    "field_id",
+    "department_id",
+    "division_id",
+    "position_id",
+    "routes_id",
+    "shift_id",
+    "start_date",
+    "leave_date",
+    "is_active",
+    "created_at",
+    "updated_at",
+    "created_by",
+    "updated_by",
+)
 
 
 def employee_to_dict(employee: Employees) -> dict[str, Any]:
     """
     แปลง SQLAlchemy model เป็น dict
-    ใช้แทน row.__dict__ เพื่อไม่ติด _sa_instance_state
+    ใช้กับ Compatibility service / Auth ภายในระบบ
+
+    หมายเหตุ:
+    - ฟังก์ชันนี้คงไว้เหมือนเดิม เพราะบางส่วนของระบบ Login
+      อาจยังต้องใช้ข้อมูล model ทุกคอลัมน์
     """
     return {
         attr.key: getattr(employee, attr.key)
@@ -24,7 +61,93 @@ def employee_to_dict(employee: Employees) -> dict[str, Any]:
     }
 
 
+def employee_to_response_dict(
+    employee: Employees,
+    *,
+    field_name: str | None = None,
+    division_name: str | None = None,
+    route_name: str | None = None,
+) -> dict[str, Any]:
+    """
+    สร้างข้อมูลสำหรับ response_model=EmployeesResponse
+
+    - จำกัดเฉพาะฟิลด์ที่ EmployeesResponse รองรับ
+    - ไม่ส่ง password กลับไปที่ Frontend
+    - เพิ่มชื่อ ภาค / เขต / เส้นทาง จาก JOIN
+    """
+    data = {
+        field: getattr(employee, field, None)
+        for field in _EMPLOYEE_RESPONSE_FIELDS
+    }
+
+    data.update(
+        {
+            # ในระบบนี้ departments คือ ภาค
+            "field_name": field_name.strip() if field_name else None,
+            # divisions คือ เขต
+            "division_name": division_name.strip() if division_name else None,
+            # routes คือ เส้นทาง
+            "route_name": route_name.strip() if route_name else None,
+        }
+    )
+
+    return data
+
+
 class EmployeesService:
+    @staticmethod
+    def _employee_with_patrol_area_stmt():
+        """
+        JOIN ข้อมูลชื่อ ภาค / เขต / เส้นทาง โดยใช้โครงสร้างจริงของระบบ
+
+        employees.department_id -> departments.department_id -> ภาค
+        employees.division_id   -> divisions.division_id     -> เขต
+        employees.routes_id     -> routes.route_id           -> เส้นทาง
+
+        ใช้ outerjoin เพื่อให้ข้อมูล employee ยังแสดงได้ แม้ข้อมูลอ้างอิง
+        บางรายการเป็น NULL หรือไม่มีรายการในตารางปลายทาง
+        """
+        return (
+            select(
+                Employees,
+                Department.department_name.label("field_name"),
+                Divisions.division_name.label("division_name"),
+                Route.route_name.label("route_name"),
+            )
+            .outerjoin(
+                Department,
+                Department.department_id == Employees.department_id,
+            )
+            .outerjoin(
+                Divisions,
+                Divisions.division_id == Employees.division_id,
+            )
+            .outerjoin(
+                Route,
+                Route.route_id == Employees.routes_id,
+            )
+        )
+
+    @staticmethod
+    def _row_to_response_dict(row: Any) -> dict[str, Any]:
+        """
+        แปลงผลลัพธ์จาก SELECT Employees + ข้อมูลภาค/เขต/เส้นทาง
+        """
+        row_mapping = row._mapping
+        employee = row_mapping[Employees]
+
+        return employee_to_response_dict(
+            employee,
+            field_name=row_mapping.get("field_name"),
+            division_name=row_mapping.get("division_name"),
+            route_name=row_mapping.get("route_name"),
+        )
+
+    # ============================================================
+    # Methods เดิม: คง return type เป็น Employees เพื่อไม่กระทบ
+    # AuditLog / Login / Service อื่นที่อาจเรียกใช้อยู่
+    # ============================================================
+
     @staticmethod
     def get_employees(
         db: Session,
@@ -63,6 +186,56 @@ class EmployeesService:
             )
 
         return employee
+
+    # ============================================================
+    # Methods ใหม่: ใช้เฉพาะ API /employees เพื่อส่งชื่อ
+    # ภาค / เขต / เส้นทาง กลับไปให้ Frontend
+    # ============================================================
+
+    @staticmethod
+    def get_employees_with_patrol_area(
+        db: Session,
+        skip: int = DBConstants.DEFAULT_PAGE_SKIP,
+        limit: int = DBConstants.DEFAULT_PAGE_LIMIT,
+    ) -> list[dict[str, Any]]:
+        stmt = (
+            EmployeesService._employee_with_patrol_area_stmt()
+            .where(Employees.is_active.is_(True))
+            .order_by(Employees.employee_code.asc())
+            .offset(skip)
+            .limit(limit)
+        )
+
+        rows = db.execute(stmt).all()
+
+        return [
+            EmployeesService._row_to_response_dict(row)
+            for row in rows
+        ]
+
+    @staticmethod
+    def get_employee_by_code_with_patrol_area(
+        db: Session,
+        employee_code: str,
+    ) -> dict[str, Any]:
+        stmt = (
+            EmployeesService._employee_with_patrol_area_stmt()
+            .where(
+                Employees.employee_code == employee_code,
+                Employees.is_active.is_(True),
+            )
+            .limit(1)
+        )
+
+        row = db.execute(stmt).first()
+
+        if row is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=EMPLOYEE_NOT_FOUND_DETAIL,
+            )
+
+        return EmployeesService._row_to_response_dict(row)
 
     @staticmethod
     def get_employee_by_code_or_none(

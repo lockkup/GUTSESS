@@ -63,8 +63,8 @@ from app.schemas.employees import (
     EmployeeBase,
     EmployeeCreate,
     EmployeeResponse,
-    EmployeeUpdate,
     EmployeesResponse,
+    EmployeeUpdate,
 )
 from app.schemas.face_profile import (
     FaceProfileBase,
@@ -87,6 +87,17 @@ from app.schemas.name_prefixs import (
 from app.schemas.patrol_report import (
     PatrolReportResponse,
     PatrolStatus,
+)
+from app.schemas.patrol_report_export import (
+    PatrolReportExportAction,
+    PatrolReportExportCreate,
+    PatrolReportExportFilter,
+    PatrolReportExportResponse,
+    PatrolReportPlanMode,
+    PatrolReportShiftType,
+    PatrolReportStatusFilter,
+    ReportExportJobStatus,
+    ReportExportType,
 )
 from app.schemas.positions import (
     PositionBase,
@@ -225,6 +236,15 @@ __all__ = [
     "NamePrefixResponse",
     "PatrolReportResponse",
     "PatrolStatus",
+    "PatrolReportExportAction",
+    "PatrolReportExportCreate",
+    "PatrolReportExportFilter",
+    "PatrolReportExportResponse",
+    "PatrolReportPlanMode",
+    "PatrolReportShiftType",
+    "PatrolReportStatusFilter",
+    "ReportExportJobStatus",
+    "ReportExportType",
     "PositionBase",
     "PositionCreate",
     "PositionUpdate",

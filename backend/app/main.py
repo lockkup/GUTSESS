@@ -30,6 +30,7 @@ from app.models import (  # noqa: F401
     FaceProfileChange,
     NamePrefix,
     Position,
+    ReportExportJob,
     Role,
     Route,
     RouteSiteLocation,

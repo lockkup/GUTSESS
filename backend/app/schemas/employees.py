@@ -62,6 +62,12 @@ class EmployeesResponse(BaseModel):
 
     routes_id: int | None = None
 
+    # ชื่อสำหรับใช้แสดงผลบนหน้าเว็บ
+    # ค่าเหล่านี้ต้องมาจากการ JOIN ใน EmployeesService
+    field_name: str | None = None
+    division_name: str | None = None
+    route_name: str | None = None
+
     # ไม่ใช้ shift_id จาก employees ใน flow ลงเวลา
     # เปิด nullable ไว้เพื่อไม่ให้ response พังถ้าข้อมูลเป็น NULL
     shift_id: int | None = None

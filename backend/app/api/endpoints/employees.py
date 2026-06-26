@@ -26,7 +26,10 @@ def get_employees(
     ),
     db: Session = Depends(get_db),
 ) -> list[EmployeesResponse]:
-    return EmployeesService.get_employees(
+    """
+    ส่งข้อมูลพนักงาน พร้อมชื่อภาค เขต และเส้นทาง
+    """
+    return EmployeesService.get_employees_with_patrol_area(
         db=db,
         skip=skip,
         limit=limit,
@@ -47,7 +50,10 @@ def get_employee_by_code(
     ),
     db: Session = Depends(get_db),
 ) -> EmployeesResponse:
-    return EmployeesService.get_employee_by_code(
+    """
+    ส่งข้อมูลพนักงานรายบุคคล พร้อมชื่อภาค เขต และเส้นทาง
+    """
+    return EmployeesService.get_employee_by_code_with_patrol_area(
         db=db,
         employee_code=employee_code,
     )

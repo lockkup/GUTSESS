@@ -245,3 +245,55 @@ PATROL_REPORT_DATE_REQUIRED_DETAIL: Final[str] = (
 PATROL_REPORT_INVALID_DATE_RANGE_DETAIL: Final[str] = (
     "วันที่เริ่มต้นต้องไม่มากกว่าวันที่สิ้นสุด"
 )
+
+
+# =========================================================
+# Patrol report export
+# =========================================================
+REPORT_EXPORT_JOB_NOT_FOUND_DETAIL: Final[str] = (
+    "Report export job not found"
+)
+
+REPORT_EXPORT_JOB_NOT_READY_DETAIL: Final[str] = (
+    "Report export file is not ready"
+)
+
+REPORT_EXPORT_JOB_FILE_NOT_FOUND_DETAIL: Final[str] = (
+    "Report export file not found"
+)
+
+REPORT_EXPORT_JOB_FILE_EXPIRED_DETAIL: Final[str] = (
+    "Report export file has expired"
+)
+
+REPORT_EXPORT_JOB_NOT_CANCELLABLE_DETAIL: Final[str] = (
+    "Report export job cannot be cancelled in current status"
+)
+
+REPORT_EXPORT_JOB_NOT_RETRYABLE_DETAIL: Final[str] = (
+    "Report export job cannot be retried in current status"
+)
+
+REPORT_EXPORT_JOB_NOT_DELETABLE_DETAIL: Final[str] = (
+    "Report export job cannot be deleted in current status"
+)
+
+INVALID_REPORT_EXPORT_JOB_STATE_TRANSITION_DETAIL: Final[str] = (
+    "Invalid report export job state transition"
+)
+
+PATROL_REPORT_EXPORT_NO_DATA_DETAIL: Final[str] = (
+    "No patrol report data found for export"
+)
+
+PATROL_REPORT_EXPORT_FAILED_DETAIL: Final[str] = (
+    "Unable to create patrol report export"
+)
+
+PATROL_REPORT_EXPORT_CANCELLED_DETAIL: Final[str] = (
+    "Patrol report export was cancelled"
+)
+
+PATROL_REPORT_EXPORT_DOWNLOAD_NOT_ALLOWED_DETAIL: Final[str] = (
+    "Report export download is not allowed"
+)

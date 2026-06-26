@@ -33,18 +33,31 @@ export default function Header({
       <div className={styles.subTh}>ระบบบริการตนเอง</div>
 
       {showUserCard && (
-        <div className={styles.usercard} role="status" aria-label="ผู้ใช้งาน">
-          <span className={styles.usercardIcon} aria-hidden="true">
-            <FontAwesomeIcon icon={faUser} />
-          </span>
+        <>
+          <div
+            className={styles.usercard}
+            role="status"
+            aria-label="ผู้ใช้งาน"
+            style={{
+              background: "transparent",
+              border: "none",
+              boxShadow: "none",
+            }}
+          >
+            <span className={styles.usercardIcon} aria-hidden="true">
+              <FontAwesomeIcon icon={faUser} />
+            </span>
 
-          <span className={styles.usercardLabel}>ผู้ใช้งาน:</span>
+            <span className={styles.usercardLabel}>ผู้ใช้งาน:</span>
 
-          <span className={styles.usercardValue}>
-            {empCode}
-            {displayName ? `-${displayName}` : ""}
-          </span>
-        </div>
+            <span className={styles.usercardValue}>
+              {empCode}
+              {displayName ? `-${displayName}` : ""}
+            </span>
+          </div>
+
+          <div className={styles.usercardDivider} aria-hidden="true" />
+        </>
       )}
     </header>
   );

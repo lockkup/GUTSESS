@@ -1,6 +1,6 @@
 // src/pages/Attendance/FaceVerify/index.tsx
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import Header from "@/layout/Header";
 import BackButton from "@/components/BackButton";
@@ -37,6 +37,13 @@ type Props = {
   assignmentId?: number | null;
   unitName?: string | null;
   passedLocation?: LocationCoords | null;
+
+  /**
+   * รับจากหน้า CheckInOut ผ่าน App.tsx
+   * ตัวอย่าง: ["ภาค 2", "เขต 2.1", "เส้นทางที่ 1"]
+   * แสดงเฉพาะข้อความจริง โดยไม่มีหัวข้อ fix
+   */
+  patrolAreaValues?: string[] | null;
 
   punchType: PunchType;
   onBack: () => void;
@@ -79,6 +86,7 @@ export default function FaceVerify({
   assignmentId = null,
   unitName = null,
   passedLocation = null,
+  patrolAreaValues = null,
   punchType,
   onBack,
   onConfirm,
@@ -104,6 +112,34 @@ export default function FaceVerify({
   const hasSelectedAssignment = Boolean(assignmentId);
   const hasPassedLocation = isValidLocation(passedLocation);
   const isCheckpointMode = Boolean(assignmentId);
+
+  /**
+   * แสดงเฉพาะข้อความภาค / เขต / เส้นทางจากหน้า CheckInOut
+   * - ตัดข้อความว่าง
+   * - ตัดข้อความซ้ำ
+   * - แสดงเฉพาะ flow งานสายตรวจ
+   */
+  const visiblePatrolAreaValues = useMemo(() => {
+    if (!isCheckpointMode || !Array.isArray(patrolAreaValues)) {
+      return [];
+    }
+
+    const uniqueValues = new Set<string>();
+
+    patrolAreaValues.forEach((value) => {
+      if (typeof value !== "string") {
+        return;
+      }
+
+      const cleanValue = value.trim();
+
+      if (cleanValue) {
+        uniqueValues.add(cleanValue);
+      }
+    });
+
+    return Array.from(uniqueValues);
+  }, [isCheckpointMode, patrolAreaValues]);
 
   useEffect(() => {
     saveReqRef.current++;
@@ -318,7 +354,30 @@ export default function FaceVerify({
         <section className="guts-home-card" aria-label="Checkpoint Photo">
           <Header empCode={empCode} displayName={displayName} />
 
-          <h2 className={styles.attTitle}>หน้าจอ - ลงเวลางานสายตรวจ</h2>
+          <h2 className={styles.attTitle}>หน้าจอ - ลงเวลาเข้า-ออกงาน</h2>
+
+          {visiblePatrolAreaValues.length > 0 ? (
+            <div
+              aria-label="ข้อมูลแนวสายตรวจ"
+              style={{
+                width: "100%",
+                display: "flex",
+                flexWrap: "wrap",
+                justifyContent: "flex-start",
+                gap: "4px 10px",
+                margin: "0 0 4px",
+                color: "#0f172a",
+                fontSize: "16px",
+                fontWeight: 400,
+                lineHeight: 1.35,
+                textAlign: "left",
+              }}
+            >
+              {visiblePatrolAreaValues.map((value, index) => (
+                <span key={`${value}-${index}`}>{value}</span>
+              ))}
+            </div>
+          ) : null}
 
           {unitName ? (
             <div className={styles.unitNameText}>หน่วยงาน: {unitName}</div>

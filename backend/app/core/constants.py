@@ -59,6 +59,26 @@ class DBConstants:
     CHECKPOINT_ASSIGNMENT_CHANGE_ACTION_LENGTH: Final[int] = 50
     CHECKPOINT_CONTACT_PHONE_LENGTH: Final[int] = 30
 
+    # =========================
+    # Report Export Job
+    # =========================
+
+    # ตัวอย่าง: patrol_report
+    REPORT_EXPORT_TYPE_LENGTH: Final[int] = 50
+
+    # queued / processing / completed / failed / cancelled / expired
+    REPORT_EXPORT_JOB_STATUS_LENGTH: Final[int] = 20
+
+    # เก็บ relative path เท่านั้น เช่น
+    # reports/patrol_report_20260620_000001.pdf
+    REPORT_EXPORT_FILE_PATH_LENGTH: Final[int] = 500
+
+    # ชื่อไฟล์ที่ Browser ดาวน์โหลด
+    REPORT_EXPORT_FILENAME_LENGTH: Final[int] = 255
+
+    # คำค้นหารหัสสัญญา / จุดรักษาการณ์
+    REPORT_EXPORT_KEYWORD_LENGTH: Final[int] = 255
+
     DEFAULT_PAGE_SKIP: Final[int] = 0
     DEFAULT_PAGE_LIMIT: Final[int] = 100
     MAX_PAGE_LIMIT: Final[int] = 1000

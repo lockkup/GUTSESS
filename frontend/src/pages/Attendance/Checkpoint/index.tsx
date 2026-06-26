@@ -49,6 +49,15 @@ export type GoCheckInOutPayload = {
   unitName: string;
 
   /**
+   * ข้อความที่กำลังแสดงบนหน้า Checkpoint เช่น
+   * ["ภาค 2", "เขต 2.1", "เส้นทางที่ 1"]
+   *
+   * ส่งต่อผ่าน App.tsx ไปหน้า CheckInOut
+   * โดยไม่มีหัวข้อ fix เช่น ภาค: เขต: หรือ เส้นทาง:
+   */
+  patrolAreaValues: string[];
+
+  /**
    * ใช้เฉพาะงานสายตรวจ / Checkpoint
    * ส่งต่อไป App.tsx เพื่อบันทึกลง time_record.shift_id
    *
@@ -75,8 +84,38 @@ type Props = {
   routesId?: number | string | null;
   zoneId?: number | string | null;
 
+  /**
+   * ข้อความสรุปแนวสายตรวจที่รับมาจากข้อมูลผู้ใช้ / API
+   * ส่งข้อความที่มีคำนำหน้าพร้อมแสดงได้เลย เช่น
+   * regionLabel="ภาค 1"
+   * districtLabel="เขต 1.1"
+   * routeLabel="เส้นทาง 1"
+   *
+   * ไม่ใช้ divisionId / routeId มาแสดงตรง ๆ เพื่อป้องกันการแสดงรหัส ID
+   * แทนชื่อจริงของภาค เขต หรือเส้นทาง
+   */
+  regionLabel?: string | null;
+  districtLabel?: string | null;
+  routeLabel?: string | null;
+
   onBack: () => void;
   onGoCheckInOut: (payload: GoCheckInOutPayload) => void;
+};
+
+/**
+ * ข้อมูลชื่อภาค / เขต / เส้นทาง ที่ API /employees/{employee_code} ส่งกลับมา
+ * ฟิลด์เหล่านี้มาจาก EmployeesService ที่ JOIN ตาราง departments, divisions และ routes
+ */
+type EmployeePatrolAreaResponse = {
+  field_name?: string | null;
+  division_name?: string | null;
+  route_name?: string | null;
+};
+
+type PatrolAreaInfo = {
+  fieldName: string | null;
+  divisionName: string | null;
+  routeName: string | null;
 };
 
 type RowStatus =
@@ -652,15 +691,96 @@ function splitUnitName(unitName: string) {
   };
 }
 
+/**
+ * ใช้ VITE_API_BASE_URL เดียวกับ service อื่นในระบบ
+ *
+ * ตัวอย่างค่า:
+ * - http://127.0.0.1:8000/api
+ * - https://your-domain.example/api
+ *
+ * ถ้าไม่มีการตั้งค่า จะเรียกผ่าน /api บนโดเมนเดียวกับ Frontend
+ */
+function getApiBaseUrl() {
+  const configuredBaseUrl = String(
+    import.meta.env.VITE_API_BASE_URL ?? "",
+  ).trim();
+
+  return configuredBaseUrl.replace(/\/+$/, "") || "/api";
+}
+
+function cleanPatrolAreaText(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const cleanValue = value.trim();
+
+  return cleanValue || null;
+}
+
+async function getEmployeePatrolArea(
+  employeeCode: string,
+): Promise<PatrolAreaInfo> {
+  const normalizedEmployeeCode = employeeCode.trim();
+
+  if (!normalizedEmployeeCode) {
+    return {
+      fieldName: null,
+      divisionName: null,
+      routeName: null,
+    };
+  }
+
+  const apiBaseUrl = getApiBaseUrl();
+  const endpoint = `${apiBaseUrl}/employees/${encodeURIComponent(
+    normalizedEmployeeCode,
+  )}`;
+
+  const response = await fetch(endpoint, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `โหลดข้อมูลภาค เขต และเส้นทางไม่สำเร็จ (HTTP ${response.status})`,
+    );
+  }
+
+  const data = (await response.json()) as EmployeePatrolAreaResponse;
+
+  return {
+    fieldName: cleanPatrolAreaText(data.field_name),
+    divisionName: cleanPatrolAreaText(data.division_name),
+    routeName: cleanPatrolAreaText(data.route_name),
+  };
+}
+
 export default function Checkpoint({
   empCode,
   displayName,
+  regionLabel,
+  districtLabel,
+  routeLabel,
   onBack,
   onGoCheckInOut,
 }: Props) {
   const [checkRows, setCheckRows] = useState<CheckRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+
+  /**
+   * โหลดข้อมูลภาค / เขต / เส้นทางจาก employee โดยตรง
+   * เก็บแยกจาก props เพื่อให้แสดงได้แม้ App.tsx ยังไม่ได้ส่ง label มา
+   */
+  const [employeePatrolArea, setEmployeePatrolArea] =
+    useState<PatrolAreaInfo>({
+      fieldName: null,
+      divisionName: null,
+      routeName: null,
+    });
 
   const [setting, setSetting] = useState<AttendanceLocationSetting | null>(
     null,
@@ -695,6 +815,86 @@ export default function Checkpoint({
   const currentShift = useMemo(
     () => getCurrentShiftTypeByTime(currentDate),
     [currentDate],
+  );
+
+  const fetchEmployeePatrolArea = useCallback(async () => {
+    const normalizedEmpCode = empCode.trim();
+
+    if (!normalizedEmpCode) {
+      setEmployeePatrolArea({
+        fieldName: null,
+        divisionName: null,
+        routeName: null,
+      });
+      return;
+    }
+
+    try {
+      const patrolArea = await getEmployeePatrolArea(normalizedEmpCode);
+
+      logDev("[Checkpoint] EMPLOYEE PATROL AREA RESULT", {
+        employeeCode: normalizedEmpCode,
+        patrolArea,
+      });
+
+      setEmployeePatrolArea(patrolArea);
+    } catch (error) {
+      /**
+       * ไม่ให้หน้า Checkpoint ใช้งานไม่ได้หาก API employee มีปัญหา
+       * ยังใช้ regionLabel / districtLabel / routeLabel ที่ App.tsx ส่งมาเป็น fallback ได้
+       */
+      logDevError("[Checkpoint] LOAD EMPLOYEE PATROL AREA ERROR", error);
+
+      setEmployeePatrolArea({
+        fieldName: null,
+        divisionName: null,
+        routeName: null,
+      });
+    }
+  }, [empCode]);
+
+  /**
+   * แสดงหัวข้อ ภาค / เขต / เส้นทาง เสมอ
+   *
+   * ลำดับความสำคัญ:
+   * 1. ชื่อที่ API /employees/{employee_code} ส่งกลับมา
+   * 2. label เดิมที่ App.tsx ส่งมา (fallback)
+   * 3. "-" เมื่อยังไม่มีข้อมูล
+   */
+  const patrolAreaInfo = useMemo(
+    () => ({
+      region:
+        employeePatrolArea.fieldName || regionLabel?.trim() || "-",
+      district:
+        employeePatrolArea.divisionName || districtLabel?.trim() || "-",
+      route:
+        employeePatrolArea.routeName || routeLabel?.trim() || "-",
+    }),
+    [
+      districtLabel,
+      employeePatrolArea.divisionName,
+      employeePatrolArea.fieldName,
+      employeePatrolArea.routeName,
+      regionLabel,
+      routeLabel,
+    ],
+  );
+
+  /**
+   * แสดงเฉพาะข้อความที่ Backend ส่งมา เช่น
+   * "ฝ่ายปฏิบัติการภาค 1" | "ส่วนปฏิบัติการเขต 2.1" | "เส้นทาง 1"
+   *
+   * ไม่ใส่หัวข้อแบบ fix เช่น "ภาค:" "เขต:" หรือ "เส้นทาง:"
+   * และไม่แสดงเครื่องหมาย "-" หากยังไม่มีข้อมูล
+   */
+  const patrolAreaValues = useMemo(
+    () =>
+      [
+        patrolAreaInfo.region,
+        patrolAreaInfo.district,
+        patrolAreaInfo.route,
+      ].filter((value) => value && value !== "-"),
+    [patrolAreaInfo],
   );
 
   const selectedWorkDate = useMemo(
@@ -845,6 +1045,10 @@ export default function Checkpoint({
   }, [fetchCheckpointAssignments]);
 
   useEffect(() => {
+    void fetchEmployeePatrolArea();
+  }, [fetchEmployeePatrolArea]);
+
+  useEffect(() => {
     const refreshWhenPageActive = () => {
       if (document.visibilityState === "visible") {
         void fetchCheckpointAssignments();
@@ -903,6 +1107,7 @@ export default function Checkpoint({
 
   const handleRefresh = () => {
     void fetchCheckpointAssignments();
+    void fetchEmployeePatrolArea();
     void fetchLatestLocationSetting();
   };
 
@@ -1303,6 +1508,7 @@ export default function Checkpoint({
     onGoCheckInOut({
       assignmentId: row.assignmentId,
       unitName: row.unitName,
+      patrolAreaValues,
       shiftId: row.shiftId,
       mode,
       passedLocation,
@@ -1412,6 +1618,22 @@ export default function Checkpoint({
             <Header empCode={empCode} displayName={displayName} />
 
             <h2 className={styles.attTitle}>หน้าจอ-ตารางงานสายตรวจประจำวัน</h2>
+
+            {patrolAreaValues.length > 0 && (
+              <div
+                className={styles.patrolAreaInfo}
+                aria-label="ข้อมูลแนวสายตรวจ"
+              >
+                {patrolAreaValues.map((value, index) => (
+                  <div
+                    className={styles.patrolAreaItem}
+                    key={`${value}-${index}`}
+                  >
+                    <span className={styles.patrolAreaValue}>{value}</span>
+                  </div>
+                ))}
+              </div>
+            )}
 
             <div className={styles.roundInfo}>
               {formatThaiDateTime(selectedWorkDate)}

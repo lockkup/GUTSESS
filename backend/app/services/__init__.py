@@ -1,3 +1,5 @@
+# backend/app/services/__init__.py
+
 from .app_setting import AppSettingService
 from .audit_logs import AuditLogService
 from .checkpoint_assignment import CheckpointAssignmentService

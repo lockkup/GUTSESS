@@ -36,3 +36,4 @@ node_modules
 frontend/.env.production
 caddy/Caddyfile.backup-*
 caddy/Caddyfile.backup*
+backend/exports/patrol_reports/ 

@@ -1,3 +1,5 @@
+# backend/app/models/__init__.py
+
 from .audit_logs import AuditLog
 from .checkpoint_assignment import CheckpointAssignment
 from .checkpoint_assignment_call import CheckpointAssignmentCall
@@ -14,6 +16,7 @@ from .face_profile import FaceProfile
 from .face_profile_change import FaceProfileChange
 from .name_prefixs import NamePrefix
 from .positions import Position
+from .report_export_job import ReportExportJob
 from .roles import Role
 from .route import Route
 from .route_site_location import RouteSiteLocation
@@ -41,6 +44,7 @@ __all__ = [
     "FaceProfileChange",
     "NamePrefix",
     "Position",
+    "ReportExportJob",
     "Role",
     "Route",
     "RouteSiteLocation",

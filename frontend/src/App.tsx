@@ -40,6 +40,15 @@ type PassedLocation = {
 type SelectedCheckpoint = {
   assignmentId: number;
   unitName: string;
+
+  /**
+   * ข้อความแนวสายตรวจที่รับมาจากหน้า Checkpoint
+   * ตัวอย่าง: ["ภาค 2", "เขต 2.1", "เส้นทางที่ 1"]
+   *
+   * ใช้แสดงบนหน้า CheckInOut โดยไม่ fix หัวข้อ
+   */
+  patrolAreaValues: string[];
+
   mode: CheckpointActionMode;
   passedLocation: PassedLocation;
 
@@ -55,6 +64,13 @@ type SelectedCheckpoint = {
 type GoCheckInOutPayload = {
   assignmentId: number;
   unitName: string;
+
+  /**
+   * รับมาจากหน้า Checkpoint / ตารางงานสายตรวจ
+   * เช่น ["ภาค 2", "เขต 2.1", "เส้นทางที่ 1"]
+   */
+  patrolAreaValues: string[];
+
   mode: CheckpointActionMode;
   passedLocation: PassedLocation;
 
@@ -595,6 +611,9 @@ export default function App() {
     setSelectedCheckpoint({
       assignmentId: payload.assignmentId,
       unitName: payload.unitName,
+      patrolAreaValues: Array.isArray(payload.patrolAreaValues)
+        ? payload.patrolAreaValues
+        : [],
       mode: payload.mode,
       passedLocation: payload.passedLocation,
       shiftId: payload.shiftId,
@@ -651,6 +670,13 @@ export default function App() {
       assignmentId?: number | null;
       unitName?: string | null;
       passedLocation?: PassedLocation | null;
+
+      /**
+       * รับต่อจากหน้า CheckInOut
+       * เช่น ["ภาค 2", "เขต 2.1", "เส้นทางที่ 1"]
+       */
+      patrolAreaValues?: string[] | null;
+
       shiftId?: number | null;
       workDate?: string | null;
     },
@@ -679,6 +705,9 @@ export default function App() {
       setSelectedCheckpoint({
         assignmentId: payload.assignmentId,
         unitName: payload.unitName ?? "",
+        patrolAreaValues: Array.isArray(payload.patrolAreaValues)
+          ? payload.patrolAreaValues
+          : selectedCheckpoint?.patrolAreaValues ?? [],
         mode: type === "in" ? "checkin" : "checkout",
         passedLocation,
         shiftId: resolvedShiftId,
@@ -1111,6 +1140,7 @@ export default function App() {
           assignmentId={selectedCheckpoint?.assignmentId ?? null}
           unitName={selectedCheckpoint?.unitName ?? null}
           passedLocation={selectedCheckpoint?.passedLocation ?? null}
+          patrolAreaValues={selectedCheckpoint?.patrolAreaValues ?? null}
           shiftId={selectedCheckpoint?.shiftId ?? null}
           lastInAt={
             selectedCheckpoint
@@ -1167,6 +1197,7 @@ export default function App() {
           assignmentId={selectedCheckpoint?.assignmentId ?? null}
           unitName={selectedCheckpoint?.unitName ?? null}
           passedLocation={selectedCheckpoint?.passedLocation ?? null}
+          patrolAreaValues={selectedCheckpoint?.patrolAreaValues ?? null}
           punchType={punchType}
           onBack={back}
           onVerifyFace={onVerifyFaceOnly}

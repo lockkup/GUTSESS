@@ -1,7 +1,7 @@
 /* src/pages/Attendance/Checkpoint/Checkpoint.module.css */
 
 :root {
-  --checkpoint-title-size: 22px;
+  --checkpoint-title-size: 16px;
   --checkpoint-round-size: 15px;
   --checkpoint-shift-size: 16px;
 
@@ -26,13 +26,49 @@
   text-align: left;
 }
 
+.patrolAreaInfo {
+  width: 100%;
+  align-self: stretch;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  margin: -1px 0 6px;
+  padding: 0;
+  box-sizing: border-box;
+  color: #000000;
+  white-space: nowrap;
+}
+
+.patrolAreaItem {
+  flex: 0 0 auto;
+  min-width: auto;
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: flex-start;
+  gap: 2px;
+  color: #000000;
+  font-size: var(--checkpoint-round-size);
+  font-weight: 400;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.patrolAreaLabel,
+.patrolAreaValue {
+  color: #000000;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
 .roundInfo {
   width: 100%;
   align-self: stretch;
   margin: 0 0 8px;
   color: #0f172a;
   font-size: var(--checkpoint-round-size);
-  font-weight: 900;
+  font-weight: 400;
   text-align: left;
   line-height: 1.35;
 }
@@ -63,7 +99,7 @@
   margin: 0;
   color: #0f172a;
   font-size: var(--checkpoint-shift-size);
-  font-weight: 900;
+  font-weight: 400;
   line-height: 1;
   cursor: pointer;
   user-select: none;
@@ -189,7 +225,7 @@
   background: #173f7a;
   color: #ffffff;
   font-size: var(--checkpoint-head-size);
-  font-weight: 900;
+  font-weight: 400;
   text-align: center;
   border-right: 2px solid #ffffff;
   line-height: 1.2;
@@ -229,7 +265,7 @@
   padding: 8px 8px;
   color: #173f7a;
   font-size: var(--checkpoint-table-size);
-  font-weight: 900;
+  font-weight: 400;
   text-align: left;
   word-break: break-word;
   line-height: 1.2;
@@ -243,7 +279,7 @@
   padding: 6px 4px;
   color: #0f2348;
   font-size: var(--checkpoint-table-size);
-  font-weight: 900;
+  font-weight: 400;
   text-align: center;
 }
 
@@ -267,7 +303,7 @@
   width: 100%;
   color: #0f2348;
   font-size: var(--checkpoint-plan-size);
-  font-weight: 900;
+  font-weight: 400;
   text-align: center;
   line-height: 1.1;
 }
@@ -288,7 +324,7 @@
   color: #ffffff;
   font-family: inherit;
   font-size: var(--checkpoint-call-size);
-  font-weight: 900;
+  font-weight: 400;
   line-height: 1.05;
   text-align: center;
   cursor: pointer;
@@ -324,7 +360,7 @@
   border-radius: 12px;
   padding: 6px 7px;
   font-size: var(--checkpoint-status-size);
-  font-weight: 900;
+  font-weight: 400;
   line-height: 1.15;
   text-align: center;
   cursor: default;
@@ -533,6 +569,16 @@
     margin-bottom: 5px;
   }
 
+  .patrolAreaInfo {
+    gap: 8px;
+    margin: -1px 0 6px;
+  }
+
+  .patrolAreaItem {
+    gap: 2px;
+    font-size: var(--checkpoint-round-size);
+  }
+
   .roundInfo {
     margin-bottom: 7px;
   }
@@ -602,6 +648,16 @@
 }
 
 @media (max-width: 380px) {
+  .patrolAreaInfo {
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+
+  .patrolAreaItem {
+    gap: 2px;
+    font-size: var(--checkpoint-round-size);
+  }
+
   .shiftSelector {
     gap: 6px;
   }
@@ -700,7 +756,7 @@
   background: transparent;
   color: #024b76;
   font: inherit;
-  font-weight: 800;
+  font-weight: 400;
   line-height: 1.25;
   text-align: left;
   cursor: pointer;

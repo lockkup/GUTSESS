@@ -21,10 +21,13 @@
     "@tensorflow/tfjs-backend-webgl": "^4.22.0",
     "clsx": "^2.1.1",
     "face-api.js": "^0.22.2",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
     "lucide-react": "^0.562.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-hook-form": "^7.71.0",
+    "react-icons": "^5.6.0",
     "xlsx": "^0.18.5",
     "zod": "^4.3.5",
     "zustand": "^5.0.14"

@@ -30,6 +30,14 @@ export type CheckInOutPayload = {
   passedLocation?: PassedLocation | null;
 
   /**
+   * ข้อความจากหน้า Checkpoint เช่น
+   * ["ภาค 2", "เขต 2.1", "เส้นทางที่ 1"]
+   *
+   * แสดงบนหน้า CheckInOut โดยไม่ fix หัวข้อ
+   */
+  patrolAreaValues?: string[] | null;
+
+  /**
    * ใช้เฉพาะกรณีมาจากหน้า Checkpoint
    * - checkpoint: ต้องมี shiftId เพื่อบันทึกลง time_record.shift_id
    * - attendance: ไม่ต้องส่ง shiftId / ส่งเป็น null
@@ -61,6 +69,13 @@ type Props = {
   assignmentId?: number | null;
   unitName?: string | null;
   passedLocation?: PassedLocation | null;
+
+  /**
+   * รับจาก App.tsx เมื่อเข้ามาจากหน้าตารางงานสายตรวจ
+   * เช่น ภาค 2 / เขต 2.1 / เส้นทางที่ 1
+   */
+  patrolAreaValues?: string[] | null;
+
   shiftId?: number | null;
 
   lastInAt?: string | null;
@@ -130,6 +145,7 @@ export default function CheckInOut({
   assignmentId = null,
   unitName = null,
   passedLocation = null,
+  patrolAreaValues = null,
   shiftId = null,
   lastInAt,
   lastOutAt,
@@ -142,6 +158,34 @@ export default function CheckInOut({
   const [checkInOutModalOpen, setCheckInOutModalOpen] = useState(false);
 
   const isCheckpointMode = mode === "checkpoint";
+
+  /**
+   * แสดงเฉพาะข้อความจริงที่ส่งมาจากหน้า Checkpoint
+   * - แสดงเฉพาะ mode checkpoint
+   * - ตัดข้อความว่างและข้อความซ้ำ
+   * - ไม่มีหัวข้อ fix เช่น ภาค: เขต: หรือ เส้นทาง:
+   */
+  const visiblePatrolAreaValues = useMemo(() => {
+    if (!isCheckpointMode || !Array.isArray(patrolAreaValues)) {
+      return [];
+    }
+
+    const uniqueValues = new Set<string>();
+
+    patrolAreaValues.forEach((value) => {
+      if (typeof value !== "string") {
+        return;
+      }
+
+      const cleanValue = value.trim();
+
+      if (cleanValue) {
+        uniqueValues.add(cleanValue);
+      }
+    });
+
+    return Array.from(uniqueValues);
+  }, [isCheckpointMode, patrolAreaValues]);
 
   /**
    * ใช้ล็อกปุ่มย้อนกลับระหว่างระบบกำลังตรวจสอบ / กำลังทำงาน
@@ -230,6 +274,7 @@ export default function CheckInOut({
       assignmentId,
       unitName,
       passedLocation,
+      patrolAreaValues: isCheckpointMode ? visiblePatrolAreaValues : null,
 
       /**
        * สำคัญ:
@@ -245,6 +290,7 @@ export default function CheckInOut({
       assignmentId,
       unitName,
       passedLocation,
+      visiblePatrolAreaValues,
       shiftId,
       isCheckpointMode,
       workDateForOpenRecord,
@@ -355,6 +401,22 @@ export default function CheckInOut({
           <Header empCode={empCode} displayName={displayName} />
 
           <h2 className={styles.attTitle}>หน้าจอ - ลงเวลาเข้า-ออกงาน</h2>
+
+          {isCheckpointMode && visiblePatrolAreaValues.length > 0 ? (
+            <div
+              className={styles.patrolAreaInfo}
+              aria-label="ข้อมูลแนวสายตรวจ"
+            >
+              {visiblePatrolAreaValues.map((value, index) => (
+                <span
+                  className={styles.patrolAreaValue}
+                  key={`${value}-${index}`}
+                >
+                  {value}
+                </span>
+              ))}
+            </div>
+          ) : null}
 
           {isCheckpointMode && unitName ? (
             <div className={styles.unitNameText}>หน่วยงาน: {unitName}</div>

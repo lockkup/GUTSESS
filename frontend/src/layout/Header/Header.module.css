@@ -1,140 +1,159 @@
 /* src/layout/Header/Header.module.css */
 
 :root {
-  /* ===== Logo ===== */
-  --header-logo-width: 380px;
-  --header-logo-max-width: 90%;
-  --header-logo-max-height: 130px;
+/* ===== Logo ===== */
+--header-logo-width: 260px;
+--header-logo-max-width: 90%;
+--header-logo-max-height: 90px;
 
-  /* ===== Subtitle Font ===== */
-  --header-sub-en-size: 34px;
-  --header-sub-th-size: 35px;
+/* ===== Subtitle Font ===== */
+--header-sub-en-size: 16px;
+--header-sub-th-size: 16px;
 
-  --header-sub-en-weight: 900;
-  --header-sub-th-weight: 900;
+--header-sub-en-weight: 900;
+--header-sub-th-weight: 900;
 
-  --header-sub-en-letter-spacing: 0.4px;
-  --header-sub-th-letter-spacing: 0.2px;
+--header-sub-en-letter-spacing: 0.4px;
+--header-sub-th-letter-spacing: 0.2px;
 
-  /* ===== User Card Font ===== */
-  --header-usercard-label-size: 16px;
-  --header-usercard-value-size: 16px;
+/* ===== User Card Font ===== */
+--header-usercard-label-size: 16px;
+--header-usercard-value-size: 16px;
+
+/* ===== Divider: เส้นใต้ผู้ใช้งาน ===== */
+--header-usercard-divider-color: #374151;
+--header-usercard-divider-width: 240px;
+--header-usercard-divider-max-width: 70%;
+--header-usercard-divider-thickness: 1px;
+--header-usercard-divider-gap: 8px;
 }
 
 .header {
-  text-align: center;
+text-align: center;
 }
 
 .logo {
-  margin: 0;
-  line-height: 1;
-  display: flex;
-  justify-content: center;
-  align-items: center;
+margin: 0;
+line-height: 1;
+display: flex;
+justify-content: center;
+align-items: center;
 }
 
 /* โลโก้ GUTS */
 .logoImage {
-  display: block;
-  width: var(--header-logo-width);
-  max-width: var(--header-logo-max-width);
-  max-height: var(--header-logo-max-height);
-  height: auto;
-  object-fit: contain;
-  margin: 0 auto var(--header-logo-margin-bottom);
+display: block;
+width: var(--header-logo-width);
+max-width: var(--header-logo-max-width);
+max-height: var(--header-logo-max-height);
+height: auto;
+object-fit: contain;
+margin: 0 auto -18px;
 }
 
 /* เผื่อบางหน้ากลับไปใช้ตัวอักษร */
 .logoGuts {
-  color: #1d4a82;
-  text-shadow:
-    0 3px 0 rgba(0, 0, 0, 0.22),
-    0 10px 18px rgba(0, 0, 0, 0.12);
+color: #1d4a82;
+text-shadow:
+0 3px 0 rgba(0, 0, 0, 0.22),
+0 10px 18px rgba(0, 0, 0, 0.12);
 }
 
 .logoEss {
-  color: var(--red);
-  text-shadow:
-    0 3px 0 rgba(0, 0, 0, 0.22),
-    0 10px 18px rgba(0, 0, 0, 0.12);
+color: var(--red);
+text-shadow:
+0 3px 0 rgba(0, 0, 0, 0.22),
+0 10px 18px rgba(0, 0, 0, 0.12);
 }
 
 /* Employee Self Service */
 .subEn {
-  font-weight: var(--header-sub-en-weight);
-  color: #111827;
-  font-size: var(--header-sub-en-size);
-  line-height: 1.05;
-  letter-spacing: var(--header-sub-en-letter-spacing);
+font-weight: var(--header-sub-en-weight);
+color: #111827;
+font-size: var(--header-sub-en-size);
+line-height: 1.05;
+letter-spacing: var(--header-sub-en-letter-spacing);
 }
 
 /* ให้เฉพาะตัว E S S เป็นสีแดง */
 .redLetter {
-  color: var(--red);
+color: var(--red);
 }
 
 /* ระบบบริการตนเอง */
 .subTh {
-  font-weight: var(--header-sub-th-weight);
-  color: #111827;
-  font-size: var(--header-sub-th-size);
-  line-height: 1.05;
-  letter-spacing: var(--header-sub-th-letter-spacing);
+font-weight: var(--header-sub-th-weight);
+color: #111827;
+font-size: var(--header-sub-th-size);
+line-height: 1.05;
+letter-spacing: var(--header-sub-th-letter-spacing);
 }
 
 .subSmall {
-  margin-top: 2px;
-  font-weight: 800;
-  color: var(--blueText);
-  font-size: var(--header-sub-th-size);
-  line-height: 1.25;
+margin-top: 2px;
+font-weight: 800;
+color: var(--blueText);
+font-size: var(--header-sub-th-size);
+line-height: 1.25;
 }
 
 /* usercard */
 .usercard {
-  margin-top: 10px;
-  width: 100%;
-  max-width: 520px;
+margin-top: 10px;
+width: 100%;
+max-width: 520px;
 
-  display: flex;
-  align-items: center;
-  gap: 10px;
+display: flex;
+align-items: center;
+gap: 10px;
 
-  padding: 10px 12px;
-  border-radius: 30px;
+padding: 10px 12px;
+border-radius: 30px;
 
-  background: rgba(255, 255, 255, 0.75);
-  border: 2px solid rgba(2, 75, 118, 0.18);
-  box-shadow: 0 10px 18px rgba(0, 0, 0, 0.10);
+background: transparent;
+border: 2px solid rgba(2, 75, 118, 0.18);
+box-shadow: 0 10px 18px rgba(0, 0, 0, 0.1);
 }
 
 .usercardIcon {
-  width: 34px;
-  height: 34px;
-  border-radius: 999px;
-  display: grid;
-  place-items: center;
+width: 34px;
+height: 34px;
+border-radius: 999px;
+display: grid;
+place-items: center;
 
-  background: radial-gradient(circle at 30% 30%, #ffffff, #dbe6ff);
-  border: 1px solid rgba(2, 75, 118, 0.20);
-  color: var(--brand);
-  flex: 0 0 auto;
+background: radial-gradient(circle at 30% 30%, #ffffff, #dbe6ff);
+border: 1px solid rgba(2, 75, 118, 0.2);
+color: var(--brand);
+flex: 0 0 auto;
 }
 
+/* ข้อความ "ผู้ใช้งาน:" เป็นสีดำ และไม่หนา */
 .usercardLabel {
-  color: var(--brand);
-  font-weight: 900;
-  font-size: var(--header-usercard-label-size);
-  flex: 0 0 auto;
+color: #000000;
+font-weight: 400;
+font-size: var(--header-usercard-label-size);
+flex: 0 0 auto;
 }
 
+/* รหัสและชื่อผู้ใช้เป็นสีดำ และไม่หนา */
 .usercardValue {
-  color: rgba(27, 43, 74, 0.85);
-  font-weight: 900;
-  font-size: var(--header-usercard-value-size);
-  letter-spacing: 0.4px;
+color: #000000;
+font-weight: 400;
+font-size: var(--header-usercard-value-size);
+letter-spacing: 0.4px;
 
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+overflow: hidden;
+text-overflow: ellipsis;
+white-space: nowrap;
+}
+
+/* ===== Divider: เส้นใต้ผู้ใช้งาน ===== */
+.usercardDivider {
+width: var(--header-usercard-divider-width);
+max-width: var(--header-usercard-divider-max-width);
+height: var(--header-usercard-divider-thickness);
+margin: var(--header-usercard-divider-gap) auto 0;
+background: var(--header-usercard-divider-color);
+border-radius: 999px;
 }

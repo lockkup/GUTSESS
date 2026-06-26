@@ -12,8 +12,10 @@ import {
   Search,
   UserRoundPen,
 } from "lucide-react";
+import { BsFileEarmarkPdf } from "react-icons/bs";
 
 import BackButton from "@/components/BackButton";
+import { useStore } from "@/store/store";
 import {
   getPatrolReport,
   getPatrolReportFilterOptions,
@@ -26,6 +28,12 @@ import ReportTimePhotoCell from "@/components/ReportTimePhotoCell";
 import ReportImagePreviewModal, {
   type PreviewImageState,
 } from "@/components/ReportImagePreviewModal";
+import {
+  createPatrolReportExportJob,
+  downloadPatrolReportExportFile,
+  getPatrolReportExportJob,
+  type PatrolReportExportJobResponse,
+} from "@/services/patrolReportExportApi";
 
 import styles from "./PatrolReport.module.css";
 
@@ -1069,7 +1077,15 @@ function StatusIcon({ status }: { status: ReportDisplayStatus }) {
   );
 }
 
-export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
+export default function PatrolReportPage({
+  onBack,
+}: PatrolReportPageProps) {
+  // รหัสผู้สั่ง Export ต้องเป็นผู้ที่ Login อยู่จริง
+  // ไม่ใช้ employeeCodeText เพราะเป็นเพียงตัวกรองรายสายตรวจ
+  const requestedBy = useStore(
+    (state) => state.authEmployee?.employee_code ?? "",
+  );
+
   const [patrolRows, setPatrolRows] = useState<PatrolReportDisplayRow[]>([]);
   const [filterOptions, setFilterOptions] =
     useState<PatrolReportFilterOptions>(EMPTY_FILTER_OPTIONS);
@@ -1110,8 +1126,16 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
 
   const startDatePickerWrapRef = useRef<HTMLDivElement | null>(null);
   const endDatePickerWrapRef = useRef<HTMLDivElement | null>(null);
+  const downloadedExportJobIdRef = useRef<number | null>(null);
+  const exportPollingInFlightRef = useRef(false);
 
   const [loading, setLoading] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [exportJob, setExportJob] =
+    useState<PatrolReportExportJobResponse | null>(null);
+  const [exportErrorMessage, setExportErrorMessage] = useState<string | null>(
+    null,
+  );
   const [emptyReason, setEmptyReason] =
     useState<EmptyReportReason>("need_filter");
   const [emptyErrorMessage, setEmptyErrorMessage] = useState<string | null>(
@@ -1242,6 +1266,119 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
   useEffect(() => {
     void fetchFilterOptions();
   }, [fetchFilterOptions]);
+
+  useEffect(() => {
+    if (
+      !exportingPdf ||
+      !exportJob ||
+      (exportJob.jobStatus !== "queued" &&
+        exportJob.jobStatus !== "processing")
+    ) {
+      return;
+    }
+
+    let isDisposed = false;
+
+    const pollExportJob = async () => {
+      if (exportPollingInFlightRef.current || isDisposed) {
+        return;
+      }
+
+      exportPollingInFlightRef.current = true;
+
+      try {
+        const updatedJob = await getPatrolReportExportJob(
+          exportJob.reportExportJobId,
+        );
+
+        if (!isDisposed) {
+          setExportJob(updatedJob);
+
+          if (
+            updatedJob.jobStatus === "failed" ||
+            updatedJob.jobStatus === "cancelled" ||
+            updatedJob.jobStatus === "expired"
+          ) {
+            setExportingPdf(false);
+            setExportErrorMessage(
+              updatedJob.errorMessage ||
+                (updatedJob.jobStatus === "cancelled"
+                  ? "ยกเลิกการสร้างรายงาน PDF แล้ว"
+                  : updatedJob.jobStatus === "expired"
+                    ? "ไฟล์รายงานหมดอายุแล้ว กรุณาสร้างใหม่"
+                    : "ไม่สามารถสร้างรายงาน PDF ได้"),
+            );
+          }
+        }
+      } catch (error) {
+        console.error("Poll backend PDF export failed:", error);
+
+        if (!isDisposed) {
+          setExportingPdf(false);
+          setExportErrorMessage(
+            error instanceof Error
+              ? error.message
+              : "ไม่สามารถตรวจสอบสถานะการสร้าง PDF ได้",
+          );
+        }
+      } finally {
+        exportPollingInFlightRef.current = false;
+      }
+    };
+
+    void pollExportJob();
+
+    const intervalId = window.setInterval(() => {
+      void pollExportJob();
+    }, 2500);
+
+    return () => {
+      isDisposed = true;
+      window.clearInterval(intervalId);
+    };
+  }, [exportingPdf, exportJob]);
+
+  useEffect(() => {
+    if (!exportJob || exportJob.jobStatus !== "completed") {
+      return;
+    }
+
+    if (downloadedExportJobIdRef.current === exportJob.reportExportJobId) {
+      return;
+    }
+
+    downloadedExportJobIdRef.current = exportJob.reportExportJobId;
+    let isDisposed = false;
+
+    const downloadExportFile = async () => {
+      try {
+        await downloadPatrolReportExportFile(
+          exportJob.reportExportJobId,
+          exportJob.downloadFilename || "patrol_report.pdf",
+        );
+      } catch (error) {
+        console.error("Download backend PDF export failed:", error);
+
+        if (!isDisposed) {
+          setExportErrorMessage(
+            error instanceof Error
+              ? error.message
+              : "สร้างรายงานสำเร็จ แต่ไม่สามารถดาวน์โหลดไฟล์ได้",
+          );
+        }
+      } finally {
+        if (!isDisposed) {
+          setExportingPdf(false);
+        }
+      }
+    };
+
+    void downloadExportFile();
+
+    return () => {
+      isDisposed = true;
+    };
+  }, [exportJob]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -1599,6 +1736,108 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
     );
   };
 
+
+  const exportButtonText = useMemo(() => {
+    if (!exportingPdf) {
+      return "ดาวน์โหลด PDF";
+    }
+
+    if (!exportJob || exportJob.jobStatus === "queued") {
+      return "กำลังเตรียม...";
+    }
+
+    if (exportJob.jobStatus === "processing") {
+      if (exportJob.progressTotal > 0) {
+        return `กำลังสร้าง ${exportJob.progressCurrent}/${exportJob.progressTotal}`;
+      }
+
+      return "กำลังสร้าง...";
+    }
+
+    if (exportJob.jobStatus === "completed") {
+      return "กำลังดาวน์โหลด...";
+    }
+
+    return "ดาวน์โหลด PDF";
+  }, [exportingPdf, exportJob]);
+
+  const handleExportPdf = async () => {
+    if (loading || exportingPdf) {
+      return;
+    }
+
+    if (!hasRequiredReportScope) {
+      window.alert("กรุณาเลือก ภาค และ เขต ก่อน Export PDF");
+      return;
+    }
+
+    if (filteredRows.length === 0) {
+      window.alert("ไม่มีข้อมูลรายงานสำหรับ Export PDF");
+      return;
+    }
+
+    const departmentId = toPositiveNumber(departmentIdText);
+    const divisionId = toPositiveNumber(divisionIdText);
+    const requestedByText = requestedBy.trim();
+
+    if (departmentId === undefined || divisionId === undefined) {
+      window.alert("กรุณาเลือก ภาค และ เขต ก่อน Export PDF");
+      return;
+    }
+
+    if (!requestedByText) {
+      window.alert(
+        "ไม่พบรหัสพนักงานของผู้ใช้งานที่ Login สำหรับสร้างรายงาน PDF",
+      );
+      return;
+    }
+
+    const startDate = parseYYYYMMDD(startDateValue);
+    const endDate = parseYYYYMMDD(endDateValue);
+
+    if (startDate && endDate && startDate > endDate) {
+      window.alert("วันที่เริ่มต้นต้องไม่มากกว่าวันที่สิ้นสุด");
+      return;
+    }
+
+    setExportingPdf(true);
+    setExportErrorMessage(null);
+    setExportJob(null);
+    downloadedExportJobIdRef.current = null;
+
+    try {
+      const createdJob = await createPatrolReportExportJob({
+        filters: {
+          workdayStart: startDateValue,
+          workdayEnd: endDateValue,
+          departmentId,
+          divisionId,
+          routeId: toPositiveNumber(routeIdText),
+          locationId: toPositiveNumber(locationIdText),
+          employeeCode: employeeCodeText.trim() || undefined,
+          planMode,
+          shiftType: shiftValue,
+          status: statusValue,
+          keyword: searchText.trim(),
+        },
+        includeImages: true,
+        requestedBy: requestedByText,
+      });
+
+      setExportJob(createdJob);
+    } catch (error) {
+      console.error("Create backend PDF export failed:", error);
+
+      setExportingPdf(false);
+      setExportErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "ไม่สามารถส่งคำขอสร้างรายงาน PDF ได้ กรุณาลองใหม่อีกครั้ง",
+      );
+    }
+  };
+
+
   return (
     <main className={styles.page}>
       <div className={styles.shell}>
@@ -1949,7 +2188,27 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
 
         <section className={styles.desktopSection} aria-label="รายการรายงาน">
           <div className={styles.reportCard}>
-            <h2 className={styles.sectionTitle}>รายการรายงาน</h2>
+            <div className={styles.reportCardHeader}>
+              <h2 className={styles.sectionTitle}>รายการรายงาน</h2>
+
+              <button
+                type="button"
+                className={`${styles.exportPdfButton} ${styles.reportExportPdfButton}`}
+                onClick={() => void handleExportPdf()}
+                disabled={loading || exportingPdf || filteredRows.length === 0}
+                title="ดาวน์โหลดรายงาน PDF"
+                aria-label="ดาวน์โหลดรายงาน PDF"
+              >
+                <BsFileEarmarkPdf size={18} aria-hidden="true" />
+                <span>{exportButtonText}</span>
+              </button>
+            </div>
+
+            {exportErrorMessage && (
+              <p className={styles.mobileFooter} role="alert">
+                {exportErrorMessage}
+              </p>
+            )}
 
             <div className={styles.tableWrap}>
               <table className={styles.table}>
@@ -2098,7 +2357,25 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
         >
           <div className={styles.mobileListHeader}>
             <h2 className={styles.mobileSectionTitle}>รายการรายงาน</h2>
+
+            <button
+              type="button"
+              className={`${styles.exportPdfButton} ${styles.mobileExportPdfButton}`}
+              onClick={() => void handleExportPdf()}
+              disabled={loading || exportingPdf || filteredRows.length === 0}
+              title="ดาวน์โหลดรายงาน PDF"
+              aria-label="ดาวน์โหลดรายงาน PDF"
+            >
+              <BsFileEarmarkPdf size={18} aria-hidden="true" />
+              <span>{exportButtonText}</span>
+            </button>
           </div>
+
+          {exportErrorMessage && (
+            <p className={styles.mobileFooter} role="alert">
+              {exportErrorMessage}
+            </p>
+          )}
 
           <div className={styles.mobileList}>
             {loading ? (
