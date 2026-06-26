@@ -358,23 +358,16 @@ export default function FaceVerify({
 
           {visiblePatrolAreaValues.length > 0 ? (
             <div
+              className={styles.patrolAreaInfo}
               aria-label="ข้อมูลแนวสายตรวจ"
-              style={{
-                width: "100%",
-                display: "flex",
-                flexWrap: "wrap",
-                justifyContent: "flex-start",
-                gap: "4px 10px",
-                margin: "0 0 4px",
-                color: "#0f172a",
-                fontSize: "16px",
-                fontWeight: 400,
-                lineHeight: 1.35,
-                textAlign: "left",
-              }}
             >
               {visiblePatrolAreaValues.map((value, index) => (
-                <span key={`${value}-${index}`}>{value}</span>
+                <span
+                  className={styles.patrolAreaValue}
+                  key={`${value}-${index}`}
+                >
+                  {value}
+                </span>
               ))}
             </div>
           ) : null}

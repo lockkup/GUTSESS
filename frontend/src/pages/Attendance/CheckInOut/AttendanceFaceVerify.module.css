@@ -4,6 +4,16 @@
   --faceverify-title-size: 23px;
   --faceverify-unit-size: 16px;
 
+  /* ===== ภาค / เขต / เส้นทาง ===== */
+  --faceverify-route-info-size: 15px;
+  --faceverify-route-info-weight: 400;
+  --faceverify-route-info-color: #000;
+  --faceverify-route-info-line-height: 1.35;
+
+  --faceverify-route-info-gap-row: 4px;
+  --faceverify-route-info-gap-column: 14px;
+  --faceverify-route-info-margin-bottom: 4px;
+
   --faceverify-card-title-size: 18px;
   --faceverify-text-size: 18px;
   --faceverify-error-size: 14px;
@@ -28,13 +38,34 @@
   text-align: left;
 }
 
+/* ข้อมูลที่รับมาจาก Home ผ่าน App.tsx */
+.routeInfo {
+  width: 100%;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0 0 4px;
+
+  color: #000;
+  font-size: var(--faceverify-unit-size);
+  font-weight: 400;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.routeInfo span {
+  white-space: nowrap;
+}
+
 .unitNameText {
   width: 100%;
   align-self: stretch;
   margin: 0 0 8px;
   color: #0f172a;
   font-size: var(--faceverify-unit-size);
-  font-weight: 900;
+  font-weight: 400;
   line-height: 1.35;
   text-align: left;
   word-break: break-word;

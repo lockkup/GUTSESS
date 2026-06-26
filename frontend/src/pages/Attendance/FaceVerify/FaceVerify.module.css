@@ -15,6 +15,16 @@
 
   --faceverify-empty-icon-size: 34px;
   --faceverify-empty-text-size: 18px;
+
+  /* ===== เพิ่มไว้ใน :root ของ FaceVerify.module.css ===== */
+--faceverify-patrol-area-size: 15px;
+--faceverify-patrol-area-weight: 400;
+--faceverify-patrol-area-color: #0f172a;
+--faceverify-patrol-area-line-height: 1.35;
+
+--faceverify-patrol-area-gap-row: 4px;
+--faceverify-patrol-area-gap-column: 10px;
+--faceverify-patrol-area-margin-bottom: 4px;
 }
 
 .attTitle {
@@ -26,6 +36,36 @@
   font-size: var(--faceverify-title-size);
   letter-spacing: 0.2px;
   text-align: left;
+}
+
+/* ===== เพิ่มไว้ใต้ .attTitle ใน FaceVerify.module.css ===== */
+.patrolAreaInfo {
+  width: 100%;
+  align-self: stretch;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+
+  gap:
+    var(--faceverify-patrol-area-gap-row)
+    var(--faceverify-patrol-area-gap-column);
+
+  margin: 0 0 var(--faceverify-patrol-area-margin-bottom);
+  padding: 0;
+
+  color: var(--faceverify-patrol-area-color);
+  font-size: var(--faceverify-patrol-area-size);
+  font-weight: var(--faceverify-patrol-area-weight);
+  line-height: var(--faceverify-patrol-area-line-height);
+  text-align: left;
+}
+
+.patrolAreaValue {
+  color: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  white-space: nowrap;
 }
 
 .unitNameText {

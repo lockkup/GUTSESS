@@ -23,6 +23,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
     Image as PdfImage,
+    KeepTogether,
     PageBreak,
     Paragraph,
     SimpleDocTemplate,
@@ -110,8 +111,12 @@ class PatrolReportPdfService:
     VIEW_NAME = PatrolReportConstants.VIEW_NAME
 
     MAX_IMAGE_BYTES = 10 * 1024 * 1024
+
+    # หน้ารายละเอียดรูปภาพ: แสดงได้ 2 จุดรักษาการณ์ต่อ 1 หน้า (A4 แนวนอน)
+    # ลดความสูงรูปจาก 62 mm เหลือ 40 mm เพื่อให้ข้อมูลของ 2 จุดอยู่หน้าเดียวกัน
+    IMAGE_DETAIL_ROWS_PER_PAGE = 2
     IMAGE_MAX_WIDTH_MM = 82
-    IMAGE_MAX_HEIGHT_MM = 62
+    IMAGE_MAX_HEIGHT_MM = 40
 
     # เก็บโลโก้ PNG ไว้ที่ backend/app/resources/images/logoguts.png
     # ใช้ PNG เพื่อให้ ReportLab แสดงผลได้เสถียรโดยไม่ต้องเพิ่ม dependency SVG.
@@ -119,10 +124,56 @@ class PatrolReportPdfService:
     LOGO_MAX_WIDTH_MM = 30
     LOGO_MAX_HEIGHT_MM = 18
 
-    FONT_REGULAR_NAME = "Prompt"
-    FONT_BOLD_NAME = "Prompt-SemiBold"
-    FONT_REGULAR_FILE = "Prompt-Regular.ttf"
-    FONT_BOLD_FILE = "Prompt-SemiBold.ttf"
+    # ===== ฟอนต์ PDF =====
+    # วางไฟล์ไว้ที่ backend/app/resources/fonts/
+    # - Sarabun-Regular.ttf
+    # - Sarabun-SemiBold.ttf
+    FONT_REGULAR_NAME = "Sarabun"
+    FONT_BOLD_NAME = "Sarabun-SemiBold"
+    FONT_REGULAR_FILE = "Sarabun-Regular.ttf"
+    FONT_BOLD_FILE = "Sarabun-SemiBold.ttf"
+
+    # ===== ขนาดฟอนต์ / ระยะบรรทัด PDF: ปรับจากส่วนนี้ =====
+    FONT_SIZE_TITLE = 16
+    FONT_LEADING_TITLE = 18
+
+    FONT_SIZE_SCOPE = 9
+    FONT_LEADING_SCOPE = 12
+
+    FONT_SIZE_SUBTITLE = 8
+    FONT_LEADING_SUBTITLE = 11
+
+    FONT_SIZE_HEADER_INFO = 8
+    FONT_LEADING_HEADER_INFO = 11
+
+    FONT_SIZE_APPENDIX_TITLE = 13
+    FONT_LEADING_APPENDIX_TITLE = 17
+
+    FONT_SIZE_DETAIL = 7
+    FONT_LEADING_DETAIL = 9
+
+    FONT_SIZE_IMAGE_SECTION = 9
+    FONT_LEADING_IMAGE_SECTION = 11
+
+    FONT_SIZE_SECTION_TITLE = 12
+    FONT_LEADING_SECTION_TITLE = 16
+
+    FONT_SIZE_TABLE_HEADER = 6.8
+    FONT_LEADING_TABLE_HEADER = 8.5
+
+    FONT_SIZE_TABLE_CELL = 6.6
+    FONT_LEADING_TABLE_CELL = 8.2
+
+    FONT_SIZE_OPERATOR_CELL = 6.2
+    FONT_LEADING_OPERATOR_CELL = 7.8
+
+    FONT_SIZE_IMAGE_LABEL = 8
+    FONT_LEADING_IMAGE_LABEL = 10
+
+    FONT_SIZE_IMAGE_EMPTY = 8
+    FONT_LEADING_IMAGE_EMPTY = 10
+
+    FONT_SIZE_FOOTER = 7
 
     _fonts_registered = False
 
@@ -176,7 +227,7 @@ class PatrolReportPdfService:
                 pagesize=landscape(A4),
                 leftMargin=12 * mm,
                 rightMargin=12 * mm,
-                topMargin=16 * mm,
+                topMargin=6 * mm,  # ขยับโลโก้และส่วนหัวขึ้น 10 มม.
                 bottomMargin=14 * mm,
                 title="รายงานการเข้าตรวจหน่วยงาน",
                 author="GUTS-ESS",
@@ -748,7 +799,7 @@ class PatrolReportPdfService:
                     ),
                     Paragraph(
                         (
-                            "เวลาที่ดึงข้อมูล: "
+                            "เวลาที่ออกรายงาน: "
                             f"{html.escape(PatrolReportPdfService._format_thai_datetime(datetime.now()))}"
                         ),
                         styles["generated_at_right"],
@@ -881,36 +932,74 @@ class PatrolReportPdfService:
                     scope=scope,
                 )
 
-                for index, row in enumerate(image_rows):
+                # เริ่มหน้ารายละเอียดรูปภาพหน้าใหม่ และจัด 2 จุดรักษาการณ์ต่อ 1 หน้า
+                for page_start in range(
+                    0,
+                    len(image_rows),
+                    PatrolReportPdfService.IMAGE_DETAIL_ROWS_PER_PAGE,
+                ):
                     PatrolReportPdfService._raise_if_cancelled(is_cancelled)
 
-                    # หน้ารายละเอียดของแต่ละรายการต้องเริ่มหน้าใหม่
-                    # และแสดง ภาค / เขต / เส้นทาง ให้ครบทุกหน้า
                     story.append(PageBreak())
-
                     story.extend(
-                        PatrolReportPdfService._build_image_detail_story(
-                            row=row,
+                        PatrolReportPdfService._build_image_detail_page_header_story(
                             scope_text=scope_text,
                             styles=styles,
                         )
                     )
 
+                    page_rows = image_rows[
+                        page_start:
+                        page_start + PatrolReportPdfService.IMAGE_DETAIL_ROWS_PER_PAGE
+                    ]
+
+                    for row_index, row in enumerate(page_rows):
+                        PatrolReportPdfService._raise_if_cancelled(is_cancelled)
+
+                        story.extend(
+                            PatrolReportPdfService._build_image_detail_story(
+                                row=row,
+                                styles=styles,
+                            )
+                        )
+
+                        # เว้นระยะระหว่างจุดที่ 1 และจุดที่ 2 ในหน้าเดียวกัน
+                        if row_index < len(page_rows) - 1:
+                            story.append(Spacer(1, 4 * mm))
+
         return story
+
+    @staticmethod
+    def _build_image_detail_page_header_story(
+        *,
+        scope_text: str,
+        styles: Mapping[str, ParagraphStyle],
+    ) -> list[Any]:
+        """สร้างหัวหน้ารายละเอียดรูปภาพ 1 ครั้งต่อ 1 หน้า."""
+        return [
+            Paragraph(
+                (
+                    "ข้อมูลรายละเอียดผู้เข้าตรวจหน่วยงาน รายบุคคล "
+                    '<font color="#DC2626">'
+                    "(รูปเวลาเข้า และเวลาออกต้องเป็นบุคคลคนเดียวกัน)"
+                    "</font>"
+                ),
+                styles["appendix_title"],
+            ),
+            Spacer(1, 1.5 * mm),
+            Paragraph(html.escape(scope_text), styles["appendix_scope"]),
+            Spacer(1, 3 * mm),
+        ]
 
     @staticmethod
     def _build_image_detail_story(
         *,
         row: PatrolReportPdfRow,
-        scope_text: str,
         styles: Mapping[str, ParagraphStyle],
     ) -> list[Any]:
         """
-        สร้างหน้ารายละเอียดรูปภาพรายบุคคล
-
-        ยึดโครงตารางเดิมด้านซ้าย:
-        - ช่องหัวข้อ ผลัด / สถานะ / เวลาเข้า / เวลาออก ชิดขวา
-        - ช่องค่าข้อมูล กลางวัน / ตรวจแล้ว / วันเวลา ชิดกึ่งกลาง
+        สร้างรายละเอียดรูปภาพของ 1 จุดรักษาการณ์แบบกระชับ
+        เพื่อให้วางได้ 2 จุดต่อ 1 หน้า A4 แนวนอน.
         """
         title = f"{row.number}. {row.contract_code} - {row.location_name}"
 
@@ -941,7 +1030,6 @@ class PatrolReportPdfService:
             ],
         ]
 
-        # ยึดตำแหน่งตารางเดิมด้านซ้ายของหน้า PDF
         detail_table = Table(
             detail_data,
             colWidths=[22 * mm, 72 * mm, 22 * mm, 72 * mm],
@@ -988,7 +1076,6 @@ class PatrolReportPdfService:
         image_table.setStyle(
             TableStyle(
                 [
-                    # ตารางรูปภาพใช้พื้นขาวทั้งหมด
                     ("BACKGROUND", (0, 0), (-1, -1), colors.white),
                     ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#BFC5CC")),
                     ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -1000,25 +1087,15 @@ class PatrolReportPdfService:
         )
 
         return [
-            Paragraph(
-                (
-                    "ข้อมูลรายละเอียดผู้เข้าตรวจหน่วยงาน รายบุคคล "
-                    '<font color="#DC2626">'
-                    "(รูปเวลาเข้า และเวลาออกต้องเป็นบุคคลคนเดียวกัน)"
-                    "</font>"
-                ),
-                styles["appendix_title"],
-            ),
-            Spacer(1, 1.5 * mm),
-            Paragraph(html.escape(scope_text), styles["appendix_scope"]),
-            Spacer(1, 4 * mm),
-            Paragraph(html.escape(title), styles["section_title"]),
-            Spacer(1, 2 * mm),
-            detail_table,
-            Spacer(1, 3 * mm),
-            Paragraph("รูปภาพ", styles["image_section_left"]),
-            Spacer(1, 1.5 * mm),
-            image_table,
+            KeepTogether(
+                [
+                    Paragraph(html.escape(title), styles["section_title"]),
+                    Spacer(1, 1.5 * mm),
+                    detail_table,
+                    Spacer(1, 1.5 * mm),
+                    image_table,
+                ]
+            )
         ]
 
 
@@ -1320,10 +1397,13 @@ class PatrolReportPdfService:
             filter_names=("route_id", "routeId"),
         )
 
-        return (
-            f"ภาค: {html.escape(department_text)}"
-            f" | เขต: {html.escape(division_text)}"
-            f" | เส้นทาง: {html.escape(route_text)}"
+        # ใช้ชื่อจริงจาก master/view โดยไม่ฟิกหัวข้อ "ภาค / เขต / เส้นทาง"
+        return " | ".join(
+            (
+                html.escape(department_text),
+                html.escape(division_text),
+                html.escape(route_text),
+            )
         )
 
     @staticmethod
@@ -1463,7 +1543,7 @@ class PatrolReportPdfService:
 
         if not regular_path.is_file() or not bold_path.is_file():
             raise PatrolReportPdfBuildError(
-                "ไม่พบไฟล์ฟอนต์ Prompt สำหรับสร้าง PDF"
+                "ไม่พบไฟล์ฟอนต์ Sarabun สำหรับสร้าง PDF"
             )
 
         pdfmetrics.registerFont(
@@ -1479,6 +1559,13 @@ class PatrolReportPdfService:
             )
         )
 
+        # รองรับข้อความที่ ReportLab แปลงจาก <b>...</b> ให้ใช้ Sarabun-SemiBold
+        pdfmetrics.registerFontFamily(
+            PatrolReportPdfService.FONT_REGULAR_NAME,
+            normal=PatrolReportPdfService.FONT_REGULAR_NAME,
+            bold=PatrolReportPdfService.FONT_BOLD_NAME,
+        )
+
         PatrolReportPdfService._fonts_registered = True
 
     @staticmethod
@@ -1490,8 +1577,8 @@ class PatrolReportPdfService:
                 "PatrolReportTitle",
                 parent=base_styles["Title"],
                 fontName=PatrolReportPdfService.FONT_BOLD_NAME,
-                fontSize=16,
-                leading=20,
+                fontSize=PatrolReportPdfService.FONT_SIZE_TITLE,
+                leading=PatrolReportPdfService.FONT_LEADING_TITLE,
                 alignment=TA_CENTER,
                 spaceAfter=1.5 * mm,
             ),
@@ -1499,8 +1586,8 @@ class PatrolReportPdfService:
                 "PatrolReportScope",
                 parent=base_styles["Normal"],
                 fontName=PatrolReportPdfService.FONT_REGULAR_NAME,
-                fontSize=9,
-                leading=12,
+                fontSize=PatrolReportPdfService.FONT_SIZE_SCOPE,
+                leading=PatrolReportPdfService.FONT_LEADING_SCOPE,
                 alignment=TA_CENTER,
                 textColor=colors.black,
             ),
@@ -1508,8 +1595,8 @@ class PatrolReportPdfService:
                 "PatrolReportSubtitle",
                 parent=base_styles["Normal"],
                 fontName=PatrolReportPdfService.FONT_REGULAR_NAME,
-                fontSize=8,
-                leading=11,
+                fontSize=PatrolReportPdfService.FONT_SIZE_SUBTITLE,
+                leading=PatrolReportPdfService.FONT_LEADING_SUBTITLE,
                 alignment=TA_CENTER,
                 textColor=colors.HexColor("#334155"),
             ),
@@ -1517,8 +1604,8 @@ class PatrolReportPdfService:
                 "PatrolReportFilterLeft",
                 parent=base_styles["Normal"],
                 fontName=PatrolReportPdfService.FONT_REGULAR_NAME,
-                fontSize=8,
-                leading=11,
+                fontSize=PatrolReportPdfService.FONT_SIZE_HEADER_INFO,
+                leading=PatrolReportPdfService.FONT_LEADING_HEADER_INFO,
                 alignment=TA_LEFT,
                 textColor=colors.black,
             ),
@@ -1526,8 +1613,8 @@ class PatrolReportPdfService:
                 "PatrolReportGeneratedAtRight",
                 parent=base_styles["Normal"],
                 fontName=PatrolReportPdfService.FONT_REGULAR_NAME,
-                fontSize=8,
-                leading=11,
+                fontSize=PatrolReportPdfService.FONT_SIZE_HEADER_INFO,
+                leading=PatrolReportPdfService.FONT_LEADING_HEADER_INFO,
                 alignment=TA_RIGHT,
                 textColor=colors.black,
             ),
@@ -1535,8 +1622,8 @@ class PatrolReportPdfService:
                 "PatrolReportAppendixTitle",
                 parent=base_styles["Heading2"],
                 fontName=PatrolReportPdfService.FONT_BOLD_NAME,
-                fontSize=13,
-                leading=17,
+                fontSize=PatrolReportPdfService.FONT_SIZE_APPENDIX_TITLE,
+                leading=PatrolReportPdfService.FONT_LEADING_APPENDIX_TITLE,
                 alignment=TA_LEFT,
                 textColor=colors.HexColor("#1E3A8A"),
             ),
@@ -1544,8 +1631,8 @@ class PatrolReportPdfService:
                 "PatrolReportAppendixScope",
                 parent=base_styles["Normal"],
                 fontName=PatrolReportPdfService.FONT_REGULAR_NAME,
-                fontSize=9,
-                leading=12,
+                fontSize=PatrolReportPdfService.FONT_SIZE_SCOPE,
+                leading=PatrolReportPdfService.FONT_LEADING_SCOPE,
                 alignment=TA_LEFT,
                 textColor=colors.black,
             ),
@@ -1553,8 +1640,8 @@ class PatrolReportPdfService:
                 "PatrolReportDetailLabelRight",
                 parent=base_styles["Normal"],
                 fontName=PatrolReportPdfService.FONT_BOLD_NAME,
-                fontSize=7,
-                leading=9,
+                fontSize=PatrolReportPdfService.FONT_SIZE_DETAIL,
+                leading=PatrolReportPdfService.FONT_LEADING_DETAIL,
                 alignment=TA_RIGHT,
                 textColor=colors.black,
             ),
@@ -1562,8 +1649,8 @@ class PatrolReportPdfService:
                 "PatrolReportDetailValueRight",
                 parent=base_styles["Normal"],
                 fontName=PatrolReportPdfService.FONT_REGULAR_NAME,
-                fontSize=7,
-                leading=9,
+                fontSize=PatrolReportPdfService.FONT_SIZE_DETAIL,
+                leading=PatrolReportPdfService.FONT_LEADING_DETAIL,
                 alignment=TA_RIGHT,
                 textColor=colors.black,
             ),
@@ -1571,8 +1658,8 @@ class PatrolReportPdfService:
                 "PatrolReportImageSectionRight",
                 parent=base_styles["Normal"],
                 fontName=PatrolReportPdfService.FONT_BOLD_NAME,
-                fontSize=9,
-                leading=11,
+                fontSize=PatrolReportPdfService.FONT_SIZE_IMAGE_SECTION,
+                leading=PatrolReportPdfService.FONT_LEADING_IMAGE_SECTION,
                 alignment=TA_RIGHT,
                 textColor=colors.black,
             ),
@@ -1580,8 +1667,8 @@ class PatrolReportPdfService:
                 "PatrolReportImageSectionLeft",
                 parent=base_styles["Normal"],
                 fontName=PatrolReportPdfService.FONT_BOLD_NAME,
-                fontSize=9,
-                leading=11,
+                fontSize=PatrolReportPdfService.FONT_SIZE_IMAGE_SECTION,
+                leading=PatrolReportPdfService.FONT_LEADING_IMAGE_SECTION,
                 alignment=TA_LEFT,
                 textColor=colors.black,
             ),
@@ -1589,8 +1676,8 @@ class PatrolReportPdfService:
                 "PatrolReportSectionTitle",
                 parent=base_styles["Heading2"],
                 fontName=PatrolReportPdfService.FONT_BOLD_NAME,
-                fontSize=12,
-                leading=16,
+                fontSize=PatrolReportPdfService.FONT_SIZE_SECTION_TITLE,
+                leading=PatrolReportPdfService.FONT_LEADING_SECTION_TITLE,
                 alignment=TA_LEFT,
                 textColor=colors.HexColor("#1E3A8A"),
             ),
@@ -1598,8 +1685,8 @@ class PatrolReportPdfService:
                 "PatrolReportHeaderCell",
                 parent=base_styles["Normal"],
                 fontName=PatrolReportPdfService.FONT_BOLD_NAME,
-                fontSize=6.8,
-                leading=8.5,
+                fontSize=PatrolReportPdfService.FONT_SIZE_TABLE_HEADER,
+                leading=PatrolReportPdfService.FONT_LEADING_TABLE_HEADER,
                 alignment=TA_CENTER,
                 textColor=colors.black,
             ),
@@ -1607,48 +1694,48 @@ class PatrolReportPdfService:
                 "PatrolReportCell",
                 parent=base_styles["Normal"],
                 fontName=PatrolReportPdfService.FONT_REGULAR_NAME,
-                fontSize=6.6,
-                leading=8.2,
+                fontSize=PatrolReportPdfService.FONT_SIZE_TABLE_CELL,
+                leading=PatrolReportPdfService.FONT_LEADING_TABLE_CELL,
                 alignment=TA_LEFT,
             ),
             "cell_center": ParagraphStyle(
                 "PatrolReportCellCenter",
                 parent=base_styles["Normal"],
                 fontName=PatrolReportPdfService.FONT_REGULAR_NAME,
-                fontSize=6.6,
-                leading=8.2,
+                fontSize=PatrolReportPdfService.FONT_SIZE_TABLE_CELL,
+                leading=PatrolReportPdfService.FONT_LEADING_TABLE_CELL,
                 alignment=TA_CENTER,
             ),
             "operator_cell": ParagraphStyle(
                 "PatrolReportOperatorCell",
                 parent=base_styles["Normal"],
                 fontName=PatrolReportPdfService.FONT_REGULAR_NAME,
-                fontSize=6.2,
-                leading=7.8,
+                fontSize=PatrolReportPdfService.FONT_SIZE_OPERATOR_CELL,
+                leading=PatrolReportPdfService.FONT_LEADING_OPERATOR_CELL,
                 alignment=TA_LEFT,
             ),
             "detail_cell_center": ParagraphStyle(
                 "PatrolReportDetailCellCenter",
                 parent=base_styles["Normal"],
                 fontName=PatrolReportPdfService.FONT_REGULAR_NAME,
-                fontSize=7,
-                leading=9,
+                fontSize=PatrolReportPdfService.FONT_SIZE_DETAIL,
+                leading=PatrolReportPdfService.FONT_LEADING_DETAIL,
                 alignment=TA_CENTER,
             ),
             "image_label": ParagraphStyle(
                 "PatrolReportImageLabel",
                 parent=base_styles["Normal"],
                 fontName=PatrolReportPdfService.FONT_BOLD_NAME,
-                fontSize=8,
-                leading=10,
+                fontSize=PatrolReportPdfService.FONT_SIZE_IMAGE_LABEL,
+                leading=PatrolReportPdfService.FONT_LEADING_IMAGE_LABEL,
                 alignment=TA_CENTER,
             ),
             "image_empty": ParagraphStyle(
                 "PatrolReportImageEmpty",
                 parent=base_styles["Normal"],
                 fontName=PatrolReportPdfService.FONT_REGULAR_NAME,
-                fontSize=8,
-                leading=10,
+                fontSize=PatrolReportPdfService.FONT_SIZE_IMAGE_EMPTY,
+                leading=PatrolReportPdfService.FONT_LEADING_IMAGE_EMPTY,
                 alignment=TA_CENTER,
                 textColor=colors.HexColor("#64748B"),
             ),
@@ -1656,19 +1743,19 @@ class PatrolReportPdfService:
 
     @staticmethod
     def _draw_page_footer(canvas: Any, document: Any) -> None:
+        """แสดงเลขหน้าชิดขอบล่างด้านขวา فقط."""
         canvas.saveState()
 
-        canvas.setFont(PatrolReportPdfService.FONT_REGULAR_NAME, 7)
+        canvas.setFont(
+            PatrolReportPdfService.FONT_REGULAR_NAME,
+            PatrolReportPdfService.FONT_SIZE_FOOTER,
+        )
         canvas.setFillColor(colors.HexColor("#64748B"))
 
-        footer_text = (
-            f"GUTS-ESS | รายงานการเข้าตรวจหน่วยงาน | หน้า {document.page}"
-        )
-
-        canvas.drawString(
-            document.leftMargin,
+        canvas.drawRightString(
+            document.pagesize[0] - document.rightMargin,
             8 * mm,
-            footer_text,
+            str(document.page),
         )
 
         canvas.restoreState()

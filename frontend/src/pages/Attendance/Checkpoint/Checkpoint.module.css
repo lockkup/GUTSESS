@@ -5,6 +5,16 @@
   --checkpoint-round-size: 15px;
   --checkpoint-shift-size: 16px;
 
+  /* ===== ข้อความภาค / เขต / เส้นทาง ===== */
+  --checkpoint-patrol-area-size: 15px;
+  --checkpoint-patrol-area-weight: 400;
+  --checkpoint-patrol-area-color: #000000;
+  --checkpoint-patrol-area-line-height: 1.35;
+
+  --checkpoint-patrol-area-gap: 10px;
+  --checkpoint-patrol-area-item-gap: 2px;
+  --checkpoint-patrol-area-margin-bottom: 6px;
+
   --checkpoint-head-size: 12px;
   --checkpoint-table-size: 12px;
   --checkpoint-plan-size: 12px;
@@ -33,11 +43,11 @@
   flex-wrap: nowrap;
   align-items: center;
   justify-content: flex-start;
-  gap: 10px;
-  margin: -1px 0 6px;
+  gap: var(--checkpoint-patrol-area-gap);
+  margin: -1px 0 var(--checkpoint-patrol-area-margin-bottom);
   padding: 0;
   box-sizing: border-box;
-  color: #000000;
+  color: var(--checkpoint-patrol-area-color);
   white-space: nowrap;
 }
 
@@ -47,18 +57,20 @@
   display: inline-flex;
   align-items: baseline;
   justify-content: flex-start;
-  gap: 2px;
-  color: #000000;
-  font-size: var(--checkpoint-round-size);
-  font-weight: 400;
-  line-height: 1.35;
+  gap: var(--checkpoint-patrol-area-item-gap);
+  color: var(--checkpoint-patrol-area-color);
+  font-size: var(--checkpoint-patrol-area-size);
+  font-weight: var(--checkpoint-patrol-area-weight);
+  line-height: var(--checkpoint-patrol-area-line-height);
   white-space: nowrap;
 }
 
 .patrolAreaLabel,
 .patrolAreaValue {
-  color: #000000;
-  font-weight: 400;
+  color: var(--checkpoint-patrol-area-color);
+  font-size: inherit;
+  font-weight: var(--checkpoint-patrol-area-weight);
+  line-height: inherit;
   white-space: nowrap;
 }
 
@@ -570,13 +582,12 @@
   }
 
   .patrolAreaInfo {
-    gap: 8px;
-    margin: -1px 0 6px;
+    gap: var(--checkpoint-patrol-area-gap);
+    margin: -1px 0 var(--checkpoint-patrol-area-margin-bottom);
   }
 
   .patrolAreaItem {
-    gap: 2px;
-    font-size: var(--checkpoint-round-size);
+    gap: var(--checkpoint-patrol-area-item-gap);
   }
 
   .roundInfo {
@@ -649,13 +660,12 @@
 
 @media (max-width: 380px) {
   .patrolAreaInfo {
-    gap: 6px;
-    margin-bottom: 6px;
+    gap: var(--checkpoint-patrol-area-gap);
+    margin-bottom: var(--checkpoint-patrol-area-margin-bottom);
   }
 
   .patrolAreaItem {
-    gap: 2px;
-    font-size: var(--checkpoint-round-size);
+    gap: var(--checkpoint-patrol-area-item-gap);
   }
 
   .shiftSelector {

@@ -38,6 +38,14 @@ type Props = {
   empCode: string;
   displayName?: string;
 
+  /**
+   * ข้อมูลแนวสายตรวจที่ส่งมาจาก Home ผ่าน App.tsx
+   * หากไม่มีข้อมูล จะแสดงเป็น "-"
+   */
+  fieldName?: string | null;
+  divisionName?: string | null;
+  routeName?: string | null;
+
   punchType: PunchType;
   onBack: () => void;
 
@@ -197,6 +205,9 @@ function isOutOfAreaMessage(message: string) {
 export default function AttendanceFaceVerify({
   empCode,
   displayName,
+  fieldName,
+  divisionName,
+  routeName,
   punchType,
   onBack,
   onVerifyFace,
@@ -1250,6 +1261,12 @@ export default function AttendanceFaceVerify({
           <Header empCode={empCode} displayName={displayName} />
 
           <h2 className={styles.attTitle}>หน้าจอ - ลงเวลาเข้า-ออกงาน</h2>
+
+          <div className={styles.routeInfo} aria-label="ข้อมูลแนวสายตรวจ">
+            <span>{fieldName?.trim() || "-"}</span>
+            <span>{divisionName?.trim() || "-"}</span>
+            <span>{routeName?.trim() || "-"}</span>
+          </div>
 
           <div className={styles.unitNameText}>
             ระบบจะตรวจสอบพื้นที่จากตำแหน่ง GPS

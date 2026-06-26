@@ -1,5 +1,5 @@
 // src/App.tsx
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Login from "./pages/Login";
 import Home from "./pages/Home";
 import Dashboard from "./pages/Dashboard";
@@ -96,6 +96,12 @@ type AttendanceTimeContext = {
 
 type OpenAttendanceTimeRecordParams = {
   work_date: string;
+};
+
+type PatrolAreaInfo = {
+  fieldName: string;
+  divisionName: string;
+  routeName: string;
 };
 
 type InitialAppAuth = {
@@ -332,6 +338,33 @@ export default function App() {
     () => initialAppAuth?.displayName ?? "",
   );
 
+  /**
+   * Home.tsx จะดึงข้อมูล ภาค / เขต / เส้นทาง จาก API
+   * แล้วส่งค่ากลับมาผ่าน onPatrolAreaLoaded
+   *
+   * App.tsx เก็บค่าไว้ เพื่อส่งต่อไปหน้า Checkpoint
+   * หลังผู้ใช้กดเมนู "ตารางงานสายตรวจ"
+   */
+  const [patrolArea, setPatrolArea] = useState<PatrolAreaInfo>({
+    fieldName: "",
+    divisionName: "",
+    routeName: "",
+  });
+
+  const handlePatrolAreaLoaded = useCallback(
+    (nextPatrolArea: PatrolAreaInfo) => {
+      setPatrolArea((currentPatrolArea) => {
+        const isSameValue =
+          currentPatrolArea.fieldName === nextPatrolArea.fieldName &&
+          currentPatrolArea.divisionName === nextPatrolArea.divisionName &&
+          currentPatrolArea.routeName === nextPatrolArea.routeName;
+
+        return isSameValue ? currentPatrolArea : nextPatrolArea;
+      });
+    },
+    [],
+  );
+
   const [lastInAt, setLastInAt] = useState<string | null>(null);
   const [lastOutAt, setLastOutAt] = useState<string | null>(null);
   const [punchType, setPunchType] = useState<PunchType>("in");
@@ -484,6 +517,11 @@ export default function App() {
 
     setEmpCode(cleanEmpCode);
     setDisplayName(safeDisplayName);
+    setPatrolArea({
+      fieldName: "",
+      divisionName: "",
+      routeName: "",
+    });
 
     const context = makeAttendanceTimeContext();
 
@@ -564,6 +602,11 @@ export default function App() {
 
     setEmpCode("");
     setDisplayName("");
+    setPatrolArea({
+      fieldName: "",
+      divisionName: "",
+      routeName: "",
+    });
     setAttendanceTimeContext(null);
     clearCheckInOutTimeState();
     setSelectedCheckpoint(null);
@@ -1096,6 +1139,10 @@ export default function App() {
         <Home
           empCode={empCode}
           displayName={displayName}
+          fieldName={patrolArea.fieldName}
+          divisionName={patrolArea.divisionName}
+          routeName={patrolArea.routeName}
+          onPatrolAreaLoaded={handlePatrolAreaLoaded}
           onLogout={onLogout}
           onGoCheckInOut={() => {
             void goDirectCheckInOut();
@@ -1113,6 +1160,9 @@ export default function App() {
         <Checkpoint
           empCode={empCode}
           displayName={displayName}
+          regionLabel={patrolArea.fieldName || null}
+          districtLabel={patrolArea.divisionName || null}
+          routeLabel={patrolArea.routeName || null}
           onBack={back}
           onGoCheckInOut={(payload) => {
             void goCheckInOut(payload).catch((error) => {
@@ -1135,6 +1185,9 @@ export default function App() {
         <CheckInOut
           empCode={empCode}
           displayName={displayName}
+          fieldName={patrolArea.fieldName}
+          divisionName={patrolArea.divisionName}
+          routeName={patrolArea.routeName}
           mode={checkInOutMode}
           workDate={checkInOutWorkDate}
           assignmentId={selectedCheckpoint?.assignmentId ?? null}
@@ -1182,6 +1235,9 @@ export default function App() {
         <AttendanceFaceVerify
           empCode={empCode}
           displayName={displayName}
+          fieldName={patrolArea.fieldName}
+          divisionName={patrolArea.divisionName}
+          routeName={patrolArea.routeName}
           punchType={punchType}
           onBack={back}
           onVerifyFace={onVerifyFaceOnly}

@@ -52,6 +52,14 @@ type Props = {
   displayName?: string;
 
   /**
+   * ข้อมูลแนวสายตรวจจากหน้า Home ผ่าน App.tsx
+   * ใช้ใน mode attendance โดยแสดงข้อความจริง ไม่ fix คำว่า ภาค / เขต / เส้นทาง
+   */
+  fieldName?: string | null;
+  divisionName?: string | null;
+  routeName?: string | null;
+
+  /**
    * attendance = ลงเวลาเข้า-ออกงานปกติจากหน้า Home
    * checkpoint = ลงเวลาจากตารางงานสายตรวจ
    */
@@ -140,6 +148,9 @@ function resolveWorkDate(params: {
 export default function CheckInOut({
   empCode,
   displayName,
+  fieldName = null,
+  divisionName = null,
+  routeName = null,
   mode = "attendance",
   workDate = null,
   assignmentId = null,
@@ -160,19 +171,23 @@ export default function CheckInOut({
   const isCheckpointMode = mode === "checkpoint";
 
   /**
-   * แสดงเฉพาะข้อความจริงที่ส่งมาจากหน้า Checkpoint
-   * - แสดงเฉพาะ mode checkpoint
+   * แสดงข้อความแนวสายตรวจโดยไม่ fix คำว่า ภาค / เขต / เส้นทาง
+   * - mode attendance: ใช้ fieldName / divisionName / routeName จากหน้า Home
+   * - mode checkpoint: ใช้ patrolAreaValues ที่มาจากหน้า Checkpoint
    * - ตัดข้อความว่างและข้อความซ้ำ
-   * - ไม่มีหัวข้อ fix เช่น ภาค: เขต: หรือ เส้นทาง:
    */
   const visiblePatrolAreaValues = useMemo(() => {
-    if (!isCheckpointMode || !Array.isArray(patrolAreaValues)) {
+    const sourceValues = isCheckpointMode
+      ? patrolAreaValues
+      : [fieldName, divisionName, routeName];
+
+    if (!Array.isArray(sourceValues)) {
       return [];
     }
 
     const uniqueValues = new Set<string>();
 
-    patrolAreaValues.forEach((value) => {
+    sourceValues.forEach((value) => {
       if (typeof value !== "string") {
         return;
       }
@@ -185,7 +200,13 @@ export default function CheckInOut({
     });
 
     return Array.from(uniqueValues);
-  }, [isCheckpointMode, patrolAreaValues]);
+  }, [
+    divisionName,
+    fieldName,
+    isCheckpointMode,
+    patrolAreaValues,
+    routeName,
+  ]);
 
   /**
    * ใช้ล็อกปุ่มย้อนกลับระหว่างระบบกำลังตรวจสอบ / กำลังทำงาน
@@ -402,7 +423,7 @@ export default function CheckInOut({
 
           <h2 className={styles.attTitle}>หน้าจอ - ลงเวลาเข้า-ออกงาน</h2>
 
-          {isCheckpointMode && visiblePatrolAreaValues.length > 0 ? (
+          {visiblePatrolAreaValues.length > 0 ? (
             <div
               className={styles.patrolAreaInfo}
               aria-label="ข้อมูลแนวสายตรวจ"

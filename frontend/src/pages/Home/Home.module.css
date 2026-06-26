@@ -1,7 +1,43 @@
 /* src/pages/Home/Home.module.css */
 
 :root {
+  /* ===== ขนาดกรอบหน้า ===== */
   --home-shell-width: 390px;
+
+  /* ===== ปรับฟอนต์ทั้งหมดจากส่วนนี้ ===== */
+
+  /* หัวข้อ "หน้าหลัก" */
+  --home-title-font-size: 23px;
+  --home-title-font-weight: 900;
+  --home-title-line-height: 1.2;
+
+  /* ข้อมูล ภาค / เขต / เส้นทาง */
+  --home-org-font-size: 16px;
+  --home-org-font-weight: 400;
+  --home-org-line-height: 1.35;
+
+  /* ข้อความเมนูหลัก */
+  --home-menu-text-font-size: 19px;
+  --home-menu-text-font-weight: 800;
+  --home-menu-text-line-height: 1.15;
+
+  /* บรรทัดหลักของเมนู เช่น "ตารางงานสายตรวจ" */
+  --home-menu-main-font-size: 19px;
+  --home-menu-main-font-weight: 800;
+  --home-menu-main-line-height: 1.15;
+
+  /* บรรทัดรองของเมนู เช่น "(ตามแผน)" */
+  --home-menu-sub-font-size: 18px;
+  --home-menu-sub-font-weight: 800;
+  --home-menu-sub-line-height: 1.1;
+
+  /* ไอคอนในเมนู */
+  --home-menu-icon-font-size: 20px;
+
+  /* ปุ่มออกจากระบบ */
+  --home-logout-font-size: 20px;
+  --home-logout-font-weight: 900;
+  --home-logout-icon-font-size: 18px;
 }
 
 /* background global เพราะ Home.tsx ใช้ className="guts-bg" */
@@ -35,11 +71,48 @@
 /* --- title --- */
 .title {
   margin: 14px 0 10px;
-  font-weight: 900;
+  font-weight: var(--home-title-font-weight);
   color: rgba(27, 43, 74, 0.92);
-  font-size: 23px;
-  line-height: 1.2;
+  font-size: var(--home-title-font-size);
+  line-height: var(--home-title-line-height);
   letter-spacing: 0.2px;
+}
+
+/* ข้อมูล ภาค / เขต / เส้นทาง
+   ใช้ flex ตามเนื้อหาจริง ไม่แบ่งช่องตายตัวแบบ grid
+   จึงไม่ตัดข้อความเป็น ... */
+.orgInfo {
+  width: 100%;
+  margin: 0 0 10px;
+  padding: 0 2px;
+
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+
+  color: #111111;
+  font-size: var(--home-org-font-size);
+  line-height: var(--home-org-line-height);
+  font-weight: var(--home-org-font-weight);
+  white-space: nowrap;
+}
+
+.orgItem {
+  flex: 0 0 auto;
+  min-width: auto;
+
+  overflow: visible;
+  white-space: nowrap;
+  text-overflow: clip;
+}
+
+.orgLabel,
+.orgValue {
+  color: #111111;
+  font-weight: var(--home-org-font-weight);
+  white-space: nowrap;
 }
 
 /* เมนู: บังคับเรียง 1 คอลัมน์ทุกขนาดจอ */
@@ -47,7 +120,7 @@
   display: grid;
   grid-template-columns: 1fr;
   gap: 12px;
-  margin-top: 12px;
+  margin-top: 0;
 }
 
 /* ปุ่มครอบ */
@@ -125,7 +198,7 @@
 }
 
 .fa {
-  font-size: 20px;
+  font-size: var(--home-menu-icon-font-size);
   color: var(--brand, #024b76);
   display: block;
 }
@@ -134,10 +207,10 @@
 .text {
   min-width: 0;
   text-align: left;
-  font-weight: 800;
+  font-weight: var(--home-menu-text-font-weight);
   color: rgba(27, 43, 74, 0.92);
-  font-size: 19px;
-  line-height: 1.15;
+  font-size: var(--home-menu-text-font-size);
+  line-height: var(--home-menu-text-line-height);
   letter-spacing: 0.2px;
 
   display: flex;
@@ -151,9 +224,9 @@
   display: block;
   max-width: 100%;
   white-space: nowrap;
-  font-size: 19px;
-  line-height: 1.15;
-  font-weight: 800;
+  font-size: var(--home-menu-main-font-size);
+  line-height: var(--home-menu-main-line-height);
+  font-weight: var(--home-menu-main-font-weight);
 }
 
 /* บรรทัดวงเล็บ เช่น (นอกแผน) */
@@ -162,9 +235,9 @@
   max-width: 100%;
   margin-top: 2px;
   white-space: nowrap;
-  font-size: 18px;
-  line-height: 1.1;
-  font-weight: 800;
+  font-size: var(--home-menu-sub-font-size);
+  line-height: var(--home-menu-sub-line-height);
+  font-weight: var(--home-menu-sub-font-weight);
   color: rgba(27, 43, 74, 0.92);
 }
 
@@ -185,9 +258,9 @@
   background: var(--red, #d60000);
   color: #fff;
   height: 54px;
-  font-weight: 900;
+  font-weight: var(--home-logout-font-weight);
   cursor: pointer;
-  font-size: 20px;
+  font-size: var(--home-logout-font-size);
 
   display: flex;
   align-items: center;
@@ -198,7 +271,7 @@
 }
 
 .logoutFa {
-  font-size: 18px;
+  font-size: var(--home-logout-icon-font-size);
 }
 
 /* disabled */
@@ -241,25 +314,28 @@
 
 /* กันจอเล็กมาก */
 @media (max-width: 360px) {
+  :root {
+    /* จอเล็กมาก: ปรับฟอนต์รวมจากที่เดียว */
+    --home-org-font-size: 13px;
+    --home-menu-text-font-size: 17px;
+    --home-menu-main-font-size: 17px;
+    --home-menu-sub-font-size: 16px;
+    --home-menu-icon-font-size: 18px;
+    --home-logout-font-size: 18px;
+    --home-logout-icon-font-size: 16px;
+  }
+
   .home {
     width: calc(100vw - 24px);
     max-width: 100%;
   }
 
+  .orgInfo {
+    gap: 6px;
+  }
+
   .menuStack {
     grid-template-columns: 1fr;
-  }
-
-  .text {
-    font-size: 17px;
-  }
-
-  .menuMainLine {
-    font-size: 17px;
-  }
-
-  .menuSubLine {
-    font-size: 16px;
   }
 
   .menuBox {
@@ -273,16 +349,7 @@
     height: 42px;
   }
 
-  .fa {
-    font-size: 18px;
-  }
-
   .logout {
     height: 50px;
-    font-size: 18px;
-  }
-
-  .logoutFa {
-    font-size: 16px;
   }
 }
