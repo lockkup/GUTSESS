@@ -17,6 +17,8 @@ from app.core.error_messages import (
     CHECKIN_LOCATION_NOT_FOUND_DETAIL,
     CHECKOUT_BEFORE_CHECKIN_DETAIL,
     CHECKOUT_LOCATION_NOT_FOUND_DETAIL,
+    CHECKPOINT_ASSIGNMENT_ALREADY_IN_PROGRESS_TEMPLATE,
+    CHECKPOINT_ASSIGNMENT_NOT_AVAILABLE_DETAIL,
     CHECKPOINT_ASSIGNMENT_SHIFT_NOT_FOUND_DETAIL,
     CHECKPOINT_OUT_OF_AREA_TEMPLATE,
     CREATED_BY_EMPLOYEE_NOT_FOUND_DETAIL,
@@ -29,6 +31,7 @@ from app.core.error_messages import (
     OPEN_TIME_RECORD_NOT_FOUND_DETAIL,
     SITE_LOCATION_COORDINATES_NOT_FOUND_DETAIL,
     TIME_RECORD_ALREADY_CHECKED_OUT_DETAIL,
+    TIME_RECORD_CHECKOUT_FORBIDDEN_DETAIL,
     TIME_RECORD_NOT_FOUND_DETAIL,
     UPDATED_BY_EMPLOYEE_NOT_FOUND_DETAIL,
 )
@@ -43,6 +46,7 @@ from app.schemas.time_record import (
     TimeRecordCheckOut,
     TimeRecordListItemResponse,
 )
+
 
 
 class TimeRecordService:
@@ -124,8 +128,13 @@ class TimeRecordService:
     def _get_time_record_by_id_raw(
         db: Session,
         time_record_id: int,
+        for_update: bool = False,
     ) -> TimeRecord | None:
         stmt = select(TimeRecord).where(TimeRecord.time_record_id == time_record_id)
+
+        if for_update:
+            stmt = stmt.with_for_update()
+
         return db.scalar(stmt)
 
     @staticmethod
@@ -408,6 +417,139 @@ class TimeRecordService:
         return assignment, site_location
 
     @staticmethod
+    def _get_checkpoint_assignment_holder_employee(
+        db: Session,
+        assignment: CheckpointAssignment,
+    ) -> Employees | None:
+        """
+        คืนข้อมูลพนักงานที่กำลังถือ Assignment นี้อยู่
+
+        ใช้ TimeRecord.employee_code เป็นข้อมูลหลัก
+        เพราะเป็นผู้ที่ Check-in เข้าตรวจจริง
+        และใช้ assignment.started_by เป็นข้อมูลสำรอง
+        """
+
+        holder_employee_code = assignment.started_by
+
+        if assignment.time_record_id is not None:
+            holder_employee_code = db.scalar(
+                select(TimeRecord.employee_code).where(
+                    TimeRecord.time_record_id == assignment.time_record_id
+                )
+            ) or assignment.started_by
+
+        if not holder_employee_code:
+            return None
+
+        return db.scalar(
+            select(Employees).where(
+                Employees.employee_code == holder_employee_code
+            )
+        )
+
+    @staticmethod
+    def _lock_and_validate_assignment_for_checkin(
+        db: Session,
+        assignment_id: int,
+        detail: str,
+    ) -> CheckpointAssignment:
+        """
+        ล็อก Assignment ด้วย SELECT ... FOR UPDATE ก่อนสร้าง TimeRecord
+
+        หลักการ:
+        - คนที่กดเข้าตรวจคนแรกจะได้ Lock ก่อน
+        - คนที่กดตามมาต้องรอ Transaction ของคนแรก
+        - เมื่อคนแรก Commit แล้ว คนถัดไปจะเห็น assignment_status ล่าสุด
+        - อนุญาตเฉพาะสถานะ pending เท่านั้น
+        """
+
+        stmt = (
+            select(CheckpointAssignment)
+            .where(CheckpointAssignment.assignment_id == assignment_id)
+            .with_for_update()
+        )
+
+        assignment = db.scalar(stmt)
+
+        if assignment is None or TimeRecordService._is_deleted_or_inactive(
+            assignment
+        ):
+            TimeRecordService._raise_not_found(detail)
+
+        if assignment.assignment_status == "in_progress":
+            holder_employee = (
+                TimeRecordService._get_checkpoint_assignment_holder_employee(
+                    db=db,
+                    assignment=assignment,
+                )
+            )
+
+            holder_employee_code = (
+                holder_employee.employee_code
+                if holder_employee is not None
+                else assignment.started_by or "-"
+            )
+            holder_employee_name = (
+                " ".join(
+                    part
+                    for part in [
+                        holder_employee.first_name,
+                        holder_employee.last_name,
+                    ]
+                    if part
+                ).strip()
+                if holder_employee is not None
+                else "-"
+            ) or "-"
+
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=CHECKPOINT_ASSIGNMENT_ALREADY_IN_PROGRESS_TEMPLATE.format(
+                    employee_code=holder_employee_code,
+                    employee_name=holder_employee_name,
+                ),
+            )
+
+        if (
+            assignment.assignment_status != "pending"
+            or assignment.time_record_id is not None
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=CHECKPOINT_ASSIGNMENT_NOT_AVAILABLE_DETAIL,
+            )
+
+        return assignment
+
+    @staticmethod
+    def _lock_assignment_for_checkout(
+        db: Session,
+        assignment_id: int,
+        detail: str,
+    ) -> CheckpointAssignment:
+        """
+        ล็อก Assignment ระหว่าง Check-out
+
+        ช่วยกันการส่งคำขอ Check-out ซ้ำพร้อมกัน
+        และทำให้ตรวจสอบ Assignment กับ TimeRecord ชุดเดียวกันได้แน่นอน
+        """
+
+        stmt = (
+            select(CheckpointAssignment)
+            .where(CheckpointAssignment.assignment_id == assignment_id)
+            .with_for_update()
+        )
+
+        assignment = db.scalar(stmt)
+
+        if assignment is None or TimeRecordService._is_deleted_or_inactive(
+            assignment
+        ):
+            TimeRecordService._raise_not_found(detail)
+
+        return assignment
+
+    @staticmethod
     def _validate_assignment_location_gate(
         db: Session,
         assignment_id: int,
@@ -638,7 +780,16 @@ class TimeRecordService:
                 getattr(payload, "shift_id", None)
             )
 
-            assignment, site_location = TimeRecordService._validate_assignment_location_gate(
+            # สำคัญ: Lock Assignment ก่อนตรวจสถานะและก่อนสร้าง TimeRecord
+            assignment = TimeRecordService._lock_and_validate_assignment_for_checkin(
+                db=db,
+                assignment_id=assignment_id,
+                detail=CHECKIN_LOCATION_NOT_FOUND_DETAIL,
+            )
+
+            # Lock ยังถูกถืออยู่จนกว่าจะ Commit / Rollback
+            # จึงปลอดภัยจากการที่คนอื่นกดเข้าจุดเดียวกันพร้อมกัน
+            _, site_location = TimeRecordService._validate_assignment_location_gate(
                 db=db,
                 assignment_id=assignment_id,
                 current_latitude=payload.current_latitude,
@@ -646,13 +797,8 @@ class TimeRecordService:
                 detail=CHECKIN_LOCATION_NOT_FOUND_DETAIL,
             )
 
-            open_time_record = (
-                TimeRecordService._get_open_checkpoint_time_record_by_employee_raw(
-                    db=db,
-                    employee_code=payload.employee_code,
-                    assignment_id=assignment_id,
-                )
-            )
+            # สิทธิ์ของ Checkpoint ถูกตัดสินด้วย Assignment ที่ล็อกไว้แล้ว
+            open_time_record = None
         else:
             site_location = TimeRecordService._validate_nearest_attendance_location_gate(
                 db=db,
@@ -669,7 +815,9 @@ class TimeRecordService:
                 )
             )
 
-        if open_time_record is not None:
+        # Attendance ปกติ: กันพนักงานคนเดิมเปิดรายการซ้ำ
+        # Checkpoint: ใช้ Assignment Lock เป็นตัวควบคุม 1 คนต่อ 1 จุด
+        if assignment_id is None and open_time_record is not None:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=OPEN_TIME_RECORD_ALREADY_EXISTS_DETAIL,
@@ -698,14 +846,24 @@ class TimeRecordService:
 
         time_record = TimeRecord(**create_data)
 
-        db.add(time_record)
-        db.flush()
+        try:
+            db.add(time_record)
+            db.flush()
+        except IntegrityError as exc:
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=INVALID_TIME_RECORD_REFERENCE_DETAIL,
+            ) from exc
 
         if assignment is not None:
             assignment.time_record_id = time_record.time_record_id
             assignment.assignment_status = "in_progress"
             assignment.started_at = checkin_at
-            assignment.started_by = payload.created_by
+
+            # ต้องใช้ผู้ตรวจจริง ไม่ใช่ created_by
+            assignment.started_by = payload.employee_code
+            assignment.updated_by = payload.employee_code
 
         TimeRecordService._commit(
             db=db,
@@ -891,9 +1049,11 @@ class TimeRecordService:
         time_record_id: int,
         payload: TimeRecordCheckOut,
     ) -> TimeRecord:
+        # Lock TimeRecord เพื่อกันกดออกซ้ำพร้อมกัน
         time_record = TimeRecordService._get_time_record_by_id_raw(
             db=db,
             time_record_id=time_record_id,
+            for_update=True,
         )
 
         if time_record is None:
@@ -914,6 +1074,13 @@ class TimeRecordService:
             detail=UPDATED_BY_EMPLOYEE_NOT_FOUND_DETAIL,
         )
 
+        # ห้ามใช้ time_record_id ของพนักงานคนอื่นเพื่อออกงานแทน
+        if time_record.employee_code != payload.updated_by:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=TIME_RECORD_CHECKOUT_FORBIDDEN_DETAIL,
+            )
+
         TimeRecordService._validate_checkout_after_checkin(
             time_record=time_record,
             checkout=payload.checkout,
@@ -929,7 +1096,14 @@ class TimeRecordService:
                 getattr(payload, "shift_id", None)
             )
 
-            assignment, site_location = TimeRecordService._validate_assignment_location_gate(
+            # Lock Assignment ระหว่าง Check-out ด้วย
+            assignment = TimeRecordService._lock_assignment_for_checkout(
+                db=db,
+                assignment_id=assignment_id,
+                detail=CHECKOUT_LOCATION_NOT_FOUND_DETAIL,
+            )
+
+            _, site_location = TimeRecordService._validate_assignment_location_gate(
                 db=db,
                 assignment_id=assignment_id,
                 current_latitude=payload.current_latitude,
@@ -937,7 +1111,10 @@ class TimeRecordService:
                 detail=CHECKOUT_LOCATION_NOT_FOUND_DETAIL,
             )
 
-            if assignment.time_record_id != time_record.time_record_id:
+            if (
+                assignment.time_record_id != time_record.time_record_id
+                or assignment.assignment_status != "in_progress"
+            ):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=INVALID_TIME_RECORD_UPDATE_DETAIL,
@@ -992,6 +1169,7 @@ class TimeRecordService:
             assignment.assignment_status = "completed"
             assignment.completed_at = checkout_at
             assignment.completed_by = payload.updated_by
+            assignment.updated_by = payload.updated_by
 
         TimeRecordService._commit(
             db=db,

@@ -149,6 +149,10 @@ CHECKOUT_BEFORE_CHECKIN_DETAIL: Final[str] = (
     "Checkout time must be greater than or equal to checkin time"
 )
 
+TIME_RECORD_CHECKOUT_FORBIDDEN_DETAIL: Final[str] = (
+    "ไม่สามารถลงเวลาออกแทนพนักงานคนอื่นได้"
+)
+
 CHECKPOINT_CHECKIN_SHIFT_NOT_FOUND_DETAIL: Final[str] = (
     "ไม่พบข้อมูลผลัดสำหรับการลงเวลางานสายตรวจ"
 )
@@ -196,6 +200,17 @@ INVALID_CHECKPOINT_SCHEDULE_ITEM_UPDATE_DETAIL: Final[str] = (
 # Checkpoint assignment
 # =========================================================
 CHECKPOINT_ASSIGNMENT_NOT_FOUND_DETAIL: Final[str] = "Checkpoint assignment not found"
+
+CHECKPOINT_ASSIGNMENT_ALREADY_IN_PROGRESS_TEMPLATE: Final[str] = (
+    "ท่านไม่สามารถบันทึกลงเวลางานได้ เนื่องจาก\n"
+    "{employee_code} {employee_name}\n"
+    "กำลังเข้าตรวจหน่วยงานนี้\n\n"
+    "หากมีความจำเป็น ให้ไปใช้เมนูเข้าพื้นที่\n"
+    "\"นอกแผน\""
+)
+CHECKPOINT_ASSIGNMENT_NOT_AVAILABLE_DETAIL: Final[str] = (
+    "จุดนี้ไม่อยู่ในสถานะพร้อมให้เข้าตรวจ"
+)
 CHECKPOINT_ASSIGNMENT_CHANGE_NOT_FOUND_DETAIL: Final[str] = (
     "Checkpoint assignment change not found"
 )

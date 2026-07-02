@@ -184,6 +184,12 @@ class CheckpointAssignmentDailyResponse(BaseModel):
     started_at: datetime | None = None
     started_by: str | None = None
 
+    # ผู้ที่กำลังถือจุดตรวจอยู่
+    # ใช้เฉพาะกรณี assignment_status = "in_progress"
+    # ส่งให้ Frontend แสดง CheckpointInProgressModal
+    in_progress_employee_code: str | None = None
+    in_progress_employee_name: str | None = None
+
     completed_at: datetime | None = None
     completed_by: str | None = None
 

@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 from fastapi import HTTPException, status
 from sqlalchemy import and_, exists, func, or_, select, text
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.core.constants import DBConstants
 from app.core.error_messages import (
@@ -840,6 +840,10 @@ class CheckpointAssignmentService:
     ) -> list[CheckpointAssignmentDailyResponse]:
         now = CheckpointAssignmentService._now_bangkok_naive()
 
+        # Alias สำหรับดึงข้อมูลพนักงานที่กำลังถือ Assignment อยู่
+        # (กรณี assignment_status = "in_progress")
+        InProgressEmployee = aliased(Employees)
+
         has_call_expr = (
             exists()
             .where(
@@ -864,6 +868,15 @@ class CheckpointAssignmentService:
                 CheckpointAssignment.due_datetime.label("due_datetime"),
                 CheckpointAssignment.started_at.label("started_at"),
                 CheckpointAssignment.started_by.label("started_by"),
+                InProgressEmployee.employee_code.label(
+                    "in_progress_employee_code"
+                ),
+                InProgressEmployee.first_name.label(
+                    "in_progress_employee_first_name"
+                ),
+                InProgressEmployee.last_name.label(
+                    "in_progress_employee_last_name"
+                ),
                 CheckpointAssignment.completed_at.label("completed_at"),
                 CheckpointAssignment.completed_by.label("completed_by"),
                 CheckpointAssignment.is_active.label("is_active"),
@@ -890,6 +903,14 @@ class CheckpointAssignmentService:
             .join(
                 SiteLocation,
                 RouteSiteLocation.location_id == SiteLocation.location_id,
+            )
+            .outerjoin(
+                InProgressEmployee,
+                and_(
+                    InProgressEmployee.employee_code
+                    == CheckpointAssignment.started_by,
+                    CheckpointAssignment.assignment_status == "in_progress",
+                ),
             )
             .where(
                 or_(
@@ -1031,6 +1052,39 @@ class CheckpointAssignmentService:
                 assignment_status=assignment_status,
                 is_overdue=is_overdue,
             )
+
+            # ส่งข้อมูลคนที่กำลังเข้าตรวจให้ Frontend ใช้เปิด
+            # CheckpointInProgressModal เมื่อพนักงานคนอื่นกดจุดเดียวกัน
+            if assignment_status == "in_progress":
+                holder_employee_code = (
+                    str(data.get("in_progress_employee_code") or "").strip()
+                    or str(data.get("started_by") or "").strip()
+                    or None
+                )
+
+                holder_employee_name = " ".join(
+                    part
+                    for part in [
+                        str(
+                            data.get("in_progress_employee_first_name") or ""
+                        ).strip(),
+                        str(
+                            data.get("in_progress_employee_last_name") or ""
+                        ).strip(),
+                    ]
+                    if part
+                ).strip() or None
+
+                data["in_progress_employee_code"] = holder_employee_code
+                data["in_progress_employee_name"] = holder_employee_name
+            else:
+                data["in_progress_employee_code"] = None
+                data["in_progress_employee_name"] = None
+
+            # เป็น field ชั่วคราวที่ใช้ประกอบชื่อเท่านั้น
+            # ต้องเอาออกก่อน model_validate เพราะ schema กำหนด extra="forbid"
+            data.pop("in_progress_employee_first_name", None)
+            data.pop("in_progress_employee_last_name", None)
 
             data.update(action_state)
 

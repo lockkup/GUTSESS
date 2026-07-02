@@ -8,6 +8,7 @@ import BackButton from "@/components/BackButton";
 import LoadingModal from "@/components/LoadingModal";
 import SuccessModal from "@/components/SuccessModal";
 import OutOfAreaModal from "@/components/OutOfAreaModal";
+import CheckpointInProgressModal from "@/components/CheckpointInProgressModal/CheckpointInProgressModal";
 import CheckpointMapModal, {
   type CheckpointMapLocation,
 } from "@/components/CheckpointMapModal";
@@ -131,12 +132,28 @@ type CheckRow = {
   shiftStartTime: string | null;
   shiftEndTime: string | null;
   crossesMidnight: boolean | null;
+
+  /**
+   * ผู้ที่กำลังถือจุดตรวจอยู่ กรณี assignment_status = in_progress
+   * ต้องได้จาก API /checkpoint-assignments/daily
+   */
+  inProgressEmployeeCode: string | null;
+  inProgressEmployeeName: string | null;
 };
 
 type CheckpointDailyRowWithExtra = CheckpointDailyRow & {
   shift_id?: number | string | null;
   latest_call_status?: number | string | null;
   call_status?: number | string | null;
+
+  /**
+   * รองรับชื่อ field ใหม่ที่ Backend ควรส่งมา
+   * และ fallback started_by / started_by_name เผื่อ Backend ใช้ชื่อเดิม
+   */
+  in_progress_employee_code?: string | null;
+  in_progress_employee_name?: string | null;
+  started_by?: string | null;
+  started_by_name?: string | null;
 
   can_action?: boolean | number | string | null;
   action_disabled_reason?: string | null;
@@ -552,6 +569,22 @@ const getLatestCallStatus = (
   return normalizeCallStatus(item.latest_call_status ?? item.call_status);
 };
 
+const getInProgressEmployeeCode = (
+  item: CheckpointDailyRowWithExtra,
+): string | null => {
+  return normalizeNullableText(
+    item.in_progress_employee_code ?? item.started_by,
+  );
+};
+
+const getInProgressEmployeeName = (
+  item: CheckpointDailyRowWithExtra,
+): string | null => {
+  return normalizeNullableText(
+    item.in_progress_employee_name ?? item.started_by_name,
+  );
+};
+
 const mapAssignmentStatusToRowStatus = (
   status: CheckpointAssignmentStatus,
   hasCall?: boolean,
@@ -625,12 +658,27 @@ const mapDailyRowsToCheckRows = (rows: CheckpointDailyRow[]): CheckRow[] => {
         row.crosses_midnight === null || row.crosses_midnight === undefined
           ? null
           : normalizeBoolean(row.crosses_midnight, false),
+
+      inProgressEmployeeCode: getInProgressEmployeeCode(row),
+      inProgressEmployeeName: getInProgressEmployeeName(row),
     };
   });
 };
 
 function getRequestErrorStatus(error: any): number | null {
   return error?.response?.status ?? error?.status ?? null;
+}
+
+function isCheckpointInProgressConflict(
+  status: number | null,
+  message: string,
+): boolean {
+  return (
+    message.includes("ท่านไม่สามารถบันทึกลงเวลางานได้ เนื่องจาก") ||
+    message.includes("กำลังเข้าตรวจหน่วยงานนี้") ||
+    message.includes("จุดนี้อยู่ระหว่างการเข้าตรวจโดยรหัสพนักงาน") ||
+    (status === 409 && message.includes("เข้าตรวจ"))
+  );
 }
 
 function splitUnitName(unitName: string) {
@@ -709,6 +757,9 @@ export default function Checkpoint({
   const [isCheckingLocation, setIsCheckingLocation] = useState(false);
   const [outOfAreaOpen, setOutOfAreaOpen] = useState(false);
   const [outOfAreaHint, setOutOfAreaHint] = useState("");
+
+  const [checkpointInProgressMessage, setCheckpointInProgressMessage] =
+    useState("");
 
   const [isMapModalOpen, setIsMapModalOpen] = useState(false);
   const [mapLocation, setMapLocation] = useState<CheckpointMapLocation | null>(
@@ -910,6 +961,17 @@ export default function Checkpoint({
   const openOutOfAreaModal = (message: string) => {
     setOutOfAreaHint(message);
     setOutOfAreaOpen(true);
+  };
+
+  const openCheckpointInProgressModal = (message: string) => {
+    setOutOfAreaOpen(false);
+    setOutOfAreaHint("");
+    setCheckpointInProgressMessage(message);
+  };
+
+  const closeCheckpointInProgressModal = () => {
+    setCheckpointInProgressMessage("");
+    void fetchCheckpointAssignments();
   };
 
   const showLocationFailModal = (message: string) => {
@@ -1182,6 +1244,17 @@ export default function Checkpoint({
         error,
       });
 
+      if (isCheckpointInProgressConflict(status, message)) {
+        openCheckpointInProgressModal(
+          message ||
+            "ท่านไม่สามารถบันทึกลงเวลางานได้ เนื่องจาก\n"
+              + "- -\n"
+              + "กำลังเข้าตรวจหน่วยงานนี้\n\n"
+              + 'หากมีความจำเป็น ให้ไปใช้เมนูเข้าพื้นที่ "นอกแผน"',
+        );
+        return null;
+      }
+
       if (status === 405 || message.includes("405")) {
         showLocationFailModal(
           "Backend ยังไม่มี POST /api/checkpoint-assignments/verify-location กรุณาเพิ่ม endpoint ตรวจสอบตำแหน่งในฝั่ง backend ก่อน",
@@ -1234,6 +1307,41 @@ export default function Checkpoint({
   };
 
   const handleGoCheckInOut = async (row: CheckRow) => {
+    const normalizedEmpCode = empCode.trim();
+
+    /**
+     * สถานะ in_progress ไม่ได้แปลว่าผู้ใช้ปัจจุบันเป็นคนที่กดเข้าเสมอไป
+     * ต้องเทียบรหัสผู้ถือ Assignment กับผู้ใช้ที่ล็อกอินอยู่ก่อน
+     */
+    const isInProgressByOtherEmployee =
+      row.assignmentStatus === "in_progress" &&
+      row.inProgressEmployeeCode !== normalizedEmpCode;
+
+    if (isInProgressByOtherEmployee) {
+      const holderEmployeeCode = row.inProgressEmployeeCode ?? "-";
+      const holderEmployeeName = row.inProgressEmployeeName ?? "-";
+
+      const message = [
+        "ท่านไม่สามารถบันทึกลงเวลางานได้ เนื่องจาก",
+        `${holderEmployeeCode} ${holderEmployeeName}`,
+        "กำลังเข้าตรวจหน่วยงานนี้",
+        "",
+        'หากมีความจำเป็น ให้ไปใช้เมนูเข้าพื้นที่ "นอกแผน"',
+      ].join("\n");
+
+      logDev("[Checkpoint] STOP: ASSIGNMENT IS HELD BY OTHER EMPLOYEE", {
+        assignmentId: row.assignmentId,
+        unitName: row.unitName,
+        currentEmployeeCode: normalizedEmpCode,
+        holderEmployeeCode,
+        holderEmployeeName,
+        row,
+      });
+
+      openCheckpointInProgressModal(message);
+      return;
+    }
+
     const mode =
       row.status === "pending"
         ? "checkin"
@@ -1764,6 +1872,13 @@ export default function Checkpoint({
         open={outOfAreaOpen}
         locHint={outOfAreaHint}
         onClose={() => setOutOfAreaOpen(false)}
+      />
+
+      <CheckpointInProgressModal
+        open={Boolean(checkpointInProgressMessage)}
+        message={checkpointInProgressMessage}
+        onClose={closeCheckpointInProgressModal}
+        closeOnBackdrop={false}
       />
 
       <SuccessModal

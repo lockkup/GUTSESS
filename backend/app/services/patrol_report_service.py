@@ -362,6 +362,28 @@ def _normalize_status(value: Any) -> PatrolStatus:
     return cast(PatrolStatus, PatrolReportConstants.STATUS_PENDING)
 
 
+def _get_patrol_status_sort_order(value: Any) -> int:
+    """
+    ลำดับแสดงผลสถานะรายงาน:
+    1. in_progress = อยู่ระหว่างการเข้าตรวจ
+    2. completed = ตรวจแล้ว
+    3. pending = รอดำเนินการเข้าตรวจ
+    9. สถานะอื่น ๆ = อยู่ท้ายสุด
+    """
+    status_value = str(value or "").strip()
+
+    if status_value == PatrolReportConstants.STATUS_IN_PROGRESS:
+        return 1
+
+    if status_value == PatrolReportConstants.STATUS_COMPLETED:
+        return 2
+
+    if status_value == PatrolReportConstants.STATUS_PENDING:
+        return 3
+
+    return 9
+
+
 def _build_operator_name(
     employee_code: Any,
     position_name: Any,
@@ -602,6 +624,66 @@ def _select_operator_employee_name_column(
         f"{view_value}"
         f") AS {alias}"
     )
+
+
+def _build_unplanned_resolved_shift_id_sql(
+    view_column_names: set[str],
+    *,
+    table_alias: str = "v",
+) -> str:
+    """
+    คืน SQL expression สำหรับหา shift_id ของรายการนอกแผน
+
+    ลำดับการใช้ค่า:
+    1. ใช้ shift_id ที่ถูกบันทึกใน view / time_record ก่อน
+    2. ถ้า shift_id เป็น NULL, 0 หรือค่าว่าง ให้คำนวณจากเวลาเข้า
+
+    กติกาผลัด:
+    - 08:01:00 ถึง 20:00:00 = ผลัดกลางวัน (shift_id = 1)
+    - 20:01:00 ถึง 08:00:00 = ผลัดกลางคืน (shift_id = 2)
+
+    started_datetime ใช้ก่อนเมื่อ view มีคอลัมน์นี้; ถ้าไม่มีจึงใช้ started_at
+    เพื่อให้รองรับทั้ง view รุ่นใหม่และข้อมูลเก่าที่เก็บเวลาเป็นข้อความ
+    """
+    stored_shift_id_source_sql = (
+        f"{table_alias}.{PatrolReportConstants.COLUMN_SHIFT_ID}"
+        if PatrolReportConstants.COLUMN_SHIFT_ID in view_column_names
+        else "NULL"
+    )
+
+    # CAST + NULLIF ทำให้ NULL / 0 / '' ถูกมองว่าไม่มี shift_id
+    # แล้วจึง fallback ไปคำนวณจากเวลาเข้า
+    stored_shift_id_sql = (
+        "NULLIF("
+        f"CAST(TRIM(CAST({stored_shift_id_source_sql} AS CHAR)) AS UNSIGNED), "
+        "0"
+        ")"
+    )
+
+    started_time_source_sql = (
+        f"{table_alias}.{STARTED_DATETIME_COLUMN}"
+        if STARTED_DATETIME_COLUMN in view_column_names
+        else f"{table_alias}.{PatrolReportConstants.COLUMN_STARTED_AT}"
+    )
+
+    return f"""
+        CASE
+            WHEN {stored_shift_id_sql} IS NOT NULL
+                THEN {stored_shift_id_sql}
+
+            WHEN {started_time_source_sql} IS NULL
+                THEN NULL
+
+            WHEN TIME({started_time_source_sql}) IS NULL
+                THEN NULL
+
+            WHEN TIME({started_time_source_sql}) > '08:00:00'
+             AND TIME({started_time_source_sql}) <= '20:00:00'
+                THEN 1
+
+            ELSE 2
+        END
+    """
 
 
 def _get_time_record_flags(
@@ -952,16 +1034,28 @@ def get_patrol_report_filter_options(
             ) AS route_name,
             dv.department_id,
             dv.division_id
-        FROM routes r
-        CROSS JOIN divisions dv
+        FROM route_site_location rsl
+        INNER JOIN routes r
+            ON r.route_id = rsl.routes_id
+           AND r.is_active = 1
+        INNER JOIN divisions dv
+            ON dv.division_id = rsl.division_id
+           AND dv.is_active = 1
         INNER JOIN departments dp
-            ON dv.department_id = dp.department_id
+            ON dp.department_id = dv.department_id
            AND dp.is_active = 1
-        WHERE r.is_active = 1
-          AND dv.is_active = 1
+        INNER JOIN site_location sl
+            ON sl.location_id = rsl.location_id
+           AND sl.is_active = 1
+           AND COALESCE(sl.mark_flag, 0) = 0
+        WHERE rsl.is_active = 1
+          AND COALESCE(rsl.mark_flag, 0) = 0
           AND (:department_id IS NULL OR dv.department_id = :department_id)
           AND (:division_id IS NULL OR dv.division_id = :division_id)
-        ORDER BY dv.department_id, dv.division_id, r.route_id
+        ORDER BY
+            dv.department_id,
+            dv.division_id,
+            r.route_id
         """
     )
 
@@ -1007,7 +1101,9 @@ def get_patrol_report_filter_options(
         view_column_names = _get_view_column_names(db, UNPLANNED_VIEW_NAME)
         has_department_name = UNPLANNED_COLUMN_DEPARTMENT_NAME in view_column_names
         has_division_name = UNPLANNED_COLUMN_DIVISION_NAME in view_column_names
-        has_shift_id = PatrolReportConstants.COLUMN_SHIFT_ID in view_column_names
+        resolved_unplanned_shift_id_sql = _build_unplanned_resolved_shift_id_sql(
+            view_column_names,
+        )
 
         join_parts: list[str] = []
         where_parts: list[str] = [
@@ -1079,12 +1175,14 @@ def get_patrol_report_filter_options(
         elif division_id is not None:
             where_parts.append("1 = 0")
 
-        if has_shift_id:
-            where_parts.append(
-                f"(:shift_id IS NULL OR v.{PatrolReportConstants.COLUMN_SHIFT_ID} = :shift_id)",
+        where_parts.append(
+            f"""
+            (
+                :shift_id IS NULL
+                OR ({resolved_unplanned_shift_id_sql}) = :shift_id
             )
-        elif shift_id is not None:
-            where_parts.append("1 = 0")
+            """,
+        )
 
         where_parts.append("(:location_id IS NULL OR sl.location_id = :location_id)")
         where_parts.append(
@@ -1289,7 +1387,9 @@ def _get_patrol_report_unplanned_rows(
 
     has_department_name = UNPLANNED_COLUMN_DEPARTMENT_NAME in view_column_names
     has_division_name = UNPLANNED_COLUMN_DIVISION_NAME in view_column_names
-    has_shift_id = PatrolReportConstants.COLUMN_SHIFT_ID in view_column_names
+    resolved_unplanned_shift_id_sql = _build_unplanned_resolved_shift_id_sql(
+        view_column_names,
+    )
 
     checkin_image_select = _select_first_view_column(
         view_column_names,
@@ -1393,12 +1493,6 @@ def _get_patrol_report_unplanned_rows(
         )
     """
 
-    shift_id_select = (
-        f"v.{PatrolReportConstants.COLUMN_SHIFT_ID}"
-        if has_shift_id
-        else "NULL"
-    )
-
     sql_parts = [
         f"""
         SELECT
@@ -1441,7 +1535,7 @@ def _get_patrol_report_unplanned_rows(
             sl.location_id
                 AS {PatrolReportConstants.COLUMN_LOCATION_ID},
 
-            {shift_id_select}
+            {resolved_unplanned_shift_id_sql}
                 AS {PatrolReportConstants.COLUMN_SHIFT_ID},
 
             NULL AS {PatrolReportConstants.COLUMN_CONTACT_DETAIL},
@@ -1457,8 +1551,12 @@ def _get_patrol_report_unplanned_rows(
 
     params: dict[str, Any] = {}
 
-    if shift_id is not None and has_shift_id:
-        sql_parts.append(f"AND v.{PatrolReportConstants.COLUMN_SHIFT_ID} = :shift_id")
+    if shift_id is not None:
+        sql_parts.append(
+            f"""
+            AND ({resolved_unplanned_shift_id_sql}) = :shift_id
+            """
+        )
         params["shift_id"] = shift_id
 
     if department_id is not None:
@@ -1553,7 +1651,7 @@ def _get_patrol_report_unplanned_rows(
         f"""
         ORDER BY
             v.{PatrolReportConstants.COLUMN_WORK_DATE} DESC,
-            {shift_id_select} ASC,
+            {resolved_unplanned_shift_id_sql} ASC,
             CASE
                 WHEN v.{PatrolReportConstants.COLUMN_COMPLETED_AT} IS NULL
                     THEN 1
@@ -1574,6 +1672,12 @@ def _get_patrol_report_unplanned_rows(
     )
 
     statement = text("\n".join(sql_parts))
+
+    db.execute(
+        text(
+            f"SET lc_time_names = '{PatrolReportConstants.MYSQL_THAI_LOCALE}'",
+        )
+    )
 
     rows = [
         dict(row)
@@ -1604,16 +1708,9 @@ def _get_patrol_report_unplanned_rows(
             ).toordinal(),
             _to_optional_positive_int(row.get(PatrolReportConstants.COLUMN_SHIFT_ID))
             or 999999,
-            1
-            if _normalize_status(row.get(PatrolReportConstants.COLUMN_ASSIGNMENT_STATUS))
-            == PatrolReportConstants.STATUS_IN_PROGRESS
-            else 2
-            if _normalize_status(row.get(PatrolReportConstants.COLUMN_ASSIGNMENT_STATUS))
-            == PatrolReportConstants.STATUS_COMPLETED
-            else 3
-            if _normalize_status(row.get(PatrolReportConstants.COLUMN_ASSIGNMENT_STATUS))
-            == PatrolReportConstants.STATUS_PENDING
-            else 9,
+            _get_patrol_status_sort_order(
+                row.get(PatrolReportConstants.COLUMN_ASSIGNMENT_STATUS)
+            ),
             0 if _get_started_datetime_sort_key(row) != datetime.max else 1,
             _get_started_datetime_sort_key(row),
             _to_optional_positive_int(row.get(PatrolReportConstants.COLUMN_DIVISION_ID))

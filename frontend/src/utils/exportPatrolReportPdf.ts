@@ -22,9 +22,9 @@ type ExportPatrolReportPdfOptions = {
   rows: PatrolReportPdfRow[];
 };
 
-const PROMPT_FONT_NAME = "Prompt";
-const PROMPT_REGULAR_FILE = "Prompt-Regular.ttf";
-const PROMPT_SEMIBOLD_FILE = "Prompt-SemiBold.ttf";
+const SARABUN_FONT_NAME = "Sarabun";
+const SARABUN_REGULAR_FILE = "Sarabun-Regular.ttf";
+const SARABUN_SEMIBOLD_FILE = "Sarabun-SemiBold.ttf";
 
 const fontCache = new Map<string, Promise<string>>();
 
@@ -65,7 +65,7 @@ async function loadFontBinary(fontFileName: string) {
 
     if (!response.ok) {
       throw new Error(
-        `ไม่พบไฟล์ฟอนต์ ${fontFileName} ใน public/fonts`,
+        `ไม่พบไฟล์ฟอนต์ ${fontFileName} ใน frontend/public/fonts`,
       );
     }
 
@@ -84,19 +84,19 @@ async function loadFontBinary(fontFileName: string) {
   }
 }
 
-async function registerPromptFonts(doc: jsPDF) {
+async function registerSarabunFonts(doc: jsPDF) {
   const [regularFont, semiBoldFont] = await Promise.all([
-    loadFontBinary(PROMPT_REGULAR_FILE),
-    loadFontBinary(PROMPT_SEMIBOLD_FILE),
+    loadFontBinary(SARABUN_REGULAR_FILE),
+    loadFontBinary(SARABUN_SEMIBOLD_FILE),
   ]);
 
-  doc.addFileToVFS(PROMPT_REGULAR_FILE, regularFont);
-  doc.addFont(PROMPT_REGULAR_FILE, PROMPT_FONT_NAME, "normal");
+  doc.addFileToVFS(SARABUN_REGULAR_FILE, regularFont);
+  doc.addFont(SARABUN_REGULAR_FILE, SARABUN_FONT_NAME, "normal");
 
-  doc.addFileToVFS(PROMPT_SEMIBOLD_FILE, semiBoldFont);
-  doc.addFont(PROMPT_SEMIBOLD_FILE, PROMPT_FONT_NAME, "bold");
+  doc.addFileToVFS(SARABUN_SEMIBOLD_FILE, semiBoldFont);
+  doc.addFont(SARABUN_SEMIBOLD_FILE, SARABUN_FONT_NAME, "bold");
 
-  doc.setFont(PROMPT_FONT_NAME, "normal");
+  doc.setFont(SARABUN_FONT_NAME, "normal");
 }
 
 function getExportDateTimeText() {
@@ -123,7 +123,7 @@ export async function exportPatrolReportPdf({
     compress: true,
   });
 
-  await registerPromptFonts(doc);
+  await registerSarabunFonts(doc);
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -137,12 +137,12 @@ export async function exportPatrolReportPdf({
   const tableStartY = 20 + filterLines.length * 3.5;
 
   const drawPageHeader = () => {
-    doc.setFont(PROMPT_FONT_NAME, "bold");
+    doc.setFont(SARABUN_FONT_NAME, "bold");
     doc.setFontSize(15);
     doc.setTextColor(18, 82, 122);
     doc.text(title, marginX, 10);
 
-    doc.setFont(PROMPT_FONT_NAME, "normal");
+    doc.setFont(SARABUN_FONT_NAME, "normal");
     doc.setFontSize(7.5);
     doc.setTextColor(70, 70, 70);
     doc.text(filterLines, marginX, 16);
@@ -189,7 +189,7 @@ export async function exportPatrolReportPdf({
       row.callNote,
     ]),
     styles: {
-      font: PROMPT_FONT_NAME,
+      font: SARABUN_FONT_NAME,
       fontStyle: "normal",
       fontSize: 6.5,
       cellPadding: 1.2,
@@ -200,7 +200,7 @@ export async function exportPatrolReportPdf({
       overflow: "linebreak",
     },
     headStyles: {
-      font: PROMPT_FONT_NAME,
+      font: SARABUN_FONT_NAME,
       fontStyle: "bold",
       fontSize: 6.7,
       halign: "center",
@@ -234,7 +234,8 @@ export async function exportPatrolReportPdf({
 
   for (let page = 1; page <= totalPages; page += 1) {
     doc.setPage(page);
-    doc.setFont(PROMPT_FONT_NAME, "normal");
+
+    doc.setFont(SARABUN_FONT_NAME, "normal");
     doc.setFontSize(7);
     doc.setTextColor(90, 90, 90);
 

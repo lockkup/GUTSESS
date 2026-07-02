@@ -7,6 +7,7 @@ import BackButton from "@/components/BackButton";
 import CameraModal from "@/components/CameraModal";
 import SuccessModal from "@/components/SuccessModal";
 import CheckInOutModal from "@/components/CheckInOutModal";
+import CheckpointInProgressModal from "@/components/CheckpointInProgressModal/CheckpointInProgressModal";
 
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -72,6 +73,48 @@ function isPendingCheckinMessage(message: string) {
   );
 }
 
+function getRequestErrorStatus(error: unknown): number | null {
+  const requestError = error as {
+    response?: { status?: number };
+    status?: number;
+  };
+
+  return requestError?.response?.status ?? requestError?.status ?? null;
+}
+
+function isCheckpointCheckinConflict(params: {
+  isCheckpointMode: boolean;
+  punchType: PunchType;
+  statusCode: number | null;
+  message: string;
+}) {
+  const { isCheckpointMode, punchType, statusCode, message } = params;
+
+  if (!isCheckpointMode || punchType !== "in") {
+    return false;
+  }
+
+  /**
+   * Backend ตอบ HTTP 409 เมื่อมีพนักงานคนอื่นเริ่มเข้าตรวจจุดนี้ก่อนแล้ว
+   *
+   * รองรับข้อความใหม่จาก app/core/error_messages.py:
+   * "ท่านไม่สามารถบันทึกลงเวลางานได้ เนื่องจาก"
+   * "{employee_code} {employee_name}"
+   * "กำลังเข้าตรวจหน่วยงานนี้"
+   * "หากมีความจำเป็น ให้ไปใช้เมนูเข้าพื้นที่ \"นอกแผน\""
+   *
+   * รวมถึงข้อความเดิม เพื่อรองรับกรณี Backend บางเครื่องยังไม่ได้อัปเดต
+   * และกรณี App.tsx แปลง Axios error เป็น Error ปกติ
+   * จน statusCode ไม่ถูกส่งต่อมา แต่ข้อความ detail ยังอยู่
+   */
+  return (
+    statusCode === 409 ||
+    message.includes("ท่านไม่สามารถบันทึกลงเวลางานได้ เนื่องจาก") ||
+    message.includes("กำลังเข้าตรวจหน่วยงานนี้") ||
+    message.includes("จุดนี้อยู่ระหว่างการเข้าตรวจโดยรหัสพนักงาน")
+  );
+}
+
 function isValidLocation(location?: LocationCoords | null) {
   return (
     Boolean(location) &&
@@ -106,6 +149,8 @@ export default function FaceVerify({
 
   const [successOpen, setSuccessOpen] = useState(false);
   const [checkInOutModalOpen, setCheckInOutModalOpen] = useState(false);
+  const [checkpointConflictMessage, setCheckpointConflictMessage] =
+    useState("");
 
   const saveReqRef = useRef(0);
 
@@ -156,6 +201,7 @@ export default function FaceVerify({
     setBusy(false);
 
     setCheckInOutModalOpen(false);
+    setCheckpointConflictMessage("");
   }, [punchType, assignmentId]);
 
   function getConfirmedLocation(): LocationCoords | null {
@@ -196,10 +242,48 @@ export default function FaceVerify({
 
       if (saveId !== saveReqRef.current) return;
 
+      const requestError = error as {
+        response?: {
+          status?: number;
+          data?: { detail?: unknown };
+        };
+        data?: { detail?: unknown };
+        message?: unknown;
+      };
+
+      const apiDetail =
+        requestError?.response?.data?.detail ??
+        requestError?.data?.detail ??
+        requestError?.message;
+
       const message =
-        error instanceof Error
-          ? error.message
+        typeof apiDetail === "string" && apiDetail.trim()
+          ? apiDetail.trim()
           : "บันทึกเวลาไม่สำเร็จ กรุณาลองใหม่";
+
+      const statusCode = getRequestErrorStatus(error);
+
+      /**
+       * Checkpoint Check-in:
+       * Backend จะตอบ 409 เมื่อมีคนได้ Lock Assignment และเข้าตรวจก่อนแล้ว
+       * เปิด Custom Modal โดยใช้ detail จาก Backend โดยตรง
+       * จึงไม่มีการ hard-code รหัสพนักงานใน Frontend
+       */
+      if (
+        isCheckpointCheckinConflict({
+          isCheckpointMode,
+          punchType,
+          statusCode,
+          message,
+        })
+      ) {
+        setProcessStatus("idle");
+        setProcessHint("");
+        setErr("");
+        setCheckpointConflictMessage(message);
+
+        return;
+      }
 
       if (isPendingCheckinMessage(message)) {
         setProcessStatus("idle");
@@ -218,6 +302,7 @@ export default function FaceVerify({
 
   async function processCapturedImage(dataUrl: string) {
     setCheckInOutModalOpen(false);
+    setCheckpointConflictMessage("");
 
     setPhoto(dataUrl);
     setStep("confirm");
@@ -294,6 +379,7 @@ export default function FaceVerify({
 
     setBusy(true);
     setErr("");
+    setCheckpointConflictMessage("");
     setProcessStatus("allowed");
     setProcessHint("กำลังบันทึกข้อมูล...");
 
@@ -309,6 +395,7 @@ export default function FaceVerify({
 
     setSuccessOpen(false);
     setCheckInOutModalOpen(false);
+    setCheckpointConflictMessage("");
 
     setPhoto("");
     setErr("");
@@ -329,6 +416,30 @@ export default function FaceVerify({
     }
 
     onGoCheckInOut();
+  }
+
+  function handleCheckpointConflictClose() {
+    saveReqRef.current++;
+
+    setCheckpointConflictMessage("");
+    setCamOpen(false);
+    setBusy(false);
+    setPhoto("");
+    setErr("");
+    setStep("capture");
+    setProcessStatus("idle");
+    setProcessHint("");
+
+    /**
+     * กลับไปหน้า Checkpoint เพื่อโหลดสถานะล่าสุดของจุดนั้น
+     * ผู้ใช้จะเห็นสถานะ "อยู่ระหว่างการเข้าตรวจ" ตามข้อมูลจริง
+     */
+    if (onGoCheckpoint) {
+      onGoCheckpoint();
+      return;
+    }
+
+    onBack();
   }
 
   const title = "กรุณาถ่ายภาพเพื่อบันทึกเวลางานสายตรวจ";
@@ -537,6 +648,13 @@ export default function FaceVerify({
       <CheckInOutModal
         open={checkInOutModalOpen}
         onClose={() => setCheckInOutModalOpen(false)}
+      />
+
+      <CheckpointInProgressModal
+        open={Boolean(checkpointConflictMessage)}
+        message={checkpointConflictMessage}
+        onClose={handleCheckpointConflictClose}
+        closeOnBackdrop={false}
       />
 
       <SuccessModal

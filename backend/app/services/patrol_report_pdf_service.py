@@ -21,6 +21,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfgen.canvas import Canvas
 from reportlab.platypus import (
     Image as PdfImage,
     KeepTogether,
@@ -95,6 +96,53 @@ class PatrolReportPdfScope:
 
 ProgressCallback = Callable[[int, int], None]
 CancelledCallback = Callable[[], bool]
+
+
+class PatrolReportPdfNumberedCanvas(Canvas):
+    """Canvas สำหรับแสดงเลขหน้าแบบ X/จำนวนหน้าทั้งหมด."""
+
+    def __init__(
+        self,
+        *args: Any,
+        footer_right_margin: float,
+        footer_y: float,
+        font_name: str,
+        font_size: float,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+
+        self._saved_page_states: list[dict[str, Any]] = []
+        self._footer_right_margin = footer_right_margin
+        self._footer_y = footer_y
+        self._font_name = font_name
+        self._font_size = font_size
+
+    def showPage(self) -> None:
+        # เก็บ state ของแต่ละหน้าก่อน เพื่อทราบจำนวนหน้าทั้งหมดใน save()
+        self._saved_page_states.append(dict(self.__dict__))
+        self._startPage()
+
+    def save(self) -> None:
+        total_pages = len(self._saved_page_states)
+
+        for page_state in self._saved_page_states:
+            self.__dict__.update(page_state)
+            self._draw_page_number(total_pages)
+            super().showPage()
+
+        super().save()
+
+    def _draw_page_number(self, total_pages: int) -> None:
+        self.saveState()
+        self.setFont(self._font_name, self._font_size)
+        self.setFillColor(colors.HexColor("#64748B"))
+        self.drawRightString(
+            self._pagesize[0] - self._footer_right_margin,
+            self._footer_y,
+            f"{self._pageNumber}/{total_pages}",
+        )
+        self.restoreState()
 
 
 class PatrolReportPdfService:
@@ -246,8 +294,7 @@ class PatrolReportPdfService:
 
             document.build(
                 story,
-                onFirstPage=PatrolReportPdfService._draw_page_footer,
-                onLaterPages=PatrolReportPdfService._draw_page_footer,
+                canvasmaker=PatrolReportPdfService._create_numbered_canvas,
             )
 
             PatrolReportPdfService._raise_if_cancelled(is_cancelled)
@@ -265,8 +312,25 @@ class PatrolReportPdfService:
                 )
 
             generated_at = datetime.now()
+
+            # ใช้ชื่อฝ่าย/ภาคที่ผู้ใช้เลือกจากตาราง departments
+            # ตัวอย่าง: "ฝ่ายปฏิบัติการ ภาค 1"
+            report_scope_name = (
+                scope.department_name.strip()
+                if scope.department_name and scope.department_name.strip()
+                else "ฝ่ายปฏิบัติการ"
+            )
+
+            # ป้องกันอักขระที่ Windows ไม่อนุญาตให้ใช้ในชื่อไฟล์
+            report_scope_name = re.sub(
+                r'[\\/:*?"<>|]+',
+                "-",
+                report_scope_name,
+            ).strip()
+
             download_filename = (
-                f"รายงานการเข้าตรวจหน่วยงาน_{generated_at:%Y%m%d_%H%M%S}.pdf"
+                f"รายงานประจำวัน{report_scope_name}_"
+                f"{generated_at:%d%m%Y_%H%M%S}.pdf"
             )
 
             return PatrolReportPdfBuildResult(
@@ -505,24 +569,34 @@ class PatrolReportPdfService:
         if where_parts:
             sql += " WHERE " + " AND ".join(where_parts)
 
-        order_columns = [
-            column
-            for column in (
-                "work_date",
-                "workday",
-                "route_id",
-                "location_id",
-                "contract_code",
-                "employee_code",
-            )
-            if has_column(column)
-        ]
+        # เรียงรายงานตามเหตุการณ์เข้าตรวจจริง:
+        # 1) วันตามแผนงาน
+        # 2) เวลาเข้า
+        # 3) เวลาออก
+        # 4) รหัสสัญญา / รหัสพนักงาน เพื่อให้ลำดับคงที่เมื่อเวลาเท่ากัน
+        order_parts: list[str] = []
 
-        if order_columns:
-            sql += " ORDER BY " + ", ".join(
-                f"`{column}` ASC"
-                for column in order_columns
-            )
+        if has_column("workday"):
+            order_parts.append("`workday` ASC")
+
+        if has_column("started_datetime"):
+            # รายการที่ยังไม่มีเวลาเข้า เช่น pending จะอยู่ท้ายสุด
+            order_parts.append("(`started_datetime` IS NULL) ASC")
+            order_parts.append("`started_datetime` ASC")
+
+        if has_column("completed_datetime"):
+            # รายการที่ยังไม่มีเวลาออก เช่น in_progress จะอยู่หลังรายการที่ออกแล้ว
+            order_parts.append("(`completed_datetime` IS NULL) ASC")
+            order_parts.append("`completed_datetime` ASC")
+
+        if has_column("contract_code"):
+            order_parts.append("`contract_code` ASC")
+
+        if has_column("employee_code"):
+            order_parts.append("`employee_code` ASC")
+
+        if order_parts:
+            sql += " ORDER BY " + ", ".join(order_parts)
 
         return sql, params
 
@@ -1033,12 +1107,17 @@ class PatrolReportPdfService:
         detail_table = Table(
             detail_data,
             colWidths=[22 * mm, 72 * mm, 22 * mm, 72 * mm],
-            hAlign="LEFT",
+            hAlign="CENTER",
         )
         detail_table.setStyle(
             TableStyle(
                 [
                     ("BACKGROUND", (0, 0), (-1, -1), colors.white),
+
+                    # พื้นหลังสีเทาสำหรับหัวข้อ: ผลัด / สถานะ / เวลาเข้า / เวลาออก
+                    ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#D9D9D9")),
+                    ("BACKGROUND", (2, 0), (2, -1), colors.HexColor("#D9D9D9")),
+
                     ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#BFC5CC")),
                     ("ALIGN", (0, 0), (0, -1), "RIGHT"),
                     ("ALIGN", (1, 0), (1, -1), "CENTER"),
@@ -1070,13 +1149,18 @@ class PatrolReportPdfService:
                     ),
                 ],
             ],
-            colWidths=[91 * mm, 91 * mm],
-            hAlign="LEFT",
+            # กว้างรวม 188 mm เท่ากับ detail_table เพื่อให้ขอบซ้าย/ขวาตรงกัน
+            colWidths=[94 * mm, 94 * mm],
+            hAlign="CENTER",
         )
         image_table.setStyle(
             TableStyle(
                 [
                     ("BACKGROUND", (0, 0), (-1, -1), colors.white),
+
+                    # พื้นหลังสีเทาสำหรับหัวข้อรูปเวลาเข้า / รูปเวลาออก
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#D9D9D9")),
+
                     ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#BFC5CC")),
                     ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                     ("ALIGN", (0, 0), (-1, -1), "CENTER"),
@@ -1341,7 +1425,7 @@ class PatrolReportPdfService:
         }.get(str(shift_type), str(shift_type))
 
         return (
-            "ข้อมูลที่เลือกดู: "
+            "ข้อมูลที่เลือกตรวจสอบ: "
             f"ช่วงวันที่ {html.escape(PatrolReportPdfService._format_thai_date(workday_start))}"
             f" - {html.escape(PatrolReportPdfService._format_thai_date(workday_end))}"
             f" | ประเภทแผน: {html.escape(plan_text)}"
@@ -1550,12 +1634,14 @@ class PatrolReportPdfService:
             TTFont(
                 PatrolReportPdfService.FONT_REGULAR_NAME,
                 str(regular_path),
+                shapable=True,
             )
         )
         pdfmetrics.registerFont(
             TTFont(
                 PatrolReportPdfService.FONT_BOLD_NAME,
                 str(bold_path),
+                shapable=True,
             )
         )
 
@@ -1572,7 +1658,7 @@ class PatrolReportPdfService:
     def _make_styles() -> dict[str, ParagraphStyle]:
         base_styles = getSampleStyleSheet()
 
-        return {
+        styles = {
             "title": ParagraphStyle(
                 "PatrolReportTitle",
                 parent=base_styles["Title"],
@@ -1624,7 +1710,7 @@ class PatrolReportPdfService:
                 fontName=PatrolReportPdfService.FONT_BOLD_NAME,
                 fontSize=PatrolReportPdfService.FONT_SIZE_APPENDIX_TITLE,
                 leading=PatrolReportPdfService.FONT_LEADING_APPENDIX_TITLE,
-                alignment=TA_LEFT,
+                alignment=TA_CENTER,
                 textColor=colors.HexColor("#1E3A8A"),
             ),
             "appendix_scope": ParagraphStyle(
@@ -1633,7 +1719,7 @@ class PatrolReportPdfService:
                 fontName=PatrolReportPdfService.FONT_REGULAR_NAME,
                 fontSize=PatrolReportPdfService.FONT_SIZE_SCOPE,
                 leading=PatrolReportPdfService.FONT_LEADING_SCOPE,
-                alignment=TA_LEFT,
+                alignment=TA_CENTER,
                 textColor=colors.black,
             ),
             "detail_label_right": ParagraphStyle(
@@ -1741,21 +1827,24 @@ class PatrolReportPdfService:
             ),
         }
 
+        # เปิด OpenType shaping สำหรับข้อความภาษาไทย
+        # เพื่อจัดตำแหน่งสระและวรรณยุกต์ให้สัมพันธ์กับพยัญชนะอย่างถูกต้อง
+        for style in styles.values():
+            style.shaping = True
+
+        return styles
+
     @staticmethod
-    def _draw_page_footer(canvas: Any, document: Any) -> None:
-        """แสดงเลขหน้าชิดขอบล่างด้านขวา فقط."""
-        canvas.saveState()
-
-        canvas.setFont(
-            PatrolReportPdfService.FONT_REGULAR_NAME,
-            PatrolReportPdfService.FONT_SIZE_FOOTER,
+    def _create_numbered_canvas(
+        *args: Any,
+        **kwargs: Any,
+    ) -> PatrolReportPdfNumberedCanvas:
+        """สร้าง Canvas ที่แสดงเลขหน้าแบบ X/จำนวนหน้าทั้งหมด."""
+        return PatrolReportPdfNumberedCanvas(
+            *args,
+            footer_right_margin=12 * mm,
+            footer_y=8 * mm,
+            font_name=PatrolReportPdfService.FONT_REGULAR_NAME,
+            font_size=PatrolReportPdfService.FONT_SIZE_FOOTER,
+            **kwargs,
         )
-        canvas.setFillColor(colors.HexColor("#64748B"))
-
-        canvas.drawRightString(
-            document.pagesize[0] - document.rightMargin,
-            8 * mm,
-            str(document.page),
-        )
-
-        canvas.restoreState()
