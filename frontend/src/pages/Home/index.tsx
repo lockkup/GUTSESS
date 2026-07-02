@@ -12,6 +12,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 
 import Header from "@/layout/Header";
+import api from "@/lib/api";
 import styles from "./Home.module.css";
 
 type PatrolAreaInfo = {
@@ -59,21 +60,6 @@ function cleanText(value: unknown): string {
 }
 
 /**
- * ใช้ VITE_API_BASE_URL เดียวกับหน้า Checkpoint
- *
- * ตัวอย่าง:
- * - http://127.0.0.1:8000/api
- * - https://your-domain.example/api
- */
-function getApiBaseUrl() {
-  const configuredBaseUrl = String(
-    import.meta.env.VITE_API_BASE_URL ?? "",
-  ).trim();
-
-  return configuredBaseUrl.replace(/\/+$/, "") || "/api";
-}
-
-/**
  * Home เป็นหน้าแรก:
  * ดึงข้อมูล ภาค / เขต / เส้นทาง ตั้งแต่เข้าหน้า Home
  */
@@ -90,23 +76,9 @@ async function getEmployeePatrolArea(
     };
   }
 
-  const response = await fetch(
-    `${getApiBaseUrl()}/employees/${encodeURIComponent(cleanEmployeeCode)}`,
-    {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-      },
-    },
+  const data = await api.get<EmployeePatrolAreaResponse>(
+    `/employees/${encodeURIComponent(cleanEmployeeCode)}`,
   );
-
-  if (!response.ok) {
-    throw new Error(
-      `โหลดข้อมูลภาค เขต และเส้นทางไม่สำเร็จ (HTTP ${response.status})`,
-    );
-  }
-
-  const data = (await response.json()) as EmployeePatrolAreaResponse;
 
   return {
     fieldName: cleanText(data.field_name),
