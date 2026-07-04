@@ -975,6 +975,8 @@ class CheckpointAssignmentService:
                 employee_division_id = getattr(employee, "division_id", None)
                 employee_routes_id = getattr(employee, "routes_id", None)
 
+                # กรองตามเขต และเส้นทางพร้อมกัน
+                # เพื่อไม่ให้พนักงานในเขตเดียวกันเห็นข้อมูลของเส้นทางอื่น
                 if (
                     route_division_column is not None
                     and employee_division_id is not None
@@ -982,11 +984,16 @@ class CheckpointAssignmentService:
                     stmt = stmt.where(
                         route_division_column == employee_division_id
                     )
-                elif route_routes_column is not None and employee_routes_id is not None:
+
+                if (
+                    route_routes_column is not None
+                    and employee_routes_id is not None
+                ):
                     stmt = stmt.where(
                         route_routes_column == employee_routes_id
                     )
-                else:
+
+                if employee_division_id is None and employee_routes_id is None:
                     return []
 
         if shift_type is not None:
