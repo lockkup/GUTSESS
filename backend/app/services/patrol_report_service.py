@@ -639,8 +639,8 @@ def _build_unplanned_resolved_shift_id_sql(
     2. ถ้า shift_id เป็น NULL, 0 หรือค่าว่าง ให้คำนวณจากเวลาเข้า
 
     กติกาผลัด:
-    - 08:01:00 ถึง 20:00:00 = ผลัดกลางวัน (shift_id = 1)
-    - 20:01:00 ถึง 08:00:00 = ผลัดกลางคืน (shift_id = 2)
+    - 08:00:00 ถึง 19:59:59 = ผลัดกลางวัน (shift_id = 1)
+    - 20:00:00 ถึง 07:59:59 = ผลัดกลางคืน (shift_id = 2)
 
     started_datetime ใช้ก่อนเมื่อ view มีคอลัมน์นี้; ถ้าไม่มีจึงใช้ started_at
     เพื่อให้รองรับทั้ง view รุ่นใหม่และข้อมูลเก่าที่เก็บเวลาเป็นข้อความ
@@ -677,8 +677,8 @@ def _build_unplanned_resolved_shift_id_sql(
             WHEN TIME({started_time_source_sql}) IS NULL
                 THEN NULL
 
-            WHEN TIME({started_time_source_sql}) > '08:00:00'
-             AND TIME({started_time_source_sql}) <= '20:00:00'
+            WHEN TIME({started_time_source_sql}) >= '08:00:00'
+             AND TIME({started_time_source_sql}) < '20:00:00'
                 THEN 1
 
             ELSE 2
@@ -1099,111 +1099,13 @@ def get_patrol_report_filter_options(
 
     if plan_mode == "outside_plan":
         view_column_names = _get_view_column_names(db, UNPLANNED_VIEW_NAME)
-        has_department_name = UNPLANNED_COLUMN_DEPARTMENT_NAME in view_column_names
-        has_division_name = UNPLANNED_COLUMN_DIVISION_NAME in view_column_names
         resolved_unplanned_shift_id_sql = _build_unplanned_resolved_shift_id_sql(
             view_column_names,
         )
 
-        join_parts: list[str] = []
-        where_parts: list[str] = [
-            f"v.{PatrolReportConstants.COLUMN_EMPLOYEE_CODE} IS NOT NULL",
-        ]
-
-        join_parts.append(
-            f"""
-            INNER JOIN employees em
-                ON em.employee_code
-                    = v.{PatrolReportConstants.COLUMN_EMPLOYEE_CODE}
-            """
-        )
-        join_parts.append(
-            """
-            LEFT JOIN positions po
-                ON em.position_id = po.position_id
-            """
-        )
-        join_parts.append(
-            f"""
-            LEFT JOIN site_location sl
-                ON TRIM(sl.contract_code)
-                    = TRIM(v.{PatrolReportConstants.COLUMN_CONTRACT_CODE})
-                AND TRIM(sl.location_name)
-                    = TRIM(v.{PatrolReportConstants.COLUMN_LOCATION_NAME})
-            """
-        )
-
-        if has_department_name:
-            join_parts.append(
-                f"""
-                LEFT JOIN departments dp
-                    ON TRIM(dp.department_name)
-                        = TRIM(v.{UNPLANNED_COLUMN_DEPARTMENT_NAME})
-                """
-            )
-            where_parts.append(
-                "(:department_id IS NULL OR dp.department_id = :department_id)",
-            )
-        elif department_id is not None:
-            where_parts.append("1 = 0")
-
-        if has_division_name:
-            if has_department_name:
-                join_parts.append(
-                    f"""
-                    LEFT JOIN divisions dv
-                        ON TRIM(dv.division_name)
-                            = TRIM(v.{UNPLANNED_COLUMN_DIVISION_NAME})
-                        AND (
-                            dp.department_id IS NULL
-                            OR dv.department_id = dp.department_id
-                        )
-                    """
-                )
-            else:
-                join_parts.append(
-                    f"""
-                    LEFT JOIN divisions dv
-                        ON TRIM(dv.division_name)
-                            = TRIM(v.{UNPLANNED_COLUMN_DIVISION_NAME})
-                    """
-                )
-
-            where_parts.append(
-                "(:division_id IS NULL OR dv.division_id = :division_id)",
-            )
-        elif division_id is not None:
-            where_parts.append("1 = 0")
-
-        where_parts.append(
-            f"""
-            (
-                :shift_id IS NULL
-                OR ({resolved_unplanned_shift_id_sql}) = :shift_id
-            )
-            """,
-        )
-
-        where_parts.append("(:location_id IS NULL OR sl.location_id = :location_id)")
-        where_parts.append(
-            """
-            (
-                :route_id IS NULL
-                OR EXISTS (
-                    SELECT 1
-                    FROM route_site_location rsl_filter
-                    INNER JOIN routes r_filter
-                        ON r_filter.route_id = rsl_filter.routes_id
-                       AND r_filter.is_active = 1
-                    WHERE rsl_filter.location_id = sl.location_id
-                      AND rsl_filter.routes_id = :route_id
-                      AND rsl_filter.is_active = 1
-                      AND COALESCE(rsl_filter.mark_flag, 0) = 0
-                )
-            )
-            """,
-        )
-
+        # vw_checkin_unplanned ระบุ department_id / division_id / route_id /
+        # location_id ไว้แล้ว จึงใช้ ID จาก View ตรง ๆ เพื่อให้กติกาการ
+        # กรองตรงกับ View และไม่ต้อง JOIN ซ้ำจากชื่อหรือ location อีกครั้ง
         employees_sql = text(
             f"""
             SELECT DISTINCT
@@ -1220,8 +1122,32 @@ def get_patrol_report_filter_options(
                 ) AS employee_name,
                 po.position_name
             FROM {UNPLANNED_VIEW_NAME} v
-            {' '.join(join_parts)}
-            WHERE {' AND '.join(where_parts)}
+            INNER JOIN employees em
+                ON em.employee_code
+                    = v.{PatrolReportConstants.COLUMN_EMPLOYEE_CODE}
+            LEFT JOIN positions po
+                ON em.position_id = po.position_id
+            WHERE v.{PatrolReportConstants.COLUMN_EMPLOYEE_CODE} IS NOT NULL
+              AND (
+                  :shift_id IS NULL
+                  OR ({resolved_unplanned_shift_id_sql}) = :shift_id
+              )
+              AND (
+                  :department_id IS NULL
+                  OR v.{PatrolReportConstants.COLUMN_DEPARTMENT_ID} = :department_id
+              )
+              AND (
+                  :division_id IS NULL
+                  OR v.{PatrolReportConstants.COLUMN_DIVISION_ID} = :division_id
+              )
+              AND (
+                  :route_id IS NULL
+                  OR v.{PatrolReportConstants.COLUMN_ROUTE_ID} = :route_id
+              )
+              AND (
+                  :location_id IS NULL
+                  OR v.{PatrolReportConstants.COLUMN_LOCATION_ID} = :location_id
+              )
             ORDER BY employee_name, em.employee_code
             """
         )
@@ -1385,8 +1311,6 @@ def _get_patrol_report_unplanned_rows(
         UNPLANNED_VIEW_NAME,
     )
 
-    has_department_name = UNPLANNED_COLUMN_DEPARTMENT_NAME in view_column_names
-    has_division_name = UNPLANNED_COLUMN_DIVISION_NAME in view_column_names
     resolved_unplanned_shift_id_sql = _build_unplanned_resolved_shift_id_sql(
         view_column_names,
     )
@@ -1422,76 +1346,23 @@ def _get_patrol_report_unplanned_rows(
         alias=COMPLETED_DATETIME_COLUMN,
     )
 
-    join_parts: list[str] = []
-
-    if has_department_name:
-        join_parts.append(
-            f"""
-            LEFT JOIN departments dp
-                ON TRIM(dp.department_name)
-                    = TRIM(v.{UNPLANNED_COLUMN_DEPARTMENT_NAME})
-            """
-        )
-        department_id_select = "dp.department_id"
-    else:
-        department_id_select = "NULL"
-
-    if has_division_name:
-        if has_department_name:
-            join_parts.append(
-                f"""
-                LEFT JOIN divisions dv
-                    ON TRIM(dv.division_name)
-                        = TRIM(v.{UNPLANNED_COLUMN_DIVISION_NAME})
-                    AND (
-                        dp.department_id IS NULL
-                        OR dv.department_id = dp.department_id
-                    )
-                """
-            )
-        else:
-            join_parts.append(
-                f"""
-                LEFT JOIN divisions dv
-                    ON TRIM(dv.division_name)
-                        = TRIM(v.{UNPLANNED_COLUMN_DIVISION_NAME})
-                """
-            )
-
-        division_id_select = "dv.division_id"
-    else:
-        division_id_select = "NULL"
-
-    join_parts.append(
-        f"""
-        LEFT JOIN site_location sl
-            ON TRIM(sl.contract_code)
-                = TRIM(v.{PatrolReportConstants.COLUMN_CONTRACT_CODE})
-            AND TRIM(sl.location_name)
-                = TRIM(v.{PatrolReportConstants.COLUMN_LOCATION_NAME})
-        """
+    # ใช้ ID จาก vw_checkin_unplanned โดยตรง
+    # View เป็นจุดเดียวที่เลือก route_site_location แล้ว จึงไม่ JOIN/EXISTS ซ้ำ
+    # และไม่ใช้การเทียบชื่อภาค/เขตหรือชื่อหน่วยงานอีกครั้ง
+    department_id_select = (
+        f"v.{PatrolReportConstants.COLUMN_DEPARTMENT_ID}"
     )
+    division_id_select = f"v.{PatrolReportConstants.COLUMN_DIVISION_ID}"
+    route_id_select = f"v.{PatrolReportConstants.COLUMN_ROUTE_ID}"
+    location_id_select = f"v.{PatrolReportConstants.COLUMN_LOCATION_ID}"
 
-    join_parts.append(
+    join_parts: list[str] = [
         f"""
         LEFT JOIN employees em_operator
             ON em_operator.employee_code
                 = v.{PatrolReportConstants.COLUMN_EMPLOYEE_CODE}
-        """
-    )
-
-    route_id_select = """
-        (
-            SELECT MIN(rsl.routes_id)
-            FROM route_site_location rsl
-            INNER JOIN routes r
-                ON r.route_id = rsl.routes_id
-               AND r.is_active = 1
-            WHERE rsl.location_id = sl.location_id
-              AND rsl.is_active = 1
-              AND COALESCE(rsl.mark_flag, 0) = 0
-        )
-    """
+        """,
+    ]
 
     sql_parts = [
         f"""
@@ -1523,7 +1394,7 @@ def _get_patrol_report_unplanned_rows(
             NULL AS {PatrolReportConstants.COLUMN_BY_CONTRACT},
             NULL AS {PatrolReportConstants.COLUMN_PLAN_DAY},
 
-            v.{PatrolReportConstants.COLUMN_WORK_DATE}
+            v.{PatrolReportConstants.COLUMN_WORKDAY}
                 AS {PatrolReportConstants.COLUMN_WORKDAY},
 
             {department_id_select}
@@ -1532,7 +1403,7 @@ def _get_patrol_report_unplanned_rows(
                 AS {PatrolReportConstants.COLUMN_DIVISION_ID},
             {route_id_select}
                 AS {PatrolReportConstants.COLUMN_ROUTE_ID},
-            sl.location_id
+            {location_id_select}
                 AS {PatrolReportConstants.COLUMN_LOCATION_ID},
 
             {resolved_unplanned_shift_id_sql}
@@ -1545,11 +1416,15 @@ def _get_patrol_report_unplanned_rows(
             NULL AS last_inspection_date
         FROM {UNPLANNED_VIEW_NAME} v
         {' '.join(join_parts)}
-        WHERE 1 = 1
+        WHERE v.{PatrolReportConstants.COLUMN_WORKDAY}
+            BETWEEN :workday_start AND :workday_end
         """
     ]
 
-    params: dict[str, Any] = {}
+    params: dict[str, Any] = {
+        "workday_start": report_start,
+        "workday_end": report_end,
+    }
 
     if shift_id is not None:
         sql_parts.append(
@@ -1560,39 +1435,27 @@ def _get_patrol_report_unplanned_rows(
         params["shift_id"] = shift_id
 
     if department_id is not None:
-        if has_department_name:
-            sql_parts.append("AND dp.department_id = :department_id")
-            params["department_id"] = department_id
-        else:
-            sql_parts.append("AND 1 = 0")
+        sql_parts.append(
+            f"AND v.{PatrolReportConstants.COLUMN_DEPARTMENT_ID} = :department_id",
+        )
+        params["department_id"] = department_id
 
     if division_id is not None:
-        if has_division_name:
-            sql_parts.append("AND dv.division_id = :division_id")
-            params["division_id"] = division_id
-        else:
-            sql_parts.append("AND 1 = 0")
+        sql_parts.append(
+            f"AND v.{PatrolReportConstants.COLUMN_DIVISION_ID} = :division_id",
+        )
+        params["division_id"] = division_id
 
     if route_id is not None:
         sql_parts.append(
-            """
-            AND EXISTS (
-                SELECT 1
-                FROM route_site_location rsl_filter
-                INNER JOIN routes r_filter
-                    ON r_filter.route_id = rsl_filter.routes_id
-                   AND r_filter.is_active = 1
-                WHERE rsl_filter.location_id = sl.location_id
-                  AND rsl_filter.routes_id = :route_id
-                  AND rsl_filter.is_active = 1
-                  AND COALESCE(rsl_filter.mark_flag, 0) = 0
-            )
-            """
+            f"AND v.{PatrolReportConstants.COLUMN_ROUTE_ID} = :route_id",
         )
         params["route_id"] = route_id
 
     if location_id is not None:
-        sql_parts.append("AND sl.location_id = :location_id")
+        sql_parts.append(
+            f"AND v.{PatrolReportConstants.COLUMN_LOCATION_ID} = :location_id",
+        )
         params["location_id"] = location_id
 
     if employee_code and employee_code.strip():
@@ -1650,7 +1513,7 @@ def _get_patrol_report_unplanned_rows(
     sql_parts.append(
         f"""
         ORDER BY
-            v.{PatrolReportConstants.COLUMN_WORK_DATE} DESC,
+            v.{PatrolReportConstants.COLUMN_WORKDAY} DESC,
             {resolved_unplanned_shift_id_sql} ASC,
             CASE
                 WHEN v.{PatrolReportConstants.COLUMN_COMPLETED_AT} IS NULL
