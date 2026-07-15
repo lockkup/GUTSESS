@@ -15,6 +15,7 @@ from .employees import EmployeesService
 from .face_profile import FaceProfileService
 from .face_profile_change import FaceProfileChangeService
 from .name_prefixs import NamePrefixService
+from .patrol_area import PatrolAreaService
 from .patrol_report_service import get_patrol_report_rows
 from .positions import PositionService
 from .route import RouteService
@@ -42,6 +43,7 @@ __all__ = [
     "FaceProfileService",
     "FaceProfileChangeService",
     "NamePrefixService",
+    "PatrolAreaService",
     "get_patrol_report_rows",
     "PositionService",
     "RouteService",

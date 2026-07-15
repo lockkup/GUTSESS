@@ -7,6 +7,7 @@ import {
   faUsers,
   faClipboardList,
   faFileLines,
+  faRoute,
   faEllipsis,
   faRightFromBracket,
 } from "@fortawesome/free-solid-svg-icons";
@@ -46,6 +47,7 @@ type Props = {
 
   onLogout: () => void;
   onGoCheckInOut: () => void;
+  onGoOrganizationInfo: () => void;
   onGoCheckpoint: () => void;
   onGoPatrolReport: () => void;
   onGoLeaveShifts: () => void;
@@ -106,6 +108,7 @@ export default function Home({
   onPatrolAreaLoaded,
   onLogout,
   onGoCheckInOut,
+  onGoOrganizationInfo,
   onGoCheckpoint,
   onGoPatrolReport,
   onGoLeaveShifts,
@@ -254,6 +257,20 @@ export default function Home({
                   </span>
                   <span className={styles.menuSubLine}>(นอกแผน)</span>
                 </div>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              className={styles.menuBtn}
+              onClick={onGoOrganizationInfo}
+            >
+              <div className={styles.menuBox}>
+                <div className={styles.iconWrap} aria-hidden="true">
+                  <FontAwesomeIcon className={styles.fa} icon={faRoute} />
+                </div>
+
+                <div className={styles.text}>ข้อมูลหน่วยงาน</div>
               </div>
             </button>
 

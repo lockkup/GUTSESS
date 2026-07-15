@@ -1,0 +1,339 @@
+/* src/components/PatrolAreaInfoModal.module.css */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+
+  display: grid;
+  place-items: center;
+
+  padding: 10px;
+  box-sizing: border-box;
+
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.modal {
+  position: relative;
+
+  width: min(430px, 96vw);
+  max-height: min(94dvh, 780px);
+  overflow-y: auto;
+
+  padding: 18px 14px 14px;
+  box-sizing: border-box;
+
+  background: #ffffff;
+  border-radius: 18px;
+  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.35);
+
+  font-family: "Sarabun", "Prompt", sans-serif;
+
+  animation: modalPop 0.16s ease-out;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+@keyframes modalPop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* =========================
+   ปุ่มปิดมุมขวาบน
+========================= */
+
+.closeIconButton {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+
+  display: inline-grid;
+  place-items: center;
+
+  width: 34px;
+  height: 34px;
+  padding: 0;
+
+  color: #024b76;
+  background: #eef6fb;
+  border: 0;
+  border-radius: 999px;
+
+  cursor: pointer;
+
+  transition:
+    background 0.15s ease,
+    transform 0.15s ease;
+}
+
+.closeIconButton:hover {
+  background: #dceef8;
+}
+
+.closeIconButton:active {
+  transform: scale(0.94);
+}
+
+/* =========================
+   หัวข้อและชื่อหน่วยงาน
+========================= */
+
+.title {
+  margin: 0 42px 10px 0;
+
+  color: #024b76;
+
+  font-size: 22px;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.unitName {
+  margin: 0 0 8px;
+
+  color: #082f49;
+
+  font-size: 17px;
+  font-weight: 900;
+  line-height: 1.35;
+
+  overflow-wrap: anywhere;
+}
+
+.description {
+  margin: 0 0 12px;
+
+  color: #334155;
+
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+/* =========================
+   กล่องข้อมูลพิกัด
+========================= */
+
+.infoBox {
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 12px;
+  box-sizing: border-box;
+
+  background: #f1f7fb;
+  border: 1px solid #d7e7f1;
+  border-radius: 12px;
+}
+
+.infoText {
+  margin: 0;
+
+  color: #075985;
+
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+
+  overflow-wrap: anywhere;
+}
+
+.infoText + .infoText {
+  margin-top: 4px;
+}
+
+.infoLabel {
+  color: #024b76;
+  font-weight: 900;
+}
+
+.errorText {
+  margin: 0;
+
+  color: #b42318;
+
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.5;
+
+  overflow-wrap: anywhere;
+}
+
+/* =========================
+   แผนที่
+========================= */
+
+.mapBox {
+  width: 100%;
+  height: clamp(310px, 44dvh, 390px);
+  margin-bottom: 12px;
+
+  overflow: hidden;
+
+  background: #e5e7eb;
+  border-radius: 12px;
+}
+
+.mapFrame {
+  display: block;
+
+  width: 100%;
+  height: 100%;
+
+  border: 0;
+}
+
+.mapPlaceholder {
+  display: grid;
+  place-items: center;
+
+  width: 100%;
+  height: 100%;
+  padding: 16px;
+  box-sizing: border-box;
+
+  color: #475569;
+
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.45;
+  text-align: center;
+}
+
+/* =========================
+   ปุ่มเปิด Google Maps
+========================= */
+
+.primaryButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 100%;
+  min-height: 46px;
+  margin-top: 8px;
+  padding: 10px 14px;
+  box-sizing: border-box;
+
+  color: #ffffff;
+  background: #005b86;
+  border: 0;
+  border-radius: 10px;
+
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1.25;
+  text-align: center;
+  text-decoration: none;
+
+  cursor: pointer;
+
+  transition:
+    background 0.15s ease,
+    transform 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.primaryButton:hover {
+  background: #024b76;
+}
+
+.primaryButton:active {
+  transform: scale(0.985);
+}
+
+.disabledLink {
+  opacity: 0.55;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* =========================
+   ปุ่มปิดด้านล่าง
+========================= */
+
+.secondaryButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 100%;
+  min-height: 44px;
+  margin-top: 10px;
+  padding: 10px 14px;
+  box-sizing: border-box;
+
+  color: #024b76;
+  background: #ffffff;
+  border: 1px solid #d8e0e8;
+  border-radius: 10px;
+
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.25;
+
+  cursor: pointer;
+
+  transition:
+    background 0.15s ease,
+    transform 0.15s ease;
+}
+
+.secondaryButton:hover {
+  background: #f8fafc;
+}
+
+.secondaryButton:active {
+  transform: scale(0.985);
+}
+
+/* =========================
+   Mobile
+========================= */
+
+@media (max-width: 420px) {
+  .overlay {
+    padding: 8px;
+  }
+
+  .modal {
+    width: 100%;
+    max-height: 94dvh;
+
+    padding: 18px 12px 12px;
+
+    border-radius: 16px;
+  }
+
+  .title {
+    font-size: 20px;
+  }
+
+  .unitName {
+    font-size: 16px;
+  }
+
+  .description {
+    font-size: 13px;
+  }
+
+  .mapBox {
+    height: clamp(300px, 46dvh, 360px);
+  }
+
+  .primaryButton,
+  .secondaryButton {
+    min-height: 44px;
+    font-size: 14px;
+  }
+}

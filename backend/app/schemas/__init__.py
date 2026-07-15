@@ -84,6 +84,7 @@ from app.schemas.name_prefixs import (
     NamePrefixResponse,
     NamePrefixUpdate,
 )
+from app.schemas.patrol_area import PatrolAreaSearchResponse
 from app.schemas.patrol_report import (
     PatrolReportResponse,
     PatrolStatus,
@@ -234,6 +235,7 @@ __all__ = [
     "NamePrefixCreate",
     "NamePrefixUpdate",
     "NamePrefixResponse",
+    "PatrolAreaSearchResponse",
     "PatrolReportResponse",
     "PatrolStatus",
     "PatrolReportExportAction",

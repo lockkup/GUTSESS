@@ -1,0 +1,341 @@
+# app/services/patrol_area.py
+from __future__ import annotations
+
+from collections import defaultdict
+
+from sqlalchemy import func, or_, select
+from sqlalchemy.orm import Session
+
+from app.core.constants import DBConstants
+from app.models.checkpoint_assignment import CheckpointAssignment
+from app.models.checkpoint_schedule_item import CheckpointScheduleItem
+from app.models.route_site_location import RouteSiteLocation
+from app.models.site_location import SiteLocation
+from app.schemas.patrol_area import PatrolAreaSearchResponse
+
+
+# Python date.weekday()
+# 0 = จันทร์
+# 1 = อังคาร
+# ...
+# 6 = อาทิตย์
+THAI_WEEKDAY_NAMES: dict[int, str] = {
+    0: "จันทร์",
+    1: "อังคาร",
+    2: "พุธ",
+    3: "พฤหัสบดี",
+    4: "ศุกร์",
+    5: "เสาร์",
+    6: "อาทิตย์",
+}
+
+
+SHIFT_ORDER: dict[str, int] = {
+    "ผลัดกลางวัน": 1,
+    "ผลัดกลางคืน": 2,
+}
+
+
+def _get_shift_name(shift_id: int | None) -> str:
+    """แปลง shift_id เป็นชื่อผลัดที่ใช้แสดงบนการ์ด"""
+    if shift_id == 1:
+        return "ผลัดกลางวัน"
+
+    if shift_id == 2:
+        return "ผลัดกลางคืน"
+
+    return ""
+
+
+def _build_patrol_round_text(
+    weekday_numbers: set[int],
+    shift_name: str,
+) -> str:
+    """
+    ตัวอย่างผลลัพธ์:
+
+    {0} + ผลัดกลางวัน
+    -> ผลัดกลางวัน: วันจันทร์
+
+    {0, 2} + ผลัดกลางวัน
+    -> ผลัดกลางวัน: วันจันทร์/พุธ
+
+    {4, 6} + ผลัดกลางคืน
+    -> ผลัดกลางคืน: วันศุกร์/อาทิตย์
+    """
+    valid_weekdays = sorted(
+        weekday_number
+        for weekday_number in weekday_numbers
+        if weekday_number in THAI_WEEKDAY_NAMES
+    )
+
+    if not valid_weekdays:
+        return shift_name
+
+    weekday_text = "/".join(
+        THAI_WEEKDAY_NAMES[weekday_number]
+        for weekday_number in valid_weekdays
+    )
+
+    return f"{shift_name}: วัน{weekday_text}"
+
+
+class PatrolAreaService:
+    @staticmethod
+    def get_contract_codes(
+        db: Session,
+    ) -> list[str]:
+        contract_code_expr = func.trim(SiteLocation.contract_code)
+
+        stmt = (
+            select(contract_code_expr)
+            .where(
+                SiteLocation.mark_flag.is_(False),
+                SiteLocation.is_active.is_(True),
+                SiteLocation.contract_code.is_not(None),
+                contract_code_expr != "",
+            )
+            .distinct()
+            .order_by(contract_code_expr.asc())
+        )
+
+        contract_codes = db.scalars(stmt).all()
+
+        return [
+            str(contract_code).strip()
+            for contract_code in contract_codes
+            if contract_code is not None
+            and str(contract_code).strip()
+        ]
+
+    @staticmethod
+    def search_patrol_areas(
+        db: Session,
+        keyword: str | None = None,
+        contract_code: str | None = None,
+        skip: int = DBConstants.DEFAULT_PAGE_SKIP,
+        limit: int = DBConstants.PATROL_AREA_SEARCH_DEFAULT_LIMIT,
+    ) -> list[PatrolAreaSearchResponse]:
+        # =====================================================
+        # 1. ค้นหาข้อมูลหน่วยงาน
+        # =====================================================
+
+        stmt = (
+            select(
+                SiteLocation.location_id.label("location_id"),
+                SiteLocation.contract_code.label("contract_code"),
+                SiteLocation.location_name.label("location_name"),
+                SiteLocation.location_detail.label("location_detail"),
+                SiteLocation.latitude.label("latitude"),
+                SiteLocation.longitude.label("longitude"),
+                SiteLocation.radius_meter.label("radius_meter"),
+                SiteLocation.grace_meter.label("grace_meter"),
+                SiteLocation.updated_at.label("updated_at"),
+            )
+            .where(
+                SiteLocation.mark_flag.is_(False),
+                SiteLocation.is_active.is_(True),
+            )
+        )
+
+        clean_keyword = keyword.strip() if keyword is not None else ""
+
+        if clean_keyword:
+            stmt = stmt.where(
+                or_(
+                    SiteLocation.contract_code.contains(clean_keyword),
+                    SiteLocation.location_name.contains(clean_keyword),
+                    SiteLocation.location_detail.contains(clean_keyword),
+                )
+            )
+
+        clean_contract_code = (
+            contract_code.strip()
+            if contract_code is not None
+            else ""
+        )
+
+        if clean_contract_code:
+            stmt = stmt.where(
+                SiteLocation.contract_code == clean_contract_code,
+            )
+
+        stmt = (
+            stmt.order_by(
+                SiteLocation.location_name.asc(),
+                SiteLocation.contract_code.asc(),
+                SiteLocation.location_id.asc(),
+            )
+            .offset(skip)
+            .limit(limit)
+        )
+
+        location_rows = db.execute(stmt).mappings().all()
+
+        if not location_rows:
+            return []
+
+        location_ids = [
+            int(location_row["location_id"])
+            for location_row in location_rows
+        ]
+
+        # =====================================================
+        # 2. ดึงวันตรวจและผลัดของแต่ละหน่วยงาน
+        #
+        # checkpoint_assignment.schedule_item_id
+        #     -> checkpoint_schedule_item.schedule_item_id
+        #
+        # checkpoint_schedule_item.route_site_location_id
+        #     -> route_site_location.route_site_location_id
+        #
+        # ผลัดใช้ checkpoint_schedule_item.shift_id โดยตรง
+        # =====================================================
+
+        patrol_round_stmt = (
+            select(
+                RouteSiteLocation.location_id.label("location_id"),
+                CheckpointAssignment.work_date.label("work_date"),
+                CheckpointScheduleItem.shift_id.label("shift_id"),
+            )
+            .select_from(CheckpointAssignment)
+            .join(
+                CheckpointScheduleItem,
+                CheckpointAssignment.schedule_item_id
+                == CheckpointScheduleItem.schedule_item_id,
+            )
+            .join(
+                RouteSiteLocation,
+                CheckpointScheduleItem.route_site_location_id
+                == RouteSiteLocation.route_site_location_id,
+            )
+            .where(
+                RouteSiteLocation.location_id.in_(location_ids),
+
+                # Assignment ที่ยังใช้งาน
+                CheckpointAssignment.mark_flag.is_(False),
+                CheckpointAssignment.is_active.is_(True),
+
+                # ไม่นำงานตรวจซ้ำมาเพิ่มวันซ้ำ
+                CheckpointAssignment.parent_assignment_id.is_(None),
+
+                # Schedule item ที่ยังใช้งาน
+                CheckpointScheduleItem.mark_flag.is_(False),
+                CheckpointScheduleItem.is_active.is_(True),
+
+                # จุดตรวจในเส้นทางที่ยังใช้งาน
+                RouteSiteLocation.mark_flag.is_(False),
+                RouteSiteLocation.is_active.is_(True),
+
+                # ตรวจช่วงวันที่ที่จุดตรวจผูกกับเส้นทาง
+                or_(
+                    RouteSiteLocation.effective_from.is_(None),
+                    RouteSiteLocation.effective_from
+                    <= CheckpointAssignment.work_date,
+                ),
+                or_(
+                    RouteSiteLocation.effective_to.is_(None),
+                    RouteSiteLocation.effective_to
+                    >= CheckpointAssignment.work_date,
+                ),
+            )
+            .distinct()
+        )
+
+        patrol_round_rows = (
+            db.execute(patrol_round_stmt)
+            .mappings()
+            .all()
+        )
+
+        # =====================================================
+        # 3. รวมวันตามผลัด
+        #
+        # โครงสร้าง:
+        # location_id
+        #     -> shift_name
+        #         -> {weekday numbers}
+        # =====================================================
+
+        grouped_rounds: dict[
+            int,
+            dict[str, set[int]],
+        ] = defaultdict(lambda: defaultdict(set))
+
+        for patrol_round_row in patrol_round_rows:
+            location_id = int(
+                patrol_round_row["location_id"]
+            )
+
+            work_date = patrol_round_row["work_date"]
+
+            shift_id_raw = patrol_round_row["shift_id"]
+            shift_id = (
+                int(shift_id_raw)
+                if shift_id_raw is not None
+                else None
+            )
+
+            shift_name = _get_shift_name(shift_id)
+
+            if work_date is None or not shift_name:
+                continue
+
+            grouped_rounds[location_id][shift_name].add(
+                work_date.weekday()
+            )
+
+        # =====================================================
+        # 4. สร้างข้อความ patrol_rounds
+        # =====================================================
+
+        patrol_rounds_by_location: dict[
+            int,
+            list[str],
+        ] = {}
+
+        for location_id, shift_groups in grouped_rounds.items():
+            sorted_shift_groups = sorted(
+                shift_groups.items(),
+                key=lambda item: (
+                    SHIFT_ORDER.get(item[0], 99),
+                    item[0],
+                ),
+            )
+
+            patrol_rounds_by_location[location_id] = [
+                _build_patrol_round_text(
+                    weekday_numbers=weekday_numbers,
+                    shift_name=shift_name,
+                )
+                for shift_name, weekday_numbers
+                in sorted_shift_groups
+            ]
+
+        # =====================================================
+        # 5. รวมข้อมูลหน่วยงานกับกลุ่มตรวจ
+        # =====================================================
+
+        results: list[PatrolAreaSearchResponse] = []
+
+        for location_row in location_rows:
+            response_data = dict(location_row)
+
+            location_id = int(
+                response_data["location_id"]
+            )
+
+            response_data["patrol_rounds"] = (
+                patrol_rounds_by_location.get(
+                    location_id,
+                    [],
+                )
+            )
+
+            results.append(
+                PatrolAreaSearchResponse.model_validate(
+                    response_data
+                )
+            )
+
+        return results

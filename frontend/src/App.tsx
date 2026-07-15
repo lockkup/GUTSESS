@@ -10,6 +10,7 @@ import FaceVerify from "./pages/Attendance/FaceVerify";
 import AttendanceFaceVerify from "./pages/Attendance/CheckInOut/AttendanceFaceVerify";
 import Shifts from "./pages/Shifts";
 import FaceProfiles from "./pages/FaceProfiles";
+import PatrolAreaInfoPage from "./pages/PatrolAreaInfo";
 import { useStore, type AuthEmployee } from "./store/store";
 import { timeRecordService } from "./services/timeRecord.service";
 import { faceVerifyService } from "./services/faceVerify.service";
@@ -22,6 +23,7 @@ type Route =
   | "checkpoint"
   | "checkInOut"
   | "patrolReport"
+  | "patrolAreaInfo"
   | "faceVerify"
   | "attendanceFaceVerify"
   | "shifts"
@@ -132,6 +134,7 @@ const RESTORABLE_ROUTES: Route[] = [
   "checkpoint",
   "checkInOut",
   "patrolReport",
+  "patrolAreaInfo",
   "shifts",
   "faceProfiles",
 ];
@@ -684,6 +687,10 @@ export default function App() {
     push("patrolReport");
   }
 
+  function goPatrolAreaInfo() {
+    push("patrolAreaInfo");
+  }
+
   function goAttendanceFaceVerify(
     type: PunchType,
     payload?: {
@@ -1150,9 +1157,24 @@ export default function App() {
           onGoCheckpoint={() => {
             void goCheckpoint();
           }}
+          onGoOrganizationInfo={goPatrolAreaInfo}
           onGoPatrolReport={goPatrolReport}
           onGoLeaveShifts={goShifts}
           onGoFaceProfiles={goFaceProfiles}
+        />
+      )}
+
+      {route === "patrolAreaInfo" && (
+        <PatrolAreaInfoPage
+          empCode={empCode}
+          displayName={displayName}
+          regionLabel={patrolArea.fieldName || null}
+          districtLabel={patrolArea.divisionName || null}
+          routeLabel={patrolArea.routeName || null}
+          onOutsidePlanCheckInOut={() => {
+            void goDirectCheckInOut();
+          }}
+          onBack={back}
         />
       )}
 
