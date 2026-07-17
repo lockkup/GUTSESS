@@ -1,4 +1,5 @@
 # app/schemas/patrol_area.py
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -16,7 +17,63 @@ class PatrolAreaSearchResponse(BaseModel):
         str_strip_whitespace=True,
     )
 
-    location_id: int = Field(..., gt=0)
+    # =========================================================
+    # ความสัมพันธ์จาก route_site_location
+    # =========================================================
+    route_site_location_id: int = Field(
+        ...,
+        gt=0,
+    )
+
+    # =========================================================
+    # ภาค จาก departments
+    # =========================================================
+    department_id: int = Field(
+        ...,
+        gt=0,
+    )
+
+    department_name: str = Field(
+        ...,
+        min_length=1,
+        max_length=150,
+    )
+
+    # =========================================================
+    # เขต จาก divisions
+    # =========================================================
+    division_id: int = Field(
+        ...,
+        gt=0,
+    )
+
+    division_name: str = Field(
+        ...,
+        min_length=1,
+        max_length=150,
+    )
+
+    # =========================================================
+    # เส้นทาง จาก routes
+    # =========================================================
+    routes_id: int = Field(
+        ...,
+        gt=0,
+    )
+
+    route_name: str = Field(
+        ...,
+        min_length=1,
+        max_length=150,
+    )
+
+    # =========================================================
+    # ข้อมูลจุดรักษาการณ์ จาก site_location
+    # =========================================================
+    location_id: int = Field(
+        ...,
+        gt=0,
+    )
 
     contract_code: str = Field(
         ...,
@@ -47,11 +104,18 @@ class PatrolAreaSearchResponse(BaseModel):
         le=Decimal("180"),
     )
 
-    radius_meter: int = Field(..., ge=0)
+    radius_meter: int = Field(
+        ...,
+        ge=0,
+    )
 
-    grace_meter: int = Field(..., ge=0)
+    grace_meter: int = Field(
+        ...,
+        ge=0,
+    )
 
     # รายการกลุ่มตรวจที่ Backend รวมวันตามผลัดแล้ว
+    #
     # ตัวอย่าง:
     # [
     #     "วันจันทร์/พุธ ผลัดกลางวัน",

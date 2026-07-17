@@ -1168,9 +1168,6 @@ export default function App() {
         <PatrolAreaInfoPage
           empCode={empCode}
           displayName={displayName}
-          regionLabel={patrolArea.fieldName || null}
-          districtLabel={patrolArea.divisionName || null}
-          routeLabel={patrolArea.routeName || null}
           onOutsidePlanCheckInOut={() => {
             void goDirectCheckInOut();
           }}

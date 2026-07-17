@@ -1,4 +1,5 @@
 # app/services/patrol_area.py
+
 from __future__ import annotations
 
 from collections import defaultdict
@@ -9,6 +10,9 @@ from sqlalchemy.orm import Session
 from app.core.constants import DBConstants
 from app.models.checkpoint_assignment import CheckpointAssignment
 from app.models.checkpoint_schedule_item import CheckpointScheduleItem
+from app.models.departments import Department
+from app.models.divisions import Divisions
+from app.models.route import Route
 from app.models.route_site_location import RouteSiteLocation
 from app.models.site_location import SiteLocation
 from app.schemas.patrol_area import PatrolAreaSearchResponse
@@ -17,7 +21,10 @@ from app.schemas.patrol_area import PatrolAreaSearchResponse
 # Python date.weekday()
 # 0 = จันทร์
 # 1 = อังคาร
-# ...
+# 2 = พุธ
+# 3 = พฤหัสบดี
+# 4 = ศุกร์
+# 5 = เสาร์
 # 6 = อาทิตย์
 THAI_WEEKDAY_NAMES: dict[int, str] = {
     0: "จันทร์",
@@ -37,7 +44,10 @@ SHIFT_ORDER: dict[str, int] = {
 
 
 def _get_shift_name(shift_id: int | None) -> str:
-    """แปลง shift_id เป็นชื่อผลัดที่ใช้แสดงบนการ์ด"""
+    """
+    แปลง shift_id เป็นชื่อผลัดที่ใช้แสดงบนการ์ด
+    """
+
     if shift_id == 1:
         return "ผลัดกลางวัน"
 
@@ -52,7 +62,9 @@ def _build_patrol_round_text(
     shift_name: str,
 ) -> str:
     """
-    ตัวอย่างผลลัพธ์:
+    สร้างข้อความรอบตรวจตามวันและผลัด
+
+    ตัวอย่าง:
 
     {0} + ผลัดกลางวัน
     -> ผลัดกลางวัน: วันจันทร์
@@ -63,6 +75,7 @@ def _build_patrol_round_text(
     {4, 6} + ผลัดกลางคืน
     -> ผลัดกลางคืน: วันศุกร์/อาทิตย์
     """
+
     valid_weekdays = sorted(
         weekday_number
         for weekday_number in weekday_numbers
@@ -85,7 +98,13 @@ class PatrolAreaService:
     def get_contract_codes(
         db: Session,
     ) -> list[str]:
-        contract_code_expr = func.trim(SiteLocation.contract_code)
+        """
+        ดึงรหัสสัญญาของหน่วยงานที่ยังเปิดใช้งาน
+        """
+
+        contract_code_expr = func.trim(
+            SiteLocation.contract_code
+        )
 
         stmt = (
             select(contract_code_expr)
@@ -96,7 +115,9 @@ class PatrolAreaService:
                 contract_code_expr != "",
             )
             .distinct()
-            .order_by(contract_code_expr.asc())
+            .order_by(
+                contract_code_expr.asc()
+            )
         )
 
         contract_codes = db.scalars(stmt).all()
@@ -117,35 +138,160 @@ class PatrolAreaService:
         limit: int = DBConstants.PATROL_AREA_SEARCH_DEFAULT_LIMIT,
     ) -> list[PatrolAreaSearchResponse]:
         # =====================================================
-        # 1. ค้นหาข้อมูลหน่วยงาน
+        # 1. ค้นหาข้อมูลหน่วยงานจาก route_site_location
+        #
+        # route_site_location.location_id
+        #     -> site_location.location_id
+        #
+        # route_site_location.routes_id
+        #     -> routes.route_id
+        #
+        # route_site_location.division_id
+        #     -> divisions.division_id
+        #
+        # divisions.department_id
+        #     -> departments.department_id
         # =====================================================
 
         stmt = (
             select(
-                SiteLocation.location_id.label("location_id"),
-                SiteLocation.contract_code.label("contract_code"),
-                SiteLocation.location_name.label("location_name"),
-                SiteLocation.location_detail.label("location_detail"),
-                SiteLocation.latitude.label("latitude"),
-                SiteLocation.longitude.label("longitude"),
-                SiteLocation.radius_meter.label("radius_meter"),
-                SiteLocation.grace_meter.label("grace_meter"),
-                SiteLocation.updated_at.label("updated_at"),
+                # ---------------------------------------------
+                # route_site_location
+                # ---------------------------------------------
+                RouteSiteLocation.route_site_location_id.label(
+                    "route_site_location_id"
+                ),
+
+                # ---------------------------------------------
+                # ภาค จาก departments
+                # ---------------------------------------------
+                Department.department_id.label(
+                    "department_id"
+                ),
+                Department.department_name.label(
+                    "department_name"
+                ),
+
+                # ---------------------------------------------
+                # เขต จาก divisions
+                # ---------------------------------------------
+                Divisions.division_id.label(
+                    "division_id"
+                ),
+                Divisions.division_name.label(
+                    "division_name"
+                ),
+
+                # ---------------------------------------------
+                # เส้นทาง จาก routes
+                # ---------------------------------------------
+                RouteSiteLocation.routes_id.label(
+                    "routes_id"
+                ),
+                Route.route_name.label(
+                    "route_name"
+                ),
+
+                # ---------------------------------------------
+                # ข้อมูลจุดรักษาการณ์ จาก site_location
+                # ---------------------------------------------
+                SiteLocation.location_id.label(
+                    "location_id"
+                ),
+                SiteLocation.contract_code.label(
+                    "contract_code"
+                ),
+                SiteLocation.location_name.label(
+                    "location_name"
+                ),
+                SiteLocation.location_detail.label(
+                    "location_detail"
+                ),
+                SiteLocation.latitude.label(
+                    "latitude"
+                ),
+                SiteLocation.longitude.label(
+                    "longitude"
+                ),
+                SiteLocation.radius_meter.label(
+                    "radius_meter"
+                ),
+                SiteLocation.grace_meter.label(
+                    "grace_meter"
+                ),
+                SiteLocation.updated_at.label(
+                    "updated_at"
+                ),
+            )
+            .select_from(RouteSiteLocation)
+            .join(
+                SiteLocation,
+                RouteSiteLocation.location_id
+                == SiteLocation.location_id,
+            )
+            .join(
+                Route,
+                RouteSiteLocation.routes_id
+                == Route.route_id,
+            )
+            .join(
+                Divisions,
+                RouteSiteLocation.division_id
+                == Divisions.division_id,
+            )
+            .join(
+                Department,
+                Divisions.department_id
+                == Department.department_id,
             )
             .where(
+                # route_site_location ต้องยังใช้งาน
+                RouteSiteLocation.mark_flag.is_(False),
+                RouteSiteLocation.is_active.is_(True),
+
+                # แสดงเฉพาะความสัมพันธ์ที่มีผลในวันที่ปัจจุบัน
+                RouteSiteLocation.effective_from
+                <= func.current_date(),
+
+                or_(
+                    RouteSiteLocation.effective_to.is_(None),
+                    RouteSiteLocation.effective_to
+                    >= func.current_date(),
+                ),
+
+                # จุดรักษาการณ์ต้องยังใช้งาน
                 SiteLocation.mark_flag.is_(False),
                 SiteLocation.is_active.is_(True),
+
+                # เส้นทางต้องยังเปิดใช้งาน
+                Route.is_active.is_(True),
+
+                # เขตต้องยังเปิดใช้งาน
+                Divisions.is_active.is_(True),
+
+                # ภาคต้องยังเปิดใช้งาน
+                Department.is_active.is_(True),
             )
         )
 
-        clean_keyword = keyword.strip() if keyword is not None else ""
+        clean_keyword = (
+            keyword.strip()
+            if keyword is not None
+            else ""
+        )
 
         if clean_keyword:
             stmt = stmt.where(
                 or_(
-                    SiteLocation.contract_code.contains(clean_keyword),
-                    SiteLocation.location_name.contains(clean_keyword),
-                    SiteLocation.location_detail.contains(clean_keyword),
+                    SiteLocation.contract_code.contains(
+                        clean_keyword
+                    ),
+                    SiteLocation.location_name.contains(
+                        clean_keyword
+                    ),
+                    SiteLocation.location_detail.contains(
+                        clean_keyword
+                    ),
                 )
             )
 
@@ -157,31 +303,43 @@ class PatrolAreaService:
 
         if clean_contract_code:
             stmt = stmt.where(
-                SiteLocation.contract_code == clean_contract_code,
+                SiteLocation.contract_code
+                == clean_contract_code,
             )
 
         stmt = (
             stmt.order_by(
+                Department.department_name.asc(),
+                Divisions.division_name.asc(),
+                Route.route_name.asc(),
                 SiteLocation.location_name.asc(),
                 SiteLocation.contract_code.asc(),
-                SiteLocation.location_id.asc(),
+                RouteSiteLocation.route_site_location_id.asc(),
             )
             .offset(skip)
             .limit(limit)
         )
 
-        location_rows = db.execute(stmt).mappings().all()
+        location_rows = (
+            db.execute(stmt)
+            .mappings()
+            .all()
+        )
 
         if not location_rows:
             return []
 
-        location_ids = [
-            int(location_row["location_id"])
+        route_site_location_ids = [
+            int(
+                location_row[
+                    "route_site_location_id"
+                ]
+            )
             for location_row in location_rows
         ]
 
         # =====================================================
-        # 2. ดึงวันตรวจและผลัดของแต่ละหน่วยงาน
+        # 2. ดึงวันตรวจและผลัดของแต่ละ route_site_location
         #
         # checkpoint_assignment.schedule_item_id
         #     -> checkpoint_schedule_item.schedule_item_id
@@ -194,9 +352,15 @@ class PatrolAreaService:
 
         patrol_round_stmt = (
             select(
-                RouteSiteLocation.location_id.label("location_id"),
-                CheckpointAssignment.work_date.label("work_date"),
-                CheckpointScheduleItem.shift_id.label("shift_id"),
+                RouteSiteLocation.route_site_location_id.label(
+                    "route_site_location_id"
+                ),
+                CheckpointAssignment.work_date.label(
+                    "work_date"
+                ),
+                CheckpointScheduleItem.shift_id.label(
+                    "shift_id"
+                ),
             )
             .select_from(CheckpointAssignment)
             .join(
@@ -210,7 +374,9 @@ class PatrolAreaService:
                 == RouteSiteLocation.route_site_location_id,
             )
             .where(
-                RouteSiteLocation.location_id.in_(location_ids),
+                RouteSiteLocation.route_site_location_id.in_(
+                    route_site_location_ids
+                ),
 
                 # Assignment ที่ยังใช้งาน
                 CheckpointAssignment.mark_flag.is_(False),
@@ -228,11 +394,9 @@ class PatrolAreaService:
                 RouteSiteLocation.is_active.is_(True),
 
                 # ตรวจช่วงวันที่ที่จุดตรวจผูกกับเส้นทาง
-                or_(
-                    RouteSiteLocation.effective_from.is_(None),
-                    RouteSiteLocation.effective_from
-                    <= CheckpointAssignment.work_date,
-                ),
+                RouteSiteLocation.effective_from
+                <= CheckpointAssignment.work_date,
+
                 or_(
                     RouteSiteLocation.effective_to.is_(None),
                     RouteSiteLocation.effective_to
@@ -252,36 +416,53 @@ class PatrolAreaService:
         # 3. รวมวันตามผลัด
         #
         # โครงสร้าง:
-        # location_id
+        #
+        # route_site_location_id
         #     -> shift_name
         #         -> {weekday numbers}
+        #
+        # ใช้ route_site_location_id แทน location_id
+        # เพื่อไม่ให้รอบตรวจของจุดเดียวกันแต่คนละเส้นทางปะปนกัน
         # =====================================================
 
         grouped_rounds: dict[
             int,
             dict[str, set[int]],
-        ] = defaultdict(lambda: defaultdict(set))
+        ] = defaultdict(
+            lambda: defaultdict(set)
+        )
 
         for patrol_round_row in patrol_round_rows:
-            location_id = int(
-                patrol_round_row["location_id"]
+            route_site_location_id = int(
+                patrol_round_row[
+                    "route_site_location_id"
+                ]
             )
 
-            work_date = patrol_round_row["work_date"]
+            work_date = patrol_round_row[
+                "work_date"
+            ]
 
-            shift_id_raw = patrol_round_row["shift_id"]
+            shift_id_raw = patrol_round_row[
+                "shift_id"
+            ]
+
             shift_id = (
                 int(shift_id_raw)
                 if shift_id_raw is not None
                 else None
             )
 
-            shift_name = _get_shift_name(shift_id)
+            shift_name = _get_shift_name(
+                shift_id
+            )
 
             if work_date is None or not shift_name:
                 continue
 
-            grouped_rounds[location_id][shift_name].add(
+            grouped_rounds[
+                route_site_location_id
+            ][shift_name].add(
                 work_date.weekday()
             )
 
@@ -289,21 +470,29 @@ class PatrolAreaService:
         # 4. สร้างข้อความ patrol_rounds
         # =====================================================
 
-        patrol_rounds_by_location: dict[
+        patrol_rounds_by_route_site_location: dict[
             int,
             list[str],
         ] = {}
 
-        for location_id, shift_groups in grouped_rounds.items():
+        for (
+            route_site_location_id,
+            shift_groups,
+        ) in grouped_rounds.items():
             sorted_shift_groups = sorted(
                 shift_groups.items(),
                 key=lambda item: (
-                    SHIFT_ORDER.get(item[0], 99),
+                    SHIFT_ORDER.get(
+                        item[0],
+                        99,
+                    ),
                     item[0],
                 ),
             )
 
-            patrol_rounds_by_location[location_id] = [
+            patrol_rounds_by_route_site_location[
+                route_site_location_id
+            ] = [
                 _build_patrol_round_text(
                     weekday_numbers=weekday_numbers,
                     shift_name=shift_name,
@@ -316,18 +505,24 @@ class PatrolAreaService:
         # 5. รวมข้อมูลหน่วยงานกับกลุ่มตรวจ
         # =====================================================
 
-        results: list[PatrolAreaSearchResponse] = []
+        results: list[
+            PatrolAreaSearchResponse
+        ] = []
 
         for location_row in location_rows:
-            response_data = dict(location_row)
+            response_data = dict(
+                location_row
+            )
 
-            location_id = int(
-                response_data["location_id"]
+            route_site_location_id = int(
+                response_data[
+                    "route_site_location_id"
+                ]
             )
 
             response_data["patrol_rounds"] = (
-                patrol_rounds_by_location.get(
-                    location_id,
+                patrol_rounds_by_route_site_location.get(
+                    route_site_location_id,
                     [],
                 )
             )
