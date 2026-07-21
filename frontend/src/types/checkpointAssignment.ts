@@ -50,8 +50,31 @@ export type CheckpointDailyRow = {
   started_at: string | null;
   started_by: string | null;
 
+  /**
+   * ผู้ที่กำลังเข้าตรวจหน่วยงานนี้
+   * ใช้เฉพาะกรณี assignment_status = "in_progress"
+   */
+  in_progress_employee_code: string | null;
+  in_progress_employee_name: string | null;
+
   completed_at: string | null;
   completed_by: string | null;
+
+  /**
+   * รหัสพนักงานผู้จองหน่วยงาน
+   * null = ยังไม่มีผู้จอง
+   */
+  reserved_by: string | null;
+
+  /**
+   * ชื่อ-นามสกุลพนักงานผู้จอง
+   */
+  reserved_by_name: string | null;
+
+  /**
+   * วันและเวลาที่กดยืนยันการจอง
+   */
+  reserved_at: string | null;
 
   is_active: boolean;
 
@@ -95,6 +118,47 @@ export type CheckpointDailyRow = {
    * true = กะข้ามวัน เช่น 20:01 - 08:00
    */
   crosses_midnight: boolean | null;
+};
+
+/**
+ * Request body สำหรับ:
+ * POST /api/checkpoint-assignments/{assignmentId}/reserve
+ * POST /api/checkpoint-assignments/{assignmentId}/cancel-reservation
+ */
+export type CheckpointReservationActionRequest = {
+  employee_code: string;
+};
+
+/**
+ * Response จาก API จอง/ยกเลิกการจอง
+ * ใช้เฉพาะฟิลด์ที่ frontend อาจต้องอ่านหลังดำเนินการ
+ */
+export type CheckpointReservationActionResponse = {
+  assignment_id: number;
+  assignment_status: CheckpointAssignmentStatus;
+
+  reserved_by: string | null;
+  reserved_at: string | null;
+
+  updated_by: string | null;
+  updated_at: string;
+};
+
+/**
+ * รูปแบบ detail กรณีรายการถูกพนักงานคนอื่นจองไว้
+ */
+export type CheckpointReservationConflictDetail = {
+  code: "CHECKPOINT_ASSIGNMENT_RESERVED_BY_OTHER";
+  message: string;
+  employee_code: string | null;
+  employee_name: string | null;
+};
+
+/**
+ * รูปแบบ error ที่ FastAPI อาจตอบกลับ
+ */
+export type CheckpointReservationApiError = {
+  detail: string | CheckpointReservationConflictDetail;
 };
 
 /**

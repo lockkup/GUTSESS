@@ -88,6 +88,19 @@ class CheckpointAssignmentAction(BaseModel):
     )
 
 
+class CheckpointAssignmentReservationAction(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        str_strip_whitespace=True,
+    )
+
+    employee_code: str = Field(
+        ...,
+        min_length=DBConstants.EMPLOYEE_CODE_LENGTH,
+        max_length=DBConstants.EMPLOYEE_CODE_LENGTH,
+    )
+
+
 class CheckpointAssignmentRecheck(CheckpointAssignmentAction):
     # ต้องระบุวันตรวจซ้ำใหม่
     # ไม่ควรดึง work_date จากงานเดิมอัตโนมัติ เพราะ recheck อาจคนละวัน
@@ -132,6 +145,16 @@ class CheckpointAssignmentResponse(CheckpointAssignmentBase):
     completed_by: str | None = None
 
     recheck_reason: str | None = None
+
+    # ผู้ที่จองหน่วยงานไว้ขณะอยู่นอกพื้นที่
+    reserved_by: str | None = Field(
+        default=None,
+        min_length=DBConstants.EMPLOYEE_CODE_LENGTH,
+        max_length=DBConstants.EMPLOYEE_CODE_LENGTH,
+    )
+
+    # วันและเวลาที่จอง
+    reserved_at: datetime | None = None
 
     mark_flag: bool
 
@@ -192,6 +215,20 @@ class CheckpointAssignmentDailyResponse(BaseModel):
 
     completed_at: datetime | None = None
     completed_by: str | None = None
+
+    # ผู้ที่จองจุดตรวจไว้ขณะอยู่นอกพื้นที่
+    reserved_by: str | None = Field(
+        default=None,
+        min_length=DBConstants.EMPLOYEE_CODE_LENGTH,
+        max_length=DBConstants.EMPLOYEE_CODE_LENGTH,
+    )
+
+    # ชื่อ-นามสกุลผู้จอง
+    # ดึงจากตาราง employees ไม่ต้องบันทึกชื่อซ้ำใน checkpoint_assignment
+    reserved_by_name: str | None = None
+
+    # วันและเวลาที่จอง
+    reserved_at: datetime | None = None
 
     is_active: bool
 

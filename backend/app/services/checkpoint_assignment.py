@@ -33,6 +33,7 @@ from app.schemas.checkpoint_assignment import (
     CheckpointAssignmentCreate,
     CheckpointAssignmentDailyResponse,
     CheckpointAssignmentRecheck,
+    CheckpointAssignmentReservationAction,
     CheckpointAssignmentUpdate,
     CheckpointMapLocationResponse,
 )
@@ -778,6 +779,30 @@ class CheckpointAssignmentService:
         return checkpoint_assignment
 
     @staticmethod
+    def _get_checkpoint_assignment_for_update(
+        db: Session,
+        assignment_id: int,
+    ) -> CheckpointAssignment:
+        stmt = (
+            select(CheckpointAssignment)
+            .where(
+                CheckpointAssignment.assignment_id == assignment_id,
+                CheckpointAssignment.mark_flag.is_(False),
+            )
+            .with_for_update()
+        )
+
+        checkpoint_assignment = db.scalar(stmt)
+
+        if checkpoint_assignment is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=CHECKPOINT_ASSIGNMENT_NOT_FOUND_DETAIL,
+            )
+
+        return checkpoint_assignment
+
+    @staticmethod
     def get_checkpoint_assignments(
         db: Session,
         skip: int = DBConstants.DEFAULT_PAGE_SKIP,
@@ -844,6 +869,9 @@ class CheckpointAssignmentService:
         # (กรณี assignment_status = "in_progress")
         InProgressEmployee = aliased(Employees)
 
+        # Alias สำหรับดึงข้อมูลพนักงานที่จอง Assignment ไว้
+        ReservedEmployee = aliased(Employees)
+
         has_call_expr = (
             exists()
             .where(
@@ -876,6 +904,14 @@ class CheckpointAssignmentService:
                 ),
                 InProgressEmployee.last_name.label(
                     "in_progress_employee_last_name"
+                ),
+                CheckpointAssignment.reserved_by.label("reserved_by"),
+                CheckpointAssignment.reserved_at.label("reserved_at"),
+                ReservedEmployee.first_name.label(
+                    "reserved_employee_first_name"
+                ),
+                ReservedEmployee.last_name.label(
+                    "reserved_employee_last_name"
                 ),
                 CheckpointAssignment.completed_at.label("completed_at"),
                 CheckpointAssignment.completed_by.label("completed_by"),
@@ -911,6 +947,11 @@ class CheckpointAssignmentService:
                     == CheckpointAssignment.started_by,
                     CheckpointAssignment.assignment_status == "in_progress",
                 ),
+            )
+            .outerjoin(
+                ReservedEmployee,
+                ReservedEmployee.employee_code
+                == CheckpointAssignment.reserved_by,
             )
             .where(
                 or_(
@@ -1088,10 +1129,25 @@ class CheckpointAssignmentService:
                 data["in_progress_employee_code"] = None
                 data["in_progress_employee_name"] = None
 
+            reserved_by = str(data.get("reserved_by") or "").strip() or None
+            reserved_by_name = " ".join(
+                part
+                for part in [
+                    str(data.get("reserved_employee_first_name") or "").strip(),
+                    str(data.get("reserved_employee_last_name") or "").strip(),
+                ]
+                if part
+            ).strip() or None
+
+            data["reserved_by"] = reserved_by
+            data["reserved_by_name"] = reserved_by_name
+
             # เป็น field ชั่วคราวที่ใช้ประกอบชื่อเท่านั้น
             # ต้องเอาออกก่อน model_validate เพราะ schema กำหนด extra="forbid"
             data.pop("in_progress_employee_first_name", None)
             data.pop("in_progress_employee_last_name", None)
+            data.pop("reserved_employee_first_name", None)
+            data.pop("reserved_employee_last_name", None)
 
             data.update(action_state)
 
@@ -1327,6 +1383,128 @@ class CheckpointAssignmentService:
         )
 
     @staticmethod
+    def reserve_checkpoint_assignment(
+        db: Session,
+        assignment_id: int,
+        payload: CheckpointAssignmentReservationAction,
+    ) -> CheckpointAssignment:
+        employee_code = payload.employee_code.strip()
+
+        CheckpointAssignmentService._ensure_employee_exists(
+            db=db,
+            employee_code=employee_code,
+        )
+
+        checkpoint_assignment = (
+            CheckpointAssignmentService._get_checkpoint_assignment_for_update(
+                db=db,
+                assignment_id=assignment_id,
+            )
+        )
+
+        CheckpointAssignmentService._ensure_active_for_start(
+            checkpoint_assignment=checkpoint_assignment,
+        )
+
+        if checkpoint_assignment.assignment_status != "pending":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="รายการนี้ไม่อยู่ในสถานะที่สามารถจองได้",
+            )
+
+        # พนักงานคนเดิมกดจองซ้ำ ให้ถือว่ายังจองสำเร็จอยู่
+        if checkpoint_assignment.reserved_by == employee_code:
+            return checkpoint_assignment
+
+        if checkpoint_assignment.reserved_by is not None:
+            reserved_employee = db.scalar(
+                select(Employees).where(
+                    Employees.employee_code
+                    == checkpoint_assignment.reserved_by
+                )
+            )
+
+            reserved_employee_name = None
+            if reserved_employee is not None:
+                reserved_employee_name = " ".join(
+                    part
+                    for part in [
+                        str(
+                            getattr(reserved_employee, "first_name", "") or ""
+                        ).strip(),
+                        str(
+                            getattr(reserved_employee, "last_name", "") or ""
+                        ).strip(),
+                    ]
+                    if part
+                ).strip() or None
+
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "CHECKPOINT_ASSIGNMENT_RESERVED_BY_OTHER",
+                    "message": "หน่วยงานนี้มีผู้จองแล้ว",
+                    "employee_code": checkpoint_assignment.reserved_by,
+                    "employee_name": reserved_employee_name,
+                },
+            )
+
+        checkpoint_assignment.reserved_by = employee_code
+        checkpoint_assignment.reserved_at = (
+            CheckpointAssignmentService._now_bangkok_naive()
+        )
+        checkpoint_assignment.updated_by = employee_code
+
+        return CheckpointAssignmentService._commit_and_refresh(
+            db=db,
+            checkpoint_assignment=checkpoint_assignment,
+        )
+
+    @staticmethod
+    def cancel_checkpoint_assignment_reservation(
+        db: Session,
+        assignment_id: int,
+        payload: CheckpointAssignmentReservationAction,
+    ) -> CheckpointAssignment:
+        employee_code = payload.employee_code.strip()
+
+        CheckpointAssignmentService._ensure_employee_exists(
+            db=db,
+            employee_code=employee_code,
+        )
+
+        checkpoint_assignment = (
+            CheckpointAssignmentService._get_checkpoint_assignment_for_update(
+                db=db,
+                assignment_id=assignment_id,
+            )
+        )
+
+        if checkpoint_assignment.assignment_status != "pending":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="รายการนี้ไม่อยู่ในสถานะที่สามารถยกเลิกการจองได้",
+            )
+
+        if checkpoint_assignment.reserved_by is None:
+            return checkpoint_assignment
+
+        if checkpoint_assignment.reserved_by != employee_code:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="ไม่สามารถยกเลิกการจองของพนักงานคนอื่นได้",
+            )
+
+        checkpoint_assignment.reserved_by = None
+        checkpoint_assignment.reserved_at = None
+        checkpoint_assignment.updated_by = employee_code
+
+        return CheckpointAssignmentService._commit_and_refresh(
+            db=db,
+            checkpoint_assignment=checkpoint_assignment,
+        )
+
+    @staticmethod
     def start_checkpoint_assignment(
         db: Session,
         assignment_id: int,
@@ -1337,9 +1515,11 @@ class CheckpointAssignmentService:
             employee_code=updated_by,
         )
 
-        checkpoint_assignment = CheckpointAssignmentService.get_checkpoint_assignment(
-            db=db,
-            assignment_id=assignment_id,
+        checkpoint_assignment = (
+            CheckpointAssignmentService._get_checkpoint_assignment_for_update(
+                db=db,
+                assignment_id=assignment_id,
+            )
         )
 
         CheckpointAssignmentService._ensure_active_for_start(
@@ -1350,6 +1530,42 @@ class CheckpointAssignmentService:
             db=db,
             checkpoint_assignment=checkpoint_assignment,
         )
+
+        if (
+            checkpoint_assignment.reserved_by is not None
+            and checkpoint_assignment.reserved_by != updated_by
+        ):
+            reserved_employee = db.scalar(
+                select(Employees).where(
+                    Employees.employee_code
+                    == checkpoint_assignment.reserved_by
+                )
+            )
+
+            reserved_employee_name = None
+            if reserved_employee is not None:
+                reserved_employee_name = " ".join(
+                    part
+                    for part in [
+                        str(
+                            getattr(reserved_employee, "first_name", "") or ""
+                        ).strip(),
+                        str(
+                            getattr(reserved_employee, "last_name", "") or ""
+                        ).strip(),
+                    ]
+                    if part
+                ).strip() or None
+
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "CHECKPOINT_ASSIGNMENT_RESERVED_BY_OTHER",
+                    "message": "หน่วยงานนี้ถูกจองโดยพนักงานคนอื่น",
+                    "employee_code": checkpoint_assignment.reserved_by,
+                    "employee_name": reserved_employee_name,
+                },
+            )
 
         CheckpointAssignmentService._transition_status(
             checkpoint_assignment=checkpoint_assignment,
@@ -1363,6 +1579,10 @@ class CheckpointAssignmentService:
             at_field="started_at",
             by_field="started_by",
         )
+
+        # เมื่อเริ่มเข้าตรวจจริง ให้สิ้นสุดการจอง
+        checkpoint_assignment.reserved_by = None
+        checkpoint_assignment.reserved_at = None
 
         return CheckpointAssignmentService._commit_and_refresh(
             db=db,

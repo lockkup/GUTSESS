@@ -35,6 +35,10 @@ class CheckpointAssignment(Base):
             "ix_cp_assign_work_date",
             "work_date",
         ),
+        Index(
+            "ix_checkpoint_assignment_reserved_by",
+            "reserved_by",
+        ),
     )
 
     assignment_id: Mapped[int] = mapped_column(
@@ -139,6 +143,20 @@ class CheckpointAssignment(Base):
 
     recheck_reason: Mapped[str | None] = mapped_column(
         String(DBConstants.REMARK_LENGTH),
+        nullable=True,
+    )
+
+    # ผู้ที่จองหน่วยงานไว้ขณะอยู่นอกพื้นที่
+    # ต้องแยกจาก started_by เพราะ started_by คือผู้ที่เช็กอินเข้าตรวจจริงแล้ว
+    reserved_by: Mapped[str | None] = mapped_column(
+        String(DBConstants.EMPLOYEE_CODE_LENGTH),
+        ForeignKey("employees.employee_code"),
+        nullable=True,
+    )
+
+    # วันที่และเวลาที่กดยืนยันการจอง
+    reserved_at: Mapped[datetime | None] = mapped_column(
+        DateTime,
         nullable=True,
     )
 

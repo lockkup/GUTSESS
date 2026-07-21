@@ -1,120 +1,278 @@
 /* src/components/OutOfAreaModal.module.css */
 
-.overlay{
+.overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.50);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 18px;
   z-index: 9999;
-}
 
-.modal{
-  width: min(420px, 100%);
-  background: rgba(255,255,255,0.98);
-  border-radius: 18px;
-  border: 2px solid rgba(2, 75, 118, 0.18);
-  box-shadow: 0 18px 40px rgba(0,0,0,0.25);
-  padding: 16px 16px 14px;
-}
-
-.icon{
   display: flex;
   align-items: center;
   justify-content: center;
+
+  padding: 18px;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.modal {
+  position: relative;
+
+  width: min(420px, 100%);
+  padding: 16px 16px 14px;
+
+  background: rgba(255, 255, 255, 0.98);
+  border: 2px solid rgba(2, 75, 118, 0.18);
+  border-radius: 18px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.25);
+}
+
+/* ปุ่มปิดแบบข้อความ อยู่มุมขวาบน */
+.closeButton {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+
+  min-width: 84px;
+  min-height: 40px;
+  height: auto;
+  padding: 8px 20px;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  background-color: #eaf2f8;
+  color: #024b76;
+
+  border: 1px solid #b8cfdf;
+  border-radius: 10px;
+  box-shadow: 0 2px 6px rgba(2, 75, 118, 0.15);
+
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1;
+
+  cursor: pointer;
+
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.08s ease;
+}
+
+.closeButton:hover:not(:disabled) {
+  background-color: #dcebf5;
+  border-color: #8fb7d1;
+  color: #013b5d;
+}
+
+.closeButton:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.closeButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
   width: 42px;
   height: 42px;
   margin: 0 auto;
-  border-radius: 14px;
-  font-weight: 900;
-  font-size: 24px;
+
   color: #c00000;
-  background: rgba(192,0,0,0.08);
-  border: 2px solid rgba(192,0,0,0.18);
+  background: rgba(192, 0, 0, 0.08);
+
+  border: 2px solid rgba(192, 0, 0, 0.18);
+  border-radius: 14px;
+
+  font-size: 24px;
+  font-weight: 900;
 }
 
-.body{
+.body {
   width: 100%;
   margin-top: 10px;
-  color: #c00000;
-  font-size: 24px;
-  line-height: 1.45;
-  font-weight: 900;
-  text-align: center;
 
   display: flex;
   flex-direction: column;
   align-items: center;
+
+  color: #c00000;
+
+  font-size: 24px;
+  font-weight: 900;
+  line-height: 1.45;
+  text-align: center;
 }
 
-.sub{
+.sub {
   margin-top: 8px;
+
   font-size: 12px;
   font-weight: 600;
-  opacity: 0.80;
+
+  opacity: 0.8;
 }
 
-.actions{
-  margin-top: 14px;
+/* ด้านล่างเหลือเฉพาะปุ่มยืนยัน */
+.actions {
+  width: 100%;
+  margin-top: 16px;
+
   display: flex;
-  justify-content: flex-end;
-  gap: 10px;
+  flex-direction: column;
 }
 
-.btn{
-  border: 0;
-  border-radius: 14px;
+.btn {
+  min-height: 44px;
   padding: 10px 14px;
-  cursor: pointer;
+
+  border: 0;
+  border-radius: 12px;
+
+  font-size: 24px;
   font-weight: 900;
-  font-size: 14px;
   letter-spacing: 0.2px;
-  transition: transform .08s ease, filter .15s ease, box-shadow .15s ease;
+
+  cursor: pointer;
+
+  transition:
+    transform 0.08s ease,
+    filter 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
-.btn:active{
+.btn:active:not(:disabled) {
   transform: translateY(1px);
 }
 
-.btnPrimary{
-  background: var(--brand, #024B76);
-  color: #fff;
-  box-shadow: 0 12px 22px rgba(0,0,0,0.18);
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
-.btnPrimary:hover{
+/* ปุ่มยืนยันสีเหลือง */
+.confirmButton {
+  width: 100%;
+  min-height: 44px;
+
+  background-color: #ffeb3b;
+  color: #5f4b00;
+
+  border: 1px solid #f4d800;
+  border-radius: 12px;
+
+  font-weight: 900;
+  box-shadow: 0 4px 10px rgba(95, 75, 0, 0.2);
+}
+
+.confirmButton:hover:not(:disabled) {
+  background-color: #fddf2f;
+}
+
+.confirmButton:active:not(:disabled) {
+  background-color: #f4d800;
+}
+
+.confirmButton:disabled {
+  background-color: #fff59d;
+  color: #7a6500;
+  opacity: 0.75;
+  cursor: not-allowed;
+}
+
+/* ปุ่มยกเลิกสีแดง */
+.cancelButton {
+  width: 100%;
+  min-height: 44px;
+
+  background-color: #dc2626;
+  color: #ffffff;
+
+  border: 1px solid #b91c1c;
+  border-radius: 12px;
+
+  font-weight: 900;
+  box-shadow: 0 4px 10px rgba(185, 28, 28, 0.25);
+}
+
+.cancelButton:hover:not(:disabled) {
+  background-color: #b91c1c;
+  border-color: #991b1b;
+}
+
+.cancelButton:active:not(:disabled) {
+  background-color: #991b1b;
+}
+
+.cancelButton:disabled {
+  background-color: #fca5a5;
+  color: #ffffff;
+  border-color: #f87171;
+  opacity: 0.75;
+  cursor: not-allowed;
+}
+
+/* คงไว้เผื่อมี Component อื่นใช้งาน */
+.btnPrimary {
+  background: var(--brand, #024b76);
+  color: #fff;
+  box-shadow: 0 12px 22px rgba(0, 0, 0, 0.18);
+}
+
+.btnPrimary:hover {
   filter: brightness(1.05);
 }
 
-.btnGhost{
-  background: rgba(2, 75, 118, 0.08);
+.btnGhost {
   color: var(--textDark, #1b2b4a);
+  background: rgba(2, 75, 118, 0.08);
   border: 2px solid rgba(2, 75, 118, 0.16);
 }
 
-.btnGhost:hover{
+.btnGhost:hover {
   filter: brightness(1.03);
 }
 
-@media (max-width: 420px){
-  .modal{
-    border-radius: 16px;
+@media (max-width: 420px) {
+  .overlay {
     padding: 14px;
   }
 
-  .body{
+  .modal {
+    padding: 14px;
+    border-radius: 16px;
+  }
+
+  .closeButton {
+    top: 8px;
+    right: 8px;
+
+    min-width: 84px;
+    min-height: 40px;
+    height: auto;
+    padding: 8px 20px;
+
+    font-size: 16px;
+  }
+
+  .body {
     font-size: 22px;
-    line-height: 1.45;
+    line-height: 1.4;
   }
 
-  .actions{
-    gap: 8px;
+  .actions {
+    margin-top: 14px;
   }
 
-  .btn{
+  .btn {
+    min-height: 42px;
     padding: 10px 12px;
-    border-radius: 12px;
+    border-radius: 11px;
   }
 }

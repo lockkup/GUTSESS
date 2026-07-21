@@ -4,6 +4,8 @@ import api from "@/lib/api";
 import type {
   CheckpointDailyRow,
   CheckpointMapLocationResponse,
+  CheckpointReservationActionRequest,
+  CheckpointReservationActionResponse,
   GetCheckpointMapLocationParams,
   ShiftType,
 } from "@/types/checkpointAssignment";
@@ -23,6 +25,11 @@ type GetDailyCheckpointAssignmentsParams = {
    * Backend เอา employee_code ไปหา division_id / routes_id เอง
    * ไม่ควรเชื่อ division_id / route_id จาก frontend ตรง ๆ
    */
+  employeeCode: string;
+};
+
+type CheckpointReservationParams = {
+  assignmentId: number;
   employeeCode: string;
 };
 
@@ -49,6 +56,66 @@ export function getDailyCheckpointAssignments({
     is_active: true,
     include_deleted: false,
   });
+}
+
+/**
+ * จองหน่วยงานก่อนเดินทางเข้าตรวจ
+ *
+ * POST /api/checkpoint-assignments/{assignmentId}/reserve
+ */
+export function reserveCheckpointAssignment({
+  assignmentId,
+  employeeCode,
+}: CheckpointReservationParams): Promise<CheckpointReservationActionResponse> {
+  const normalizedEmployeeCode = employeeCode.trim();
+
+  if (!Number.isInteger(assignmentId) || assignmentId <= 0) {
+    return Promise.reject(new Error("assignmentId ไม่ถูกต้อง"));
+  }
+
+  if (!normalizedEmployeeCode) {
+    return Promise.reject(new Error("ไม่พบรหัสพนักงานสำหรับจองหน่วยงาน"));
+  }
+
+  const payload: CheckpointReservationActionRequest = {
+    employee_code: normalizedEmployeeCode,
+  };
+
+  return api.post<CheckpointReservationActionResponse>(
+    `/checkpoint-assignments/${assignmentId}/reserve`,
+    payload,
+  );
+}
+
+/**
+ * ยกเลิกการจองหน่วยงาน
+ *
+ * POST /api/checkpoint-assignments/{assignmentId}/cancel-reservation
+ */
+export function cancelCheckpointAssignmentReservation({
+  assignmentId,
+  employeeCode,
+}: CheckpointReservationParams): Promise<CheckpointReservationActionResponse> {
+  const normalizedEmployeeCode = employeeCode.trim();
+
+  if (!Number.isInteger(assignmentId) || assignmentId <= 0) {
+    return Promise.reject(new Error("assignmentId ไม่ถูกต้อง"));
+  }
+
+  if (!normalizedEmployeeCode) {
+    return Promise.reject(
+      new Error("ไม่พบรหัสพนักงานสำหรับยกเลิกการจอง"),
+    );
+  }
+
+  const payload: CheckpointReservationActionRequest = {
+    employee_code: normalizedEmployeeCode,
+  };
+
+  return api.post<CheckpointReservationActionResponse>(
+    `/checkpoint-assignments/${assignmentId}/cancel-reservation`,
+    payload,
+  );
 }
 
 export async function getCheckpointMapLocation({

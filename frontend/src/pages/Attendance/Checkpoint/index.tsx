@@ -23,8 +23,10 @@ import {
 } from "@/services/appSetting.service";
 
 import {
+  cancelCheckpointAssignmentReservation,
   getDailyCheckpointAssignments,
   getCheckpointMapLocation,
+  reserveCheckpointAssignment,
 } from "@/services/checkpointAssignmentService";
 import { createCheckpointAssignmentCall } from "@/services/checkpointAssignmentCallService";
 import { verifyCheckpointLocation } from "@/services/checkpointLocationService";
@@ -139,6 +141,14 @@ type CheckRow = {
    */
   inProgressEmployeeCode: string | null;
   inProgressEmployeeName: string | null;
+
+  /**
+   * ข้อมูลการจองของ Assignment
+   * การจองไม่เปลี่ยน assignment_status
+   */
+  reservedBy: string | null;
+  reservedByName: string | null;
+  reservedAt: string | null;
 };
 
 type CheckpointDailyRowWithExtra = CheckpointDailyRow & {
@@ -154,6 +164,10 @@ type CheckpointDailyRowWithExtra = CheckpointDailyRow & {
   in_progress_employee_name?: string | null;
   started_by?: string | null;
   started_by_name?: string | null;
+
+  reserved_by?: string | null;
+  reserved_by_name?: string | null;
+  reserved_at?: string | null;
 
   can_action?: boolean | number | string | null;
   action_disabled_reason?: string | null;
@@ -585,6 +599,24 @@ const getInProgressEmployeeName = (
   );
 };
 
+const getReservedBy = (
+  item: CheckpointDailyRowWithExtra,
+): string | null => {
+  return normalizeNullableText(item.reserved_by);
+};
+
+const getReservedByName = (
+  item: CheckpointDailyRowWithExtra,
+): string | null => {
+  return normalizeNullableText(item.reserved_by_name);
+};
+
+const getReservedAt = (
+  item: CheckpointDailyRowWithExtra,
+): string | null => {
+  return normalizeNullableText(item.reserved_at);
+};
+
 const mapAssignmentStatusToRowStatus = (
   status: CheckpointAssignmentStatus,
   hasCall?: boolean,
@@ -661,12 +693,53 @@ const mapDailyRowsToCheckRows = (rows: CheckpointDailyRow[]): CheckRow[] => {
 
       inProgressEmployeeCode: getInProgressEmployeeCode(row),
       inProgressEmployeeName: getInProgressEmployeeName(row),
+
+      reservedBy: getReservedBy(row),
+      reservedByName: getReservedByName(row),
+      reservedAt: getReservedAt(row),
     };
   });
 };
 
 function getRequestErrorStatus(error: any): number | null {
   return error?.response?.status ?? error?.status ?? null;
+}
+
+function getRequestErrorDetail(error: any): {
+  message: string;
+  employeeCode: string | null;
+  employeeName: string | null;
+} {
+  const detail =
+    error?.response?.data?.detail ??
+    error?.data?.detail ??
+    error?.message ??
+    "";
+
+  if (typeof detail === "string") {
+    return {
+      message: detail,
+      employeeCode: null,
+      employeeName: null,
+    };
+  }
+
+  if (detail && typeof detail === "object") {
+    return {
+      message:
+        typeof detail.message === "string"
+          ? detail.message
+          : "เกิดข้อผิดพลาดในการดำเนินการ",
+      employeeCode: normalizeNullableText(detail.employee_code),
+      employeeName: normalizeNullableText(detail.employee_name),
+    };
+  }
+
+  return {
+    message: "เกิดข้อผิดพลาดในการดำเนินการ",
+    employeeCode: null,
+    employeeName: null,
+  };
 }
 
 function isCheckpointInProgressConflict(
@@ -752,11 +825,23 @@ export default function Checkpoint({
   const [currentDate, setCurrentDate] = useState(() => new Date());
 
   const [isSavingCall, setIsSavingCall] = useState(false);
+  const [isSavingReservation, setIsSavingReservation] = useState(false);
+  const [isCancellingReservation, setIsCancellingReservation] =
+    useState(false);
   const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
+
+  const isReservationActionLoading =
+    isSavingReservation || isCancellingReservation;
 
   const [isCheckingLocation, setIsCheckingLocation] = useState(false);
   const [outOfAreaOpen, setOutOfAreaOpen] = useState(false);
   const [outOfAreaHint, setOutOfAreaHint] = useState("");
+
+  /**
+   * เก็บเฉพาะแถวที่ผู้ใช้กดและ Backend ยืนยันว่าอยู่นอกพื้นที่
+   * จึงไม่มีการจองทุกแถวพร้อมกัน
+   */
+  const [reservationRow, setReservationRow] = useState<CheckRow | null>(null);
 
   const [checkpointInProgressMessage, setCheckpointInProgressMessage] =
     useState("");
@@ -963,10 +1048,43 @@ export default function Checkpoint({
     setOutOfAreaOpen(true);
   };
 
+  const closeOutOfAreaModal = () => {
+    if (isReservationActionLoading) {
+      return;
+    }
+
+    setOutOfAreaOpen(false);
+    setOutOfAreaHint("");
+    setReservationRow(null);
+  };
+
   const openCheckpointInProgressModal = (message: string) => {
     setOutOfAreaOpen(false);
     setOutOfAreaHint("");
+    setReservationRow(null);
     setCheckpointInProgressMessage(message);
+  };
+
+  const openReservationConflictModal = ({
+    employeeCode,
+    employeeName,
+    message,
+  }: {
+    employeeCode: string | null;
+    employeeName: string | null;
+    message?: string;
+  }) => {
+    const reservationMessage =
+      message ||
+      [
+        "ท่านไม่สามารถเข้าตรวจหน่วยงานนี้ได้ เนื่องจาก",
+        `${employeeCode ?? "-"} ${employeeName ?? "-"}`.trim(),
+        "ได้จองเข้าตรวจหน่วยงานนี้แล้ว",
+        "",
+        "กรุณาเลือกหน่วยงานอื่น",
+      ].join("\n");
+
+    openCheckpointInProgressModal(reservationMessage);
   };
 
   const closeCheckpointInProgressModal = () => {
@@ -1091,6 +1209,7 @@ export default function Checkpoint({
       setIsCheckingLocation(true);
       setOutOfAreaHint("");
       setOutOfAreaOpen(false);
+      setReservationRow(null);
 
       const latestSetting = await fetchLatestLocationSetting();
       const activeSetting = latestSetting ?? setting;
@@ -1215,6 +1334,28 @@ export default function Checkpoint({
           verifyResult,
         });
 
+        /**
+         * เมื่อ Backend ยืนยันว่าอยู่นอกพื้นที่จริง:
+         * - ยังไม่มีผู้จอง: แสดงปุ่มสีเหลือง "ยืนยันการเข้าตรวจ"
+         * - ผู้ใช้ปัจจุบันเป็นผู้จอง: แสดงปุ่มสีแดง "ยกเลิกการเข้าตรวจ"
+         * - ผู้ใช้อื่นเป็นผู้จอง: ไม่แสดงปุ่มจองหรือปุ่มยกเลิก
+         */
+        const normalizedCurrentEmployeeCode = empCode.trim();
+        const normalizedReservedBy = row.reservedBy?.trim() || null;
+
+        const isNotReserved = normalizedReservedBy === null;
+        const isReservedByCurrentEmployee =
+          normalizedReservedBy === normalizedCurrentEmployeeCode;
+
+        if (
+          row.assignmentStatus === "pending" &&
+          (isNotReserved || isReservedByCurrentEmployee)
+        ) {
+          setReservationRow(row);
+        } else {
+          setReservationRow(null);
+        }
+
         showLocationFailModal(message);
         return null;
       }
@@ -1247,10 +1388,13 @@ export default function Checkpoint({
       if (isCheckpointInProgressConflict(status, message)) {
         openCheckpointInProgressModal(
           message ||
-            "ท่านไม่สามารถบันทึกลงเวลางานได้ เนื่องจาก\n"
-              + "- -\n"
-              + "กำลังเข้าตรวจหน่วยงานนี้\n\n"
-              + 'หากมีความจำเป็น ให้ไปใช้เมนูเข้าพื้นที่ "นอกแผน"',
+            [
+              "ท่านไม่สามารถบันทึกลงเวลางานได้ เนื่องจาก",
+              "- -",
+              "กำลังเข้าตรวจหน่วยงานนี้",
+              "",
+              'หากมีความจำเป็น ให้ไปใช้เมนูเข้าพื้นที่ "นอกแผน"',
+            ].join("\n"),
         );
         return null;
       }
@@ -1306,6 +1450,172 @@ export default function Checkpoint({
     }
   };
 
+  const handleReserveFromOutOfAreaModal = async () => {
+    if (!reservationRow || isReservationActionLoading) {
+      return;
+    }
+
+    const normalizedEmpCode = empCode.trim();
+
+    if (!normalizedEmpCode) {
+      setOutOfAreaHint("ไม่พบรหัสพนักงาน กรุณาเข้าสู่ระบบใหม่");
+      return;
+    }
+
+    /**
+     * เก็บ assignmentId ของแถวที่กดไว้ก่อน await
+     * เพื่อยืนยันว่าจองเพียงหน่วยงานเดียว
+     */
+    const targetAssignmentId = reservationRow.assignmentId;
+    const targetUnitName = reservationRow.unitName;
+
+    try {
+      setIsSavingReservation(true);
+
+      logDev("[Checkpoint] RESERVE FROM OUT OF AREA MODAL", {
+        assignmentId: targetAssignmentId,
+        unitName: targetUnitName,
+        employeeCode: normalizedEmpCode,
+      });
+
+      await reserveCheckpointAssignment({
+        assignmentId: targetAssignmentId,
+        employeeCode: normalizedEmpCode,
+      });
+
+      setOutOfAreaOpen(false);
+      setOutOfAreaHint("");
+      setReservationRow(null);
+
+      await fetchCheckpointAssignments();
+    } catch (error: any) {
+      logDevError("[Checkpoint] RESERVE FROM OUT OF AREA MODAL ERROR", {
+        assignmentId: targetAssignmentId,
+        unitName: targetUnitName,
+        employeeCode: normalizedEmpCode,
+        error,
+      });
+
+      const status = getRequestErrorStatus(error);
+      const detail = getRequestErrorDetail(error);
+
+      if (status === 409) {
+        setOutOfAreaOpen(false);
+        setOutOfAreaHint("");
+        setReservationRow(null);
+
+        openReservationConflictModal({
+          employeeCode: detail.employeeCode,
+          employeeName: detail.employeeName,
+          message: detail.message,
+        });
+
+        await fetchCheckpointAssignments();
+        return;
+      }
+
+      setOutOfAreaHint(
+        detail.message ||
+          `ไม่สามารถจองหน่วยงาน ${targetUnitName} ได้ กรุณาลองใหม่อีกครั้ง`,
+      );
+    } finally {
+      setIsSavingReservation(false);
+    }
+  };
+
+  const handleCancelReservationFromOutOfAreaModal = async () => {
+    if (!reservationRow || isReservationActionLoading) {
+      return;
+    }
+
+    const normalizedEmpCode = empCode.trim();
+    const normalizedReservedBy = reservationRow.reservedBy?.trim() || null;
+
+    if (!normalizedEmpCode) {
+      setOutOfAreaHint("ไม่พบรหัสพนักงาน กรุณาเข้าสู่ระบบใหม่");
+      return;
+    }
+
+    if (normalizedReservedBy !== normalizedEmpCode) {
+      setOutOfAreaOpen(false);
+      setOutOfAreaHint("");
+      setReservationRow(null);
+
+      openCheckpointInProgressModal(
+        "ไม่สามารถยกเลิกการเข้าตรวจได้ เนื่องจากท่านไม่ได้เป็นผู้จองรายการนี้",
+      );
+
+      await fetchCheckpointAssignments();
+      return;
+    }
+
+    const targetAssignmentId = reservationRow.assignmentId;
+    const targetUnitName = reservationRow.unitName;
+
+    try {
+      setIsCancellingReservation(true);
+
+      logDev("[Checkpoint] CANCEL RESERVATION FROM OUT OF AREA MODAL", {
+        assignmentId: targetAssignmentId,
+        unitName: targetUnitName,
+        employeeCode: normalizedEmpCode,
+      });
+
+      await cancelCheckpointAssignmentReservation({
+        assignmentId: targetAssignmentId,
+        employeeCode: normalizedEmpCode,
+      });
+
+      /**
+       * อัปเดตสีปุ่มในตารางทันทีให้กลับเป็นสีขาว
+       * โดยคงข้อความ "รอดำเนินการเข้าตรวจ" ตามเดิม
+       */
+      setCheckRows((currentRows) =>
+        currentRows.map((row) =>
+          row.assignmentId === targetAssignmentId
+            ? {
+                ...row,
+                reservedBy: null,
+                reservedByName: null,
+                reservedAt: null,
+              }
+            : row,
+        ),
+      );
+
+      setOutOfAreaOpen(false);
+      setOutOfAreaHint("");
+      setReservationRow(null);
+
+      await fetchCheckpointAssignments();
+    } catch (error: any) {
+      logDevError(
+        "[Checkpoint] CANCEL RESERVATION FROM OUT OF AREA MODAL ERROR",
+        {
+          assignmentId: targetAssignmentId,
+          unitName: targetUnitName,
+          employeeCode: normalizedEmpCode,
+          error,
+        },
+      );
+
+      const detail = getRequestErrorDetail(error);
+
+      setOutOfAreaOpen(false);
+      setOutOfAreaHint("");
+      setReservationRow(null);
+
+      openCheckpointInProgressModal(
+        detail.message ||
+          `ไม่สามารถยกเลิกการเข้าตรวจหน่วยงาน ${targetUnitName} ได้ กรุณาลองใหม่อีกครั้ง`,
+      );
+
+      await fetchCheckpointAssignments();
+    } finally {
+      setIsCancellingReservation(false);
+    }
+  };
+
   const handleGoCheckInOut = async (row: CheckRow) => {
     const normalizedEmpCode = empCode.trim();
 
@@ -1339,6 +1649,19 @@ export default function Checkpoint({
       });
 
       openCheckpointInProgressModal(message);
+      return;
+    }
+
+    const isReservedByOtherEmployee =
+      row.assignmentStatus === "pending" &&
+      Boolean(row.reservedBy) &&
+      row.reservedBy !== normalizedEmpCode;
+
+    if (isReservedByOtherEmployee) {
+      openReservationConflictModal({
+        employeeCode: row.reservedBy,
+        employeeName: row.reservedByName,
+      });
       return;
     }
 
@@ -1553,6 +1876,16 @@ export default function Checkpoint({
     }
   };
 
+  const isReservationOwnedByCurrentEmployee =
+    Boolean(reservationRow?.reservedBy) &&
+    reservationRow?.reservedBy?.trim() === empCode.trim();
+
+  const canReserveFromOutOfArea =
+    Boolean(reservationRow) && !reservationRow?.reservedBy;
+
+  const canCancelReservationFromOutOfArea =
+    Boolean(reservationRow) && isReservationOwnedByCurrentEmployee;
+
   return (
     <>
       <main className="guts-bg">
@@ -1618,7 +1951,8 @@ export default function Checkpoint({
                     isLoading ||
                     settingLoading ||
                     isCheckingLocation ||
-                    isSavingCall
+                    isSavingCall ||
+                    isReservationActionLoading
                   }
                   aria-label="รีเฟรชหน้าจอ"
                   title="รีเฟรชหน้าจอ"
@@ -1708,6 +2042,17 @@ export default function Checkpoint({
                   orderedCheckRows.map((row) => {
                     const isPending = row.status === "pending";
                     const isProgress = row.status === "progress";
+                    const normalizedEmpCode = empCode.trim();
+
+                    const isReserved =
+                      isPending && Boolean(row.reservedBy);
+
+                    const isReservedByCurrentEmployee =
+                      isReserved && row.reservedBy === normalizedEmpCode;
+
+                    const isReservedByOtherEmployee =
+                      isReserved && row.reservedBy !== normalizedEmpCode;
+
                     const canGoCheckInOutByStatus = isPending || isProgress;
                     const canGoCheckInOut =
                       canGoCheckInOutByStatus &&
@@ -1725,7 +2070,9 @@ export default function Checkpoint({
                           ? styles.statusDoneCall
                           : row.status === "progress"
                             ? styles.statusProgress
-                            : styles.statusPending;
+                            : isReserved
+                              ? styles.statusReserved
+                              : styles.statusPending;
 
                     const disabledReason = selectedShiftMismatchMessage
                       ? selectedShiftMismatchMessage
@@ -1743,7 +2090,8 @@ export default function Checkpoint({
                       !row.canAction ||
                       settingLoading ||
                       isCheckingLocation ||
-                      isSavingCall;
+                      isSavingCall ||
+                      isReservationActionLoading;
 
                     /**
                      * ปุ่มบันทึกการโทรต้องกดซ้ำได้ แม้เคยบันทึกแล้ว
@@ -1813,16 +2161,36 @@ export default function Checkpoint({
                                 : undefined
                             }
                             disabled={isActionDisabled}
-                            title={disabledReason}
+                            title={
+                              isReservedByCurrentEmployee
+                                ? "ท่านจองหน่วยงานนี้แล้ว"
+                                : isReservedByOtherEmployee
+                                  ? `จองโดย ${row.reservedBy ?? "-"} ${row.reservedByName ?? ""}`.trim()
+                                  : disabledReason
+                            }
                             aria-label={
-                              disabledReason
-                                ? `${disabledReason} หน่วยงาน ${row.unitName}`
-                                : canGoCheckInOut
-                                  ? `ไปหน้าลงเวลาเข้าออกงาน หน่วยงาน ${row.unitName}`
-                                  : `${statusText[row.status]} หน่วยงาน ${row.unitName}`
+                              isReservedByCurrentEmployee
+                                ? `ท่านจองแล้ว ${statusText[row.status]} หน่วยงาน ${row.unitName}`
+                                : isReservedByOtherEmployee
+                                  ? `มีผู้จองแล้ว ${statusText[row.status]} หน่วยงาน ${row.unitName}`
+                                  : disabledReason
+                                    ? `${disabledReason} หน่วยงาน ${row.unitName}`
+                                    : canGoCheckInOut
+                                      ? `ไปหน้าลงเวลาเข้าออกงาน หน่วยงาน ${row.unitName}`
+                                      : `${statusText[row.status]} หน่วยงาน ${row.unitName}`
                             }
                           >
-                            {statusText[row.status]}
+                            <span className={styles.statusContent}>
+                              <span className={styles.statusMainText}>
+                                {statusText[row.status]}
+                              </span>
+
+                              {isReserved && row.reservedBy && (
+                                <span className={styles.reservedByText}>
+                                  โดยผู้จอง: {row.reservedBy}
+                                </span>
+                              )}
+                            </span>
                           </button>
                         </div>
                       </div>
@@ -1834,7 +2202,12 @@ export default function Checkpoint({
             <div className="guts-fv-bottom">
               <BackButton
                 onClick={onBack}
-                disabled={isCheckingLocation || isSavingCall || settingLoading}
+                disabled={
+                  isCheckingLocation ||
+                  isSavingCall ||
+                  isReservationActionLoading ||
+                  settingLoading
+                }
                 className="guts-fv-backBtn"
               />
             </div>
@@ -1858,20 +2231,40 @@ export default function Checkpoint({
       />
 
       <LoadingModal
-        isOpen={isSavingCall || isCheckingLocation || settingLoading}
+        isOpen={
+          isSavingCall ||
+          isReservationActionLoading ||
+          isCheckingLocation ||
+          settingLoading
+        }
         message={
           settingLoading
             ? "กำลังโหลดค่าตรวจสอบตำแหน่ง..."
             : isCheckingLocation
               ? "กำลังตรวจสอบตำแหน่ง..."
-              : "กำลังบันทึกข้อมูล..."
+              : isSavingReservation
+                ? "กำลังจองเข้าตรวจ..."
+                : isCancellingReservation
+                  ? "กำลังยกเลิกการเข้าตรวจ..."
+                  : "กำลังบันทึกข้อมูล..."
         }
       />
 
       <OutOfAreaModal
         open={outOfAreaOpen}
         locHint={outOfAreaHint}
-        onClose={() => setOutOfAreaOpen(false)}
+        showReserveButton={canReserveFromOutOfArea}
+        reserveUnitName={reservationRow?.unitName ?? ""}
+        reserveLoading={isSavingReservation}
+        onReserve={() => void handleReserveFromOutOfAreaModal()}
+        showCancelButton={canCancelReservationFromOutOfArea}
+        cancelLoading={isCancellingReservation}
+        onCancel={() =>
+          void handleCancelReservationFromOutOfAreaModal()
+        }
+        onClose={closeOutOfAreaModal}
+        closeOnBackdrop={!isReservationActionLoading}
+        closeOnEsc={!isReservationActionLoading}
       />
 
       <CheckpointInProgressModal

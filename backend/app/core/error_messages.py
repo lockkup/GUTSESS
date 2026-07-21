@@ -208,6 +208,13 @@ CHECKPOINT_ASSIGNMENT_ALREADY_IN_PROGRESS_TEMPLATE: Final[str] = (
     "หากมีความจำเป็น ให้ไปใช้เมนูเข้าพื้นที่\n"
     "\"นอกแผน\""
 )
+
+CHECKPOINT_ASSIGNMENT_ALREADY_RESERVED_TEMPLATE: Final[str] = (
+    "ท่านไม่สามารถเข้าตรวจหน่วยงานนี้ได้ เนื่องจาก\n"
+    "{employee_code} {employee_name}\n"
+    "ได้จองเข้าตรวจหน่วยงานนี้แล้ว\n\n"
+    "กรุณาเลือกหน่วยงานอื่น"
+)
 CHECKPOINT_ASSIGNMENT_NOT_AVAILABLE_DETAIL: Final[str] = (
     "จุดนี้ไม่อยู่ในสถานะพร้อมให้เข้าตรวจ"
 )

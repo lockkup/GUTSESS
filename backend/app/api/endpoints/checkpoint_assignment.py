@@ -14,6 +14,7 @@ from app.schemas.checkpoint_assignment import (
     CheckpointAssignmentCreate,
     CheckpointAssignmentDailyResponse,
     CheckpointAssignmentRecheck,
+    CheckpointAssignmentReservationAction,
     CheckpointAssignmentResponse,
     CheckpointAssignmentUpdate,
     CheckpointMapLocationResponse,
@@ -163,6 +164,42 @@ def update_checkpoint_assignment(
         db=db,
         assignment_id=assignment_id,
         payload=payload,
+    )
+
+
+@router.post(
+    "/{assignment_id}/reserve",
+    response_model=CheckpointAssignmentResponse,
+    status_code=status.HTTP_200_OK,
+)
+def reserve_checkpoint_assignment(
+    payload: CheckpointAssignmentReservationAction,
+    assignment_id: int = Path(..., gt=0),
+    db: Session = Depends(get_db),
+) -> CheckpointAssignmentResponse:
+    return CheckpointAssignmentService.reserve_checkpoint_assignment(
+        db=db,
+        assignment_id=assignment_id,
+        payload=payload,
+    )
+
+
+@router.post(
+    "/{assignment_id}/cancel-reservation",
+    response_model=CheckpointAssignmentResponse,
+    status_code=status.HTTP_200_OK,
+)
+def cancel_checkpoint_assignment_reservation(
+    payload: CheckpointAssignmentReservationAction,
+    assignment_id: int = Path(..., gt=0),
+    db: Session = Depends(get_db),
+) -> CheckpointAssignmentResponse:
+    return (
+        CheckpointAssignmentService.cancel_checkpoint_assignment_reservation(
+            db=db,
+            assignment_id=assignment_id,
+            payload=payload,
+        )
     )
 
 
