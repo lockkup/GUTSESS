@@ -780,6 +780,44 @@
   border: 1px solid rgba(148, 163, 184, 0.42);
 }
 
+/* สถานะ pending ที่มีผู้จองแล้ว */
+.statusReserved {
+  min-height: 48px;
+  padding: 6px 12px;
+
+  color: #000000;
+  background: #ffeb3b;
+  border: 1px solid #e2c900;
+  border-radius: 12px;
+
+  white-space: normal;
+}
+
+/* จัดข้อความสถานะเป็น 2 บรรทัด */
+.statusTextGroup {
+  min-width: 0;
+
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+
+  line-height: 1.15;
+  text-align: center;
+}
+
+/* รหัสผู้จอง */
+.reservedByText {
+  display: block;
+
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.15;
+
+  white-space: nowrap;
+}
+
 /* =========================
    Notification
 ========================= */
@@ -1080,6 +1118,13 @@
   border: 1px solid rgba(148, 163, 184, 0.45);
 }
 
+/* ไอคอนปฏิทินสำหรับรายการที่มีผู้จองแล้ว */
+.iconReserved {
+  color: #000000;
+  background: #ffca28;
+  border: 1px solid #e0b400;
+}
+
 .mobileMain {
   min-width: 0;
 }
@@ -1155,10 +1200,10 @@
 }
 
 .mobileStatusBadge {
-  min-width: 74px;
-  max-width: 94px;
+  min-width: 104px;
+  max-width: 132px;
   min-height: 26px;
-  padding: 3px 9px;
+  padding: 4px 8px;
 
   text-align: center;
   white-space: normal;
@@ -1778,10 +1823,14 @@
   }
 
   .mobileStatusBadge {
-    min-width: 68px;
-    max-width: 82px;
-    padding-left: 7px;
-    padding-right: 7px;
+    min-width: 96px;
+    max-width: 112px;
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+
+  .reservedByText {
+    font-size: 10px;
   }
 
   .mobileDetail {

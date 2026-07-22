@@ -726,12 +726,22 @@ class PatrolReportPdfService:
             "pending",
         )
         call_status = row.get("call_status")
-
-        display_status = (
-            "ตรวจแล้ว(โทร)"
-            if call_status is not None and str(call_status).strip()
-            else PatrolReportPdfService._status_label(assignment_status)
+        reserved_by = PatrolReportPdfService._text(
+            row.get("reserved_by"),
+            "",
         )
+
+        if call_status is not None and str(call_status).strip():
+            display_status = "ตรวจแล้ว(โทร)"
+        elif assignment_status == "pending" and reserved_by:
+            display_status = (
+                "รอดำเนินการเข้าตรวจ\n"
+                f"โดยผู้จอง: {reserved_by}"
+            )
+        else:
+            display_status = PatrolReportPdfService._status_label(
+                assignment_status,
+            )
 
         plan_date = row.get("workday") or row.get("work_date") or row.get("date_text")
 
@@ -931,7 +941,10 @@ class PatrolReportPdfService:
                     Paragraph(html.escape(row.contract_code), styles["cell"]),
                     Paragraph(html.escape(row.location_name), styles["cell"]),
                     Paragraph(html.escape(row.shift_label), styles["cell_center"]),
-                    Paragraph(html.escape(row.display_status), styles["cell_center"]),
+                    Paragraph(
+                        html.escape(row.display_status).replace("\n", "<br/>"),
+                        styles["cell_center"],
+                    ),
                     Paragraph(html.escape(row.plan_date_text), styles["cell_center"]),
                     Paragraph(html.escape(row.check_in_text), styles["cell_center"]),
                     Paragraph(html.escape(row.check_out_text), styles["cell_center"]),
@@ -1086,7 +1099,7 @@ class PatrolReportPdfService:
                 ),
                 Paragraph("สถานะ :", styles["detail_label_right"]),
                 Paragraph(
-                    html.escape(row.display_status),
+                    html.escape(row.display_status).replace("\n", "<br/>"),
                     styles["detail_cell_center"],
                 ),
             ],

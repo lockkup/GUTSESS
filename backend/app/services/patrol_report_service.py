@@ -51,6 +51,10 @@ CHECKOUT_IMAGE_ALIAS = "checkout_image_url"
 STARTED_DATETIME_COLUMN = "started_datetime"
 COMPLETED_DATETIME_COLUMN = "completed_datetime"
 
+# ข้อมูลการจองจาก checkpoint_assignment / vw_checkin_report
+RESERVED_BY_COLUMN = "reserved_by"
+RESERVED_AT_COLUMN = "reserved_at"
+
 CHECKIN_IMAGE_COLUMN_CANDIDATES = (
     # ชื่อ column จริงในตาราง time_record / view รายงาน
     "images_checkin_1",
@@ -875,6 +879,13 @@ def _map_patrol_report_row(
         ),
         status=patrol_status,
 
+        reservedBy=_to_optional_text(
+            row.get(RESERVED_BY_COLUMN),
+        ),
+        reservedAt=_to_optional_datetime(
+            row.get(RESERVED_AT_COLUMN),
+        ),
+
         departmentId=_to_optional_positive_int(
             row.get(PatrolReportConstants.COLUMN_DEPARTMENT_ID),
         ),
@@ -1383,6 +1394,8 @@ def _get_patrol_report_unplanned_rows(
             v.{PatrolReportConstants.COLUMN_COMPLETED_AT},
             {started_datetime_select},
             {completed_datetime_select},
+            NULL AS {RESERVED_BY_COLUMN},
+            NULL AS {RESERVED_AT_COLUMN},
             {checkin_image_select},
             {checkout_image_select},
             v.{PatrolReportConstants.COLUMN_EMPLOYEE_CODE},
@@ -1710,6 +1723,16 @@ def get_patrol_report_rows(
         COMPLETED_DATETIME_COLUMN,
         alias=COMPLETED_DATETIME_COLUMN,
     )
+    reserved_by_select = _select_view_column(
+        view_column_names,
+        RESERVED_BY_COLUMN,
+        alias=RESERVED_BY_COLUMN,
+    )
+    reserved_at_select = _select_view_column(
+        view_column_names,
+        RESERVED_AT_COLUMN,
+        alias=RESERVED_AT_COLUMN,
+    )
 
     sql_parts = [
         f"""
@@ -1723,6 +1746,8 @@ def get_patrol_report_rows(
             v.{PatrolReportConstants.COLUMN_COMPLETED_AT},
             {started_datetime_select},
             {completed_datetime_select},
+            {reserved_by_select},
+            {reserved_at_select},
             {checkin_image_select},
             {checkout_image_select},
             v.{PatrolReportConstants.COLUMN_EMPLOYEE_CODE},

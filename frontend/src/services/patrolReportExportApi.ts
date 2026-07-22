@@ -31,6 +31,13 @@ export type PatrolReportExportFilter = {
   planMode: PatrolReportExportPlanMode;
   shiftType: PatrolReportExportShiftType;
   status: PatrolReportExportStatus;
+
+  /**
+   * ใช้ร่วมกับ status="pending" เพื่อกรองเฉพาะรายการที่มีผู้จอง
+   * ไม่ใช่ assignment_status ใหม่ในฐานข้อมูล
+   */
+  reservedOnly?: boolean;
+
   keyword: string;
 };
 
@@ -227,6 +234,10 @@ function toCreateRequestBody(payload: PatrolReportExportCreatePayload) {
       plan_mode: payload.filters.planMode,
       shift_type: payload.filters.shiftType,
       status: payload.filters.status,
+
+      // true เฉพาะเมื่อผู้ใช้เลือก
+      // "รอดำเนินการเข้าตรวจ (มีผู้จองแล้ว)"
+      reserved_only: payload.filters.reservedOnly ?? false,
 
       keyword: payload.filters.keyword.trim(),
     },

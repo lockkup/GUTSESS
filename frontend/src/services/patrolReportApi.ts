@@ -123,6 +123,13 @@ export type PatrolReportRow = {
 
   positionName: string | null;
   position_name: string | null;
+
+  // ข้อมูลการจองจาก checkpoint_assignment
+  reservedBy: string | null;
+  reserved_by: string | null;
+
+  reservedAt: string | null;
+  reserved_at: string | null;
 };
 
 export type PatrolDepartmentOption = {
@@ -291,6 +298,12 @@ type PatrolReportApiRow = {
 
   positionName?: string | null;
   position_name?: string | null;
+
+  reservedBy?: string | null;
+  reserved_by?: string | null;
+
+  reservedAt?: string | null;
+  reserved_at?: string | null;
 };
 
 type PatrolReportFilterOptionsApiResponse = {
@@ -526,6 +539,10 @@ function mapPatrolReportRow(
 
   const positionName = toNullableText(row.positionName ?? row.position_name);
 
+  const reservedBy = toNullableText(row.reservedBy ?? row.reserved_by);
+
+  const reservedAt = toNullableText(row.reservedAt ?? row.reserved_at);
+
   return {
     id: toNumber(row.id, index + 1),
 
@@ -627,6 +644,12 @@ function mapPatrolReportRow(
 
     positionName,
     position_name: positionName,
+
+    reservedBy,
+    reserved_by: reservedBy,
+
+    reservedAt,
+    reserved_at: reservedAt,
   };
 }
 

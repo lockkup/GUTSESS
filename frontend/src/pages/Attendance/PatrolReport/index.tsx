@@ -12,7 +12,10 @@ import {
   Search,
   UserRoundPen,
 } from "lucide-react";
-import { BsFileEarmarkPdf } from "react-icons/bs";
+import {
+  BsCalendar2Check,
+  BsFileEarmarkPdf,
+} from "react-icons/bs";
 
 import BackButton from "@/components/BackButton";
 import { useStore } from "@/store/store";
@@ -167,6 +170,19 @@ type PatrolReportDisplayRow = PatrolReportRow & {
 
   operatorName?: string | null;
   operator_name?: string | null;
+
+  /**
+   * ข้อมูลการจองของ checkpoint_assignment
+   * การจองไม่เปลี่ยน assignment_status ซึ่งยังคงเป็น pending
+   */
+  reservedBy?: string | null;
+  reserved_by?: string | null;
+
+  reservedByName?: string | null;
+  reserved_by_name?: string | null;
+
+  reservedAt?: string | null;
+  reserved_at?: string | null;
 };
 
 type CalendarCell = {
@@ -765,6 +781,18 @@ function getNotificationRowClass(row: PatrolReportDisplayRow) {
   }
 }
 
+function getReservedBy(row: PatrolReportDisplayRow): string | null {
+  const value = row.reservedBy ?? row.reserved_by ?? null;
+
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const text = String(value).trim();
+
+  return text || null;
+}
+
 function getEmployeeCode(row: PatrolReportDisplayRow) {
   return row.employeeCode ?? row.employee_code ?? "-";
 }
@@ -1045,7 +1073,13 @@ function EmptyReportState({
   );
 }
 
-function StatusIcon({ status }: { status: ReportDisplayStatus }) {
+function StatusIcon({
+  status,
+  isReservedPending,
+}: {
+  status: ReportDisplayStatus;
+  isReservedPending: boolean;
+}) {
   if (status === "completed_call") {
     return (
       <span className={`${styles.statusIcon} ${styles.iconCompletedCall}`}>
@@ -1066,6 +1100,14 @@ function StatusIcon({ status }: { status: ReportDisplayStatus }) {
     return (
       <span className={`${styles.statusIcon} ${styles.iconInProgress}`}>
         <UserRoundPen size={17} strokeWidth={2.8} />
+      </span>
+    );
+  }
+
+  if (status === "pending" && isReservedPending) {
+    return (
+      <span className={`${styles.statusIcon} ${styles.iconReserved}`}>
+        <BsCalendar2Check size={18} aria-hidden="true" />
       </span>
     );
   }
@@ -2248,6 +2290,9 @@ export default function PatrolReportPage({
                   ) : (
                     filteredRows.map((row, index) => {
                       const status = getDisplayStatus(row);
+                      const reservedBy = getReservedBy(row);
+                      const isReservedPending =
+                        status === "pending" && reservedBy !== null;
                       const checkInImageUrl = getCheckInImageUrl(row);
                       const checkOutImageUrl = getCheckOutImageUrl(row);
                       const contractText = getContractCodeText(row.contractCode);
@@ -2272,9 +2317,20 @@ export default function PatrolReportPage({
                             <span
                               className={`${styles.statusBadge} ${getStatusClass(
                                 status,
-                              )}`}
+                              )} ${
+                                isReservedPending ? styles.statusReserved : ""
+                              }`}
                             >
-                              {getStatusLabel(status)}
+                              {isReservedPending && reservedBy ? (
+                                <span className={styles.statusTextGroup}>
+                                  <span>{getStatusLabel(status)}</span>
+                                  <span className={styles.reservedByText}>
+                                    โดยผู้จอง: {reservedBy}
+                                  </span>
+                                </span>
+                              ) : (
+                                getStatusLabel(status)
+                              )}
                             </span>
                           </td>
 
@@ -2386,6 +2442,9 @@ export default function PatrolReportPage({
               filteredRows.map((row, index) => {
                 const isExpanded = expandedId === row.id;
                 const status = getDisplayStatus(row);
+                const reservedBy = getReservedBy(row);
+                const isReservedPending =
+                  status === "pending" && reservedBy !== null;
                 const checkInImageUrl = getCheckInImageUrl(row);
                 const checkOutImageUrl = getCheckOutImageUrl(row);
                 const contractText = getContractCodeText(row.contractCode);
@@ -2411,7 +2470,10 @@ export default function PatrolReportPage({
                       onClick={() => setExpandedId(isExpanded ? null : row.id)}
                       aria-expanded={isExpanded}
                     >
-                      <StatusIcon status={status} />
+                      <StatusIcon
+                        status={status}
+                        isReservedPending={isReservedPending}
+                      />
 
                       <div className={styles.mobileMain}>
                         <div className={styles.mobileContractRow}>
@@ -2430,9 +2492,20 @@ export default function PatrolReportPage({
                       <span
                         className={`${styles.mobileStatusBadge} ${getStatusClass(
                           status,
-                        )}`}
+                        )} ${
+                          isReservedPending ? styles.statusReserved : ""
+                        }`}
                       >
-                        {getStatusLabel(status)}
+                        {isReservedPending && reservedBy ? (
+                          <span className={styles.statusTextGroup}>
+                            <span>{getStatusLabel(status)}</span>
+                            <span className={styles.reservedByText}>
+                              โดยผู้จอง: {reservedBy}
+                            </span>
+                          </span>
+                        ) : (
+                          getStatusLabel(status)
+                        )}
                       </span>
 
                       <span className={styles.chevron}>
@@ -2458,7 +2531,12 @@ export default function PatrolReportPage({
 
                         <div className={styles.detailRow}>
                           <span>สถานะ</span>
-                          <strong>{getStatusLabel(status)}</strong>
+                          <strong>
+                            {getStatusLabel(status)}
+                            {isReservedPending && reservedBy
+                              ? ` โดยผู้จอง: ${reservedBy}`
+                              : ""}
+                          </strong>
                         </div>
 
                         {!HIDE_CONTRACT_COLUMNS && (

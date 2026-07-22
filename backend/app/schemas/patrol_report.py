@@ -33,6 +33,11 @@ class PatrolReportResponse(BaseModel):
     siteName: str
     status: PatrolStatus
 
+    # ข้อมูลการจองจาก checkpoint_assignment
+    # การจองไม่เปลี่ยน status ซึ่งยังคงเป็น pending
+    reservedBy: str | None = None
+    reservedAt: datetime | None = None
+
     # ใช้สำหรับตัวกรองรายงาน
     departmentId: int | None = Field(default=None, ge=1)
     divisionId: int | None = Field(default=None, ge=1)
