@@ -41,6 +41,12 @@ PatrolReportStatusFilter = Literal[
     "pending",
 ]
 
+PatrolReportReservationStatus = Literal[
+    "all",
+    "reserved",
+    "unreserved",
+]
+
 
 class PatrolReportExportFilter(BaseModel):
     """
@@ -73,6 +79,15 @@ class PatrolReportExportFilter(BaseModel):
     plan_mode: PatrolReportPlanMode = "planned"
     shift_type: PatrolReportShiftType = "all"
     status: PatrolReportStatusFilter = "all"
+
+    # ใช้ร่วมกับ status="pending"
+    #
+    # all        = ไม่กรองข้อมูลการจอง
+    # reserved   = เฉพาะรายการที่มีผู้จอง
+    # unreserved = เฉพาะรายการที่ยังไม่มีผู้จอง
+    #
+    # ไม่ใช่ assignment_status ใหม่ในฐานข้อมูล
+    reservation_status: PatrolReportReservationStatus = "all"
 
     keyword: str = Field(
         default="",

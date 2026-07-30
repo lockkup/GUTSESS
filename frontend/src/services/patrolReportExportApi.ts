@@ -20,6 +20,11 @@ export type PatrolReportExportStatus =
   | "in_progress"
   | "pending";
 
+export type PatrolReportExportReservationStatus =
+  | "all"
+  | "reserved"
+  | "unreserved";
+
 export type PatrolReportExportFilter = {
   workdayStart: string;
   workdayEnd: string;
@@ -33,10 +38,15 @@ export type PatrolReportExportFilter = {
   status: PatrolReportExportStatus;
 
   /**
-   * ใช้ร่วมกับ status="pending" เพื่อกรองเฉพาะรายการที่มีผู้จอง
+   * ใช้ร่วมกับ status="pending" เพื่อแยกสถานะการจอง
+   *
+   * all        = ไม่กรองข้อมูลการจอง
+   * reserved   = เฉพาะรายการที่มีผู้จอง
+   * unreserved = เฉพาะรายการที่ยังไม่มีผู้จอง
+   *
    * ไม่ใช่ assignment_status ใหม่ในฐานข้อมูล
    */
-  reservedOnly?: boolean;
+  reservationStatus?: PatrolReportExportReservationStatus;
 
   keyword: string;
 };
@@ -235,9 +245,14 @@ function toCreateRequestBody(payload: PatrolReportExportCreatePayload) {
       shift_type: payload.filters.shiftType,
       status: payload.filters.status,
 
-      // true เฉพาะเมื่อผู้ใช้เลือก
-      // "รอดำเนินการเข้าตรวจ (มีผู้จองแล้ว)"
-      reserved_only: payload.filters.reservedOnly ?? false,
+      /**
+       * ใช้ร่วมกับ status="pending"
+       *
+       * all        = ไม่กรองข้อมูลการจอง
+       * reserved   = เฉพาะรายการที่มีผู้จอง
+       * unreserved = เฉพาะรายการที่ยังไม่มีผู้จอง
+       */
+      reservation_status: payload.filters.reservationStatus ?? "all",
 
       keyword: payload.filters.keyword.trim(),
     },

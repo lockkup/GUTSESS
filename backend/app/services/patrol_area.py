@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.constants import DBConstants
@@ -280,10 +280,14 @@ class PatrolAreaService:
             else ""
         )
 
+        contract_code_expr = func.trim(
+            SiteLocation.contract_code
+        )
+
         if clean_keyword:
             stmt = stmt.where(
                 or_(
-                    SiteLocation.contract_code.contains(
+                    contract_code_expr.contains(
                         clean_keyword
                     ),
                     SiteLocation.location_name.contains(
@@ -303,18 +307,60 @@ class PatrolAreaService:
 
         if clean_contract_code:
             stmt = stmt.where(
-                SiteLocation.contract_code
+                contract_code_expr
                 == clean_contract_code,
             )
 
-        stmt = (
-            stmt.order_by(
+        order_by_expressions = []
+
+        if clean_keyword:
+            search_priority = case(
+                (
+                    contract_code_expr
+                    == clean_keyword,
+                    0,
+                ),
+                (
+                    contract_code_expr.startswith(
+                        clean_keyword,
+                        autoescape=True,
+                    ),
+                    1,
+                ),
+                (
+                    contract_code_expr.contains(
+                        clean_keyword,
+                        autoescape=True,
+                    ),
+                    2,
+                ),
+                else_=3,
+            )
+
+            order_by_expressions.extend(
+                [
+                    search_priority.asc(),
+                    func.char_length(
+                        contract_code_expr
+                    ).asc(),
+                    contract_code_expr.asc(),
+                ]
+            )
+
+        order_by_expressions.extend(
+            [
                 Department.department_name.asc(),
                 Divisions.division_name.asc(),
                 Route.route_name.asc(),
                 SiteLocation.location_name.asc(),
                 SiteLocation.contract_code.asc(),
                 RouteSiteLocation.route_site_location_id.asc(),
+            ]
+        )
+
+        stmt = (
+            stmt.order_by(
+                *order_by_expressions
             )
             .offset(skip)
             .limit(limit)

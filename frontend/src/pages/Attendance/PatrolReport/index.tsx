@@ -46,7 +46,10 @@ type ReportPlanMode = "planned" | "outside_plan";
 type PatrolNotificationLevel = "none" | "green" | "yellow" | "orange" | "red";
 
 type ReportDisplayStatus = PatrolStatus | "completed_call";
-type StatusFilterValue = "all" | ReportDisplayStatus;
+type StatusFilterValue =
+  | "all"
+  | ReportDisplayStatus
+  | "pending_reserved";
 type DatePickerField = "start" | "end";
 
 type PatrolReportPageProps = {
@@ -793,6 +796,28 @@ function getReservedBy(row: PatrolReportDisplayRow): string | null {
   return text || null;
 }
 
+function matchesStatusFilter(
+  row: PatrolReportDisplayRow,
+  statusFilter: StatusFilterValue,
+) {
+  if (statusFilter === "all") {
+    return true;
+  }
+
+  const displayStatus = getDisplayStatus(row);
+  const reservedBy = getReservedBy(row);
+
+  if (statusFilter === "pending_reserved") {
+    return displayStatus === "pending" && reservedBy !== null;
+  }
+
+  if (statusFilter === "pending") {
+    return displayStatus === "pending" && reservedBy === null;
+  }
+
+  return displayStatus === statusFilter;
+}
+
 function getEmployeeCode(row: PatrolReportDisplayRow) {
   return row.employeeCode ?? row.employee_code ?? "-";
 }
@@ -1452,10 +1477,9 @@ export default function PatrolReportPage({
   }, []);
 
   const filteredRows = useMemo(() => {
-    const rows =
-      statusValue === "all"
-        ? patrolRows
-        : patrolRows.filter((row) => getDisplayStatus(row) === statusValue);
+    const rows = patrolRows.filter((row) =>
+      matchesStatusFilter(row, statusValue),
+    );
 
     return rows
       .map((row, originalIndex) => ({
@@ -1859,7 +1883,8 @@ export default function PatrolReportPage({
           employeeCode: employeeCodeText.trim() || undefined,
           planMode,
           shiftType: shiftValue,
-          status: statusValue,
+          status:
+            statusValue === "pending_reserved" ? "pending" : statusValue,
           keyword: searchText.trim(),
         },
         includeImages: true,
@@ -2106,6 +2131,9 @@ export default function PatrolReportPage({
               <option value="completed">ตรวจแล้ว</option>
               <option value="completed_call">ตรวจแล้ว(โทร)</option>
               <option value="in_progress">อยู่ระหว่างการเข้าตรวจ</option>
+              <option value="pending_reserved">
+                รอดำเนินการเข้าตรวจ (มีผู้จองแล้ว)
+              </option>
               <option value="pending">รอดำเนินการเข้าตรวจ</option>
             </select>
           </label>

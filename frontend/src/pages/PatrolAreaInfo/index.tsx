@@ -580,6 +580,11 @@ export default function PatrolAreaInfo({
                         location.location_name,
                       ) || "-";
 
+                    const contractCode =
+                      cleanText(
+                        location.contract_code,
+                      );
+
                     const radiusMeter =
                       cleanText(
                         location.radius_meter,
@@ -656,6 +661,21 @@ export default function PatrolAreaInfo({
                             }
                           >
                             {organizationPath || "-"}
+                          </div>
+
+                          <div
+                            className={
+                              styles.resultLine
+                            }
+                          >
+                            <span
+                              className={
+                                styles.resultLineLabel
+                              }
+                            >
+                              รหัสสัญญา :
+                            </span>{" "}
+                            {contractCode || "-"}
                           </div>
 
                           <div
