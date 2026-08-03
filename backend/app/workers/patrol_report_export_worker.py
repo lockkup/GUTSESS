@@ -423,7 +423,7 @@ def process_claimed_export_job(
         )
         mark_job_failed(
             claimed_job,
-            safe_error_message="เงื่อนไขการสร้างรายงานไม่ถูกต้อง",
+            safe_error_message="ระบบประมวลผลรายงานยังไม่พร้อมใช้งาน กรุณาติดต่อผู้ดูแลระบบ",
         )
         return True
 
