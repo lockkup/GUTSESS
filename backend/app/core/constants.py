@@ -66,7 +66,14 @@ class DBConstants:
     # =========================
     # Report Export Job
     # =========================
+    # ตัวอย่าง: patrol_report
+    REPORT_EXPORT_TYPE_LENGTH: Final[int] = 50
 
+    # ตัวอย่าง: guts_ess.patrol_report.production
+    REPORT_EXPORT_QUEUE_KEY_LENGTH: Final[int] = 100
+
+    # queued / processing / completed / failed / cancelled / expired
+    REPORT_EXPORT_JOB_STATUS_LENGTH: Final[int] = 20
     # ตัวอย่าง: patrol_report
     REPORT_EXPORT_TYPE_LENGTH: Final[int] = 50
 

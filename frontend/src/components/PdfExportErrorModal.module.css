@@ -1,0 +1,96 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(2px);
+}
+
+.dialog {
+  width: min(420px, 100%);
+  padding: 28px 24px 22px;
+  border: 1px solid #fecaca;
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.24);
+  text-align: center;
+}
+
+.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 62px;
+  height: 62px;
+  margin-bottom: 14px;
+  border-radius: 50%;
+  color: #b42318;
+  background: #fee4e2;
+}
+
+.title {
+  margin: 0;
+  color: #101828;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.message {
+  margin: 10px 0 22px;
+  color: #475467;
+  font-size: 15px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.closeButton {
+  width: 100%;
+  min-height: 44px;
+  border: 0;
+  border-radius: 10px;
+  color: #ffffff;
+  background: #b42318;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background-color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.closeButton:hover {
+  background: #912018;
+}
+
+.closeButton:active {
+  transform: translateY(1px);
+}
+
+.closeButton:focus-visible {
+  outline: 3px solid rgba(180, 35, 24, 0.25);
+  outline-offset: 2px;
+}
+
+@media (max-width: 480px) {
+  .overlay {
+    padding: 16px;
+  }
+
+  .dialog {
+    padding: 24px 18px 18px;
+    border-radius: 16px;
+  }
+
+  .title {
+    font-size: 18px;
+  }
+
+  .message {
+    font-size: 14px;
+  }
+}

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Annotated, Literal
+from typing import Annotated, Literal, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -29,6 +29,65 @@ def _clean_text(value: str | None) -> str | None:
 
     cleaned = value.strip()
     return cleaned if cleaned else None
+
+
+def _parse_plan_modes(
+    *,
+    plan_modes: str | None,
+    legacy_plan_mode: PlanMode | None,
+) -> list[PlanMode]:
+    """
+    แปลง plan_modes แบบคั่นด้วย comma เป็นรายการ
+
+    ตัวอย่าง:
+    - planned
+    - outside_plan
+    - planned,outside_plan
+
+    ยังคงรองรับ plan_mode แบบเดิม และใช้ planned เป็นค่าเริ่มต้น
+    """
+
+    if plan_modes is not None:
+        raw_modes = [
+            value.strip()
+            for value in plan_modes.split(",")
+            if value.strip()
+        ]
+    elif legacy_plan_mode is not None:
+        raw_modes = [legacy_plan_mode]
+    else:
+        raw_modes = ["planned"]
+
+    selected_modes: list[PlanMode] = []
+    invalid_modes: list[str] = []
+
+    for raw_mode in raw_modes:
+        if raw_mode not in ("planned", "outside_plan"):
+            invalid_modes.append(raw_mode)
+            continue
+
+        mode = cast(PlanMode, raw_mode)
+
+        if mode not in selected_modes:
+            selected_modes.append(mode)
+
+    if invalid_modes:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "plan_modes ไม่ถูกต้อง: "
+                f"{', '.join(invalid_modes)} "
+                "(รองรับ planned, outside_plan)"
+            ),
+        )
+
+    if not selected_modes:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="กรุณาระบุ plan_modes อย่างน้อย 1 รายการ",
+        )
+
+    return selected_modes
 
 
 def _validate_date_range(
@@ -128,15 +187,29 @@ def read_patrol_report_filter_options(
     summary="รายงานงานสายตรวจ",
 )
 def read_patrol_report(
-    # แยกตามแผน / นอกแผน
+    # เลือกได้หลายประเภท โดยคั่นค่าด้วย comma
     # planned = vw_checkin_report
     # outside_plan = vw_checkin_unplanned
-    plan_mode: Annotated[
-        PlanMode,
+    plan_modes: Annotated[
+        str | None,
         Query(
-            description="ประเภทแผน planned=ตามแผน, outside_plan=นอกแผน",
+            description=(
+                "ประเภทงานหลายรายการคั่นด้วย comma เช่น "
+                "planned,outside_plan"
+            ),
         ),
-    ] = "planned",
+    ] = None,
+
+    # รองรับ frontend เดิมที่ส่ง plan_mode ค่าเดียว
+    plan_mode: Annotated[
+        PlanMode | None,
+        Query(
+            description=(
+                "ประเภทงานแบบเดิม planned=ตามแผน, "
+                "outside_plan=งานอื่น ๆ"
+            ),
+        ),
+    ] = None,
 
     # รองรับ backend เดิม / frontend เดิม ที่ส่ง workday วันเดียว
     workday: Annotated[
@@ -211,6 +284,10 @@ def read_patrol_report(
 ) -> list[PatrolReportResponse]:
     clean_employee_code = _clean_text(employee_code)
     clean_keyword = _clean_text(keyword)
+    selected_plan_modes = _parse_plan_modes(
+        plan_modes=plan_modes,
+        legacy_plan_mode=plan_mode,
+    )
 
     _validate_date_range(
         workday=workday,
@@ -231,7 +308,7 @@ def read_patrol_report(
 
     return get_patrol_report_rows(
         db,
-        plan_mode=plan_mode,
+        plan_modes=selected_plan_modes,
         workday=workday,
         workday_start=workday_start,
         workday_end=workday_end,

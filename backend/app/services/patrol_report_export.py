@@ -1,4 +1,5 @@
 # backend/app/services/patrol_report_export.py
+# แยก Export Job ของแต่ละ Environment ด้วย queue_key
 from __future__ import annotations
 
 import os
@@ -7,6 +8,7 @@ from pathlib import Path
 
 from fastapi import HTTPException, status
 from fastapi.responses import FileResponse
+from starlette.background import BackgroundTask
 from sqlalchemy import exists, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -47,6 +49,11 @@ class PatrolReportExportService:
     """
 
     REPORT_TYPE_PATROL = "patrol_report"
+
+    REPORT_EXPORT_QUEUE_KEY_ENV = "REPORT_EXPORT_QUEUE_KEY"
+    DEFAULT_REPORT_EXPORT_QUEUE_KEY = (
+        "guts_ess.patrol_report.production"
+    )
 
     STATUS_QUEUED = "queued"
     STATUS_PROCESSING = "processing"
@@ -89,6 +96,9 @@ class PatrolReportExportService:
 
         export_job = ReportExportJob(
             report_type=PatrolReportExportService.REPORT_TYPE_PATROL,
+            queue_key=(
+                PatrolReportExportService.get_report_export_queue_key()
+            ),
             filters_json=payload.filters.model_dump(mode="json"),
             include_images=payload.include_images,
             job_status=PatrolReportExportService.STATUS_QUEUED,
@@ -121,7 +131,10 @@ class PatrolReportExportService:
         job_status: ReportExportJobStatus | None,
         include_deleted: bool,
     ) -> list[PatrolReportExportResponse]:
-        statement = select(ReportExportJob)
+        statement = select(ReportExportJob).where(
+            ReportExportJob.queue_key
+            == PatrolReportExportService.get_report_export_queue_key(),
+        )
 
         if not include_deleted:
             statement = statement.where(
@@ -213,6 +226,10 @@ class PatrolReportExportService:
             path=file_path,
             media_type="application/pdf",
             filename=export_job.download_filename,
+            background=BackgroundTask(
+                PatrolReportExportService._delete_export_file,
+                file_path,
+            ),
         )
 
     @staticmethod
@@ -335,6 +352,8 @@ class PatrolReportExportService:
     ) -> ReportExportJob:
         statement = select(ReportExportJob).where(
             ReportExportJob.report_export_job_id == export_job_id,
+            ReportExportJob.queue_key
+            == PatrolReportExportService.get_report_export_queue_key(),
         )
 
         if not include_deleted:
@@ -389,6 +408,16 @@ class PatrolReportExportService:
             ) from exc
 
     @staticmethod
+    def _delete_export_file(file_path: Path) -> None:
+        """
+        ลบไฟล์ PDF หลัง FileResponse ส่ง response เสร็จแล้ว
+
+        PDF ของ Patrol Report เป็น temporary export file
+        ไม่เก็บถาวรบนเครื่อง Server
+        """
+        file_path.unlink(missing_ok=True)
+
+    @staticmethod
     def _resolve_export_file_path(
         file_relative_path: str,
     ) -> Path:
@@ -420,3 +449,15 @@ class PatrolReportExportService:
         # backend/app/services/patrol_report_export.py
         # parents[2] = backend
         return Path(__file__).resolve().parents[2] / "exports"
+
+    @staticmethod
+    def get_report_export_queue_key() -> str:
+        configured_queue_key = os.getenv(
+            PatrolReportExportService.REPORT_EXPORT_QUEUE_KEY_ENV,
+            "",
+        ).strip()
+
+        return (
+            configured_queue_key
+            or PatrolReportExportService.DEFAULT_REPORT_EXPORT_QUEUE_KEY
+        )

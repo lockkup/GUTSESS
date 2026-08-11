@@ -33,7 +33,7 @@ export type PatrolReportExportFilter = {
   routeId?: number;
   locationId?: number;
   employeeCode?: string;
-  planMode: PatrolReportExportPlanMode;
+  planModes: PatrolReportExportPlanMode[];
   shiftType: PatrolReportExportShiftType;
   status: PatrolReportExportStatus;
 
@@ -229,6 +229,8 @@ function mapJobResponse(
 }
 
 function toCreateRequestBody(payload: PatrolReportExportCreatePayload) {
+  const planModes = Array.from(new Set(payload.filters.planModes));
+
   return {
     filters: {
       workday_start: payload.filters.workdayStart,
@@ -241,7 +243,7 @@ function toCreateRequestBody(payload: PatrolReportExportCreatePayload) {
       location_id: payload.filters.locationId ?? null,
       employee_code: payload.filters.employeeCode?.trim() || null,
 
-      plan_mode: payload.filters.planMode,
+      plan_modes: planModes,
       shift_type: payload.filters.shiftType,
       status: payload.filters.status,
 

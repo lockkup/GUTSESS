@@ -6,14 +6,13 @@ import binascii
 import html
 import io
 import logging
-import os
 import re
-from dataclasses import dataclass
-from datetime import date, datetime
+from dataclasses import dataclass, replace
+from datetime import date, datetime, time
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping
 
-from PIL import Image as PilImage
+import pyvips
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A4, landscape
@@ -36,7 +35,11 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.constants import PatrolReportConstants
-from app.schemas.patrol_report_export import PatrolReportExportFilter
+from app.schemas.patrol_report_export import (
+    PatrolReportExportFilter,
+    PatrolReportPlanMode,
+)
+from app.services.patrol_report_service import get_patrol_report_rows
 
 
 logger = logging.getLogger(__name__)
@@ -68,6 +71,10 @@ class PatrolReportPdfRow:
     """รูปแบบข้อมูลภายในสำหรับวาดรายงาน PDF."""
 
     number: int
+    plan_mode: PatrolReportPlanMode
+    workday: date | None
+    check_in_datetime: datetime | None
+    check_out_datetime: datetime | None
     contract_code: str
     location_name: str
     department_name: str
@@ -157,7 +164,6 @@ class PatrolReportPdfService:
     """
 
     VIEW_NAME = PatrolReportConstants.VIEW_NAME
-
     MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
     # หน้ารายละเอียดรูปภาพ: แสดงได้ 2 จุดรักษาการณ์ต่อ 1 หน้า (A4 แนวนอน)
@@ -165,6 +171,11 @@ class PatrolReportPdfService:
     IMAGE_DETAIL_ROWS_PER_PAGE = 2
     IMAGE_MAX_WIDTH_MM = 82
     IMAGE_MAX_HEIGHT_MM = 40
+
+    # ย่อและบีบอัดเฉพาะสำเนารูปที่ฝังใน PDF โดยไม่แก้ไขไฟล์รูปต้นฉบับ
+    # 180 DPI ยังชัดเพียงพอสำหรับตรวจสอบรูปบุคคลบนพื้นที่ 82 x 40 mm
+    PDF_IMAGE_DPI = 180
+    PDF_IMAGE_JPEG_QUALITY = 20
 
     # เก็บโลโก้ PNG ไว้ที่ backend/app/resources/images/logoguts.png
     # ใช้ PNG เพื่อให้ ReportLab แสดงผลได้เสถียรโดยไม่ต้องเพิ่ม dependency SVG.
@@ -247,12 +258,32 @@ class PatrolReportPdfService:
         try:
             PatrolReportPdfService._raise_if_cancelled(is_cancelled)
 
-            rows = PatrolReportPdfService._fetch_report_rows(
-                db=db,
-                filters=filters,
+            selected_plan_modes = (
+                PatrolReportPdfService._get_selected_plan_modes(filters)
             )
 
-            if not rows:
+            planned_rows: list[PatrolReportPdfRow] = []
+            outside_plan_rows: list[PatrolReportPdfRow] = []
+
+            if "planned" in selected_plan_modes:
+                planned_rows = PatrolReportPdfService._fetch_report_rows(
+                    db=db,
+                    filters=filters,
+                    include_images=include_images,
+                )
+
+            if "outside_plan" in selected_plan_modes:
+                outside_plan_rows = (
+                    PatrolReportPdfService._fetch_outside_plan_rows(
+                        db=db,
+                        filters=filters,
+                        include_images=include_images,
+                    )
+                )
+
+            total_rows = len(planned_rows) + len(outside_plan_rows)
+
+            if total_rows <= 0:
                 raise PatrolReportPdfNoDataError(
                     "ไม่พบข้อมูลรายงานตามเงื่อนไขที่เลือก"
                 )
@@ -268,7 +299,7 @@ class PatrolReportPdfService:
             PatrolReportPdfService._register_thai_fonts()
 
             if progress_callback:
-                progress_callback(0, len(rows))
+                progress_callback(0, total_rows)
 
             document = SimpleDocTemplate(
                 str(output_path),
@@ -282,7 +313,8 @@ class PatrolReportPdfService:
             )
 
             story = PatrolReportPdfService._build_story(
-                rows=rows,
+                planned_rows=planned_rows,
+                outside_plan_rows=outside_plan_rows,
                 filters=filters,
                 scope=scope,
                 include_images=include_images,
@@ -298,6 +330,11 @@ class PatrolReportPdfService:
             )
 
             PatrolReportPdfService._raise_if_cancelled(is_cancelled)
+
+            # ให้ Progress เป็น 100% หลัง ReportLab เขียนไฟล์เสร็จจริงเท่านั้น
+            # เพื่อไม่ให้หน้าเว็บแสดง 100% ค้างระหว่างกำลังสร้างไฟล์ PDF.
+            if progress_callback:
+                progress_callback(total_rows, total_rows)
 
             if not output_path.is_file():
                 raise PatrolReportPdfBuildError(
@@ -336,7 +373,7 @@ class PatrolReportPdfService:
             return PatrolReportPdfBuildResult(
                 download_filename=download_filename,
                 file_size_bytes=file_size_bytes,
-                report_row_count=len(rows),
+                report_row_count=total_rows,
             )
 
         except PatrolReportPdfCancelledError:
@@ -362,6 +399,7 @@ class PatrolReportPdfService:
         *,
         db: Session,
         filters: PatrolReportExportFilter,
+        include_images: bool,
     ) -> list[PatrolReportPdfRow]:
         available_columns = PatrolReportPdfService._get_view_columns(db=db)
 
@@ -373,6 +411,7 @@ class PatrolReportPdfService:
         sql, params = PatrolReportPdfService._build_report_query(
             filters=filters,
             available_columns=available_columns,
+            include_images=include_images,
         )
 
         logger.info(
@@ -390,16 +429,331 @@ class PatrolReportPdfService:
             PatrolReportPdfService._map_pdf_row(
                 mapping=row,
                 number=index,
+                plan_mode="planned",
+                include_images=include_images,
             )
             for index, row in enumerate(db_rows, start=1)
         ]
 
     @staticmethod
-    def _get_view_columns(*, db: Session) -> set[str]:
+    def _fetch_outside_plan_rows(
+        *,
+        db: Session,
+        filters: PatrolReportExportFilter,
+        include_images: bool,
+    ) -> list[PatrolReportPdfRow]:
+        """
+        ดึงรายงานงานอื่น ๆ จาก vw_checkin_unplanned ผ่าน service เดียวกับหน้าเว็บ
+        เพื่อให้เงื่อนไขและข้อมูลที่แสดงใน PDF ตรงกับตารางนอกแผน.
+        """
+        selected_status = str(
+            PatrolReportPdfService._get_filter_value(filters, "status")
+            or "all"
+        )
+        status_filter = (
+            selected_status
+            if selected_status in {"completed", "in_progress", "pending"}
+            else None
+        )
+
+        report_rows = get_patrol_report_rows(
+            db=db,
+            plan_modes=["outside_plan"],
+            workday_start=filters.workday_start,
+            workday_end=filters.workday_end,
+            shift_id=PatrolReportPdfService._resolve_shift_id(
+                db=db,
+                filters=filters,
+            ),
+            department_id=filters.department_id,
+            division_id=filters.division_id,
+            route_id=filters.route_id,
+            location_id=filters.location_id,
+            employee_code=filters.employee_code,
+            status_filter=status_filter,
+            keyword=filters.keyword or None,
+        )
+
+        # completed_call เป็นตัวกรองเฉพาะรายการที่มีผลการติดต่อ
+        if selected_status == "completed_call":
+            report_rows = [
+                row
+                for row in report_rows
+                if PatrolReportPdfService._model_value(
+                    row,
+                    "callStatus",
+                    "call_status",
+                )
+                is not None
+            ]
+
+        reservation_status = str(
+            PatrolReportPdfService._get_filter_value(
+                filters,
+                "reservation_status",
+                "reservationStatus",
+            )
+            or "all"
+        )
+
+        if selected_status == "pending" and reservation_status != "all":
+            report_rows = [
+                row
+                for row in report_rows
+                if bool(
+                    PatrolReportPdfService._model_value(
+                        row,
+                        "reservedBy",
+                        "reserved_by",
+                    )
+                )
+                == (reservation_status == "reserved")
+            ]
+
+        return [
+            PatrolReportPdfService._map_report_response_to_pdf_row(
+                row=row,
+                number=index,
+                shift_type=filters.shift_type,
+                include_images=include_images,
+            )
+            for index, row in enumerate(report_rows, start=1)
+        ]
+
+    @staticmethod
+    def _resolve_shift_id(
+        *,
+        db: Session,
+        filters: PatrolReportExportFilter,
+    ) -> int | None:
+        """
+        หา shift_id จากค่าที่บันทึกใน Filter หรือตาราง shifts
+        โดยไม่สมมติว่า 1=กลางวัน และ 2=กลางคืน.
+        """
+
+        explicit_shift_id = PatrolReportPdfService._get_filter_value(
+            filters,
+            "shift_id",
+            "shiftId",
+        )
+
+        if explicit_shift_id is not None:
+            try:
+                parsed_shift_id = int(explicit_shift_id)
+            except (TypeError, ValueError) as exc:
+                raise PatrolReportPdfBuildError(
+                    "shift_id ในเงื่อนไขรายงานไม่ถูกต้อง"
+                ) from exc
+
+            if parsed_shift_id <= 0:
+                raise PatrolReportPdfBuildError(
+                    "shift_id ในเงื่อนไขรายงานไม่ถูกต้อง"
+                )
+
+            return parsed_shift_id
+
+        shift_type = str(
+            PatrolReportPdfService._get_filter_value(
+                filters,
+                "shift_type",
+                "shiftType",
+            )
+            or "all"
+        )
+
+        if shift_type == "all":
+            return None
+
+        if shift_type not in {"day", "night"}:
+            raise PatrolReportPdfBuildError(
+                f"ประเภทผลัดไม่ถูกต้อง: {shift_type}"
+            )
+
+        shift_columns = PatrolReportPdfService._get_view_columns(
+            db=db,
+            view_name="shifts",
+        )
+
+        if "shift_id" not in shift_columns:
+            raise PatrolReportPdfBuildError(
+                "ตาราง shifts ไม่มีคอลัมน์ shift_id"
+            )
+
+        match_parts: list[str] = []
+        params: dict[str, Any] = {
+            "shift_type": shift_type,
+            "shift_name_pattern": (
+                "%กลางวัน%" if shift_type == "day" else "%กลางคืน%"
+            ),
+        }
+
+        for column_name in ("shift_type", "shift_code"):
+            if column_name in shift_columns:
+                match_parts.append(
+                    f"LOWER(TRIM(CAST(`{column_name}` AS CHAR))) = :shift_type"
+                )
+
+        for column_name in ("shift_name_th", "shift_name"):
+            if column_name in shift_columns:
+                match_parts.append(
+                    f"`{column_name}` LIKE :shift_name_pattern"
+                )
+
+        if not match_parts:
+            raise PatrolReportPdfBuildError(
+                "ตาราง shifts ไม่มีคอลัมน์ที่ใช้ระบุประเภทผลัด"
+            )
+
+        where_parts = ["(" + " OR ".join(match_parts) + ")"]
+
+        if "mark_flag" in shift_columns:
+            where_parts.append("COALESCE(`mark_flag`, 0) = 0")
+
+        if "is_active" in shift_columns:
+            where_parts.append("COALESCE(`is_active`, 1) = 1")
+
+        statement = text(
+            "SELECT `shift_id` FROM `shifts` "
+            "WHERE " + " AND ".join(where_parts) + " "
+            "ORDER BY `shift_id` ASC"
+        )
+        matched_shift_ids = list(
+            dict.fromkeys(
+                int(value)
+                for value in db.execute(statement, params).scalars()
+                if value is not None
+            )
+        )
+
+        if not matched_shift_ids:
+            shift_label = "กลางวัน" if shift_type == "day" else "กลางคืน"
+            raise PatrolReportPdfBuildError(
+                f"ไม่พบผลัด{shift_label}ในตาราง shifts"
+            )
+
+        if len(matched_shift_ids) > 1:
+            shift_label = "กลางวัน" if shift_type == "day" else "กลางคืน"
+            raise PatrolReportPdfBuildError(
+                f"พบผลัด{shift_label}ที่เปิดใช้งานมากกว่า 1 รายการ"
+            )
+
+        return matched_shift_ids[0]
+
+    @staticmethod
+    def _model_value(row: Any, *names: str) -> Any:
+        """อ่านค่าจาก Pydantic model ได้ทั้งชื่อ field และ alias."""
+        for name in names:
+            value = getattr(row, name, None)
+            if value is not None:
+                return value
+
+        if hasattr(row, "model_dump"):
+            dumped = row.model_dump(by_alias=True)
+            for name in names:
+                if dumped.get(name) is not None:
+                    return dumped[name]
+
+        return None
+
+    @staticmethod
+    def _map_report_response_to_pdf_row(
+        *,
+        row: Any,
+        number: int,
+        shift_type: str,
+        include_images: bool,
+    ) -> PatrolReportPdfRow:
+        """แปลง PatrolReportResponse จาก service หน้าเว็บเป็นข้อมูล PDF."""
+
+        def value(*names: str) -> Any:
+            return PatrolReportPdfService._model_value(row, *names)
+
+        check_in_datetime = value("checkInDateTime", "check_in_date_time")
+        check_out_datetime = value("checkOutDateTime", "check_out_date_time")
+        assignment_status = value("status")
+
+        # เปลี่ยนเฉพาะข้อความในรายงานงานอื่น ๆ โดยไม่แก้สถานะจริงในฐานข้อมูล
+        if assignment_status == "completed":
+            assignment_status = "เรียบร้อย(ติดตาม/มอบหมาย)"
+
+        mapping: dict[str, Any] = {
+            "contract_code": value("contractCode", "contract_code"),
+            "location_name": value("siteName", "site_name", "location_name"),
+            "shift_label": (
+                PatrolReportPdfService._get_outside_plan_shift_label(
+                    check_in_datetime=check_in_datetime,
+                    shift_type=shift_type,
+                )
+            ),
+            "assignment_status": assignment_status,
+            "reserved_by": value("reservedBy", "reserved_by"),
+            "workday": (
+                value("workday", "workDate", "work_date")
+                or check_in_datetime
+                or check_out_datetime
+                or value("dateText", "date_text")
+            ),
+            "started_datetime": check_in_datetime,
+            "completed_datetime": check_out_datetime,
+            "employee_code": value("employeeCode", "employee_code"),
+            "operator_name": value("operatorName", "operator_name"),
+            "position_name": value("positionName", "position_name"),
+            "contact_detail": value("contactDetail", "contact_detail"),
+            "call_status": value("callStatus", "call_status"),
+            "call_note": value("callNote", "call_note"),
+            "check_in_image_url": value(
+                "checkInImageUrl",
+                "check_in_image_url",
+            ) if include_images else None,
+            "check_out_image_url": value(
+                "checkOutImageUrl",
+                "check_out_image_url",
+            ) if include_images else None,
+        }
+
+        return PatrolReportPdfService._map_pdf_row(
+            mapping=mapping,
+            number=number,
+            plan_mode="outside_plan",
+            include_images=include_images,
+        )
+
+    @staticmethod
+    def _get_outside_plan_shift_label(
+        *,
+        check_in_datetime: Any,
+        shift_type: str,
+    ) -> str:
+        """แสดงผลัดของงานนอกแผนจากเวลาเข้า ตามกติกาเดียวกับ service หลัก."""
+        parsed_datetime = PatrolReportPdfService._parse_datetime(
+            check_in_datetime,
+        )
+
+        if parsed_datetime is not None:
+            check_in_time = parsed_datetime.time()
+
+            if time(8, 0) <= check_in_time < time(20, 0):
+                return "กลางวัน"
+
+            return "กลางคืน"
+
+        return {
+            "day": "กลางวัน",
+            "night": "กลางคืน",
+        }.get(shift_type, "-")
+
+    @staticmethod
+    def _get_view_columns(
+        *,
+        db: Session,
+        view_name: str | None = None,
+    ) -> set[str]:
         """
         อ่าน column ที่มีจริงใน view เพื่อรองรับ view ที่มี optional columns
         เช่น contact_detail, call_status, images_checkin_1.
         """
+
+        selected_view_name = view_name or PatrolReportPdfService.VIEW_NAME
 
         statement = text(
             """
@@ -414,7 +768,7 @@ class PatrolReportPdfService:
             str(column_name).strip().lower()
             for column_name in db.execute(
                 statement,
-                {"table_name": PatrolReportPdfService.VIEW_NAME},
+                {"table_name": selected_view_name},
             ).scalars()
             if str(column_name).strip()
         }
@@ -424,6 +778,7 @@ class PatrolReportPdfService:
         *,
         filters: PatrolReportExportFilter,
         available_columns: set[str],
+        include_images: bool = True,
     ) -> tuple[str, dict[str, Any]]:
         """
         สร้าง SQL จาก column ที่ผ่าน allow-list เท่านั้น
@@ -449,7 +804,10 @@ class PatrolReportPdfService:
                 return
 
             if not has_column(column_name):
-                return
+                raise PatrolReportPdfBuildError(
+                    f"view {PatrolReportPdfService.VIEW_NAME} "
+                    f"ไม่มีคอลัมน์ {column_name} สำหรับกรองรายงาน"
+                )
 
             where_parts.append(f"`{column_name}` = :{param_name}")
             params[param_name] = value.strip() if isinstance(value, str) else value
@@ -525,21 +883,61 @@ class PatrolReportPdfService:
                 param_name="shift_id",
                 value=shift_id,
             )
-        elif shift_type == "day" and has_column("shift_name_th"):
+        elif shift_type in {"day", "night"}:
+            if not has_column("shift_name_th"):
+                raise PatrolReportPdfBuildError(
+                    f"view {PatrolReportPdfService.VIEW_NAME} "
+                    "ไม่มีคอลัมน์ shift_name_th สำหรับกรองผลัด"
+                )
+
             # ไม่ hardcode shift_id เพราะแต่ละฐานข้อมูลอาจใช้ ID ไม่เหมือนกัน.
             where_parts.append("`shift_name_th` LIKE :shift_name_pattern")
-            params["shift_name_pattern"] = "%กลางวัน%"
-        elif shift_type == "night" and has_column("shift_name_th"):
-            where_parts.append("`shift_name_th` LIKE :shift_name_pattern")
-            params["shift_name_pattern"] = "%กลางคืน%"
+            params["shift_name_pattern"] = (
+                "%กลางวัน%" if shift_type == "day" else "%กลางคืน%"
+            )
 
         selected_status = get_filter("status") or "all"
         if selected_status != "all":
-            if selected_status == "completed_call" and has_column("call_status"):
+            if selected_status == "completed_call":
+                if not has_column("call_status"):
+                    raise PatrolReportPdfBuildError(
+                        f"view {PatrolReportPdfService.VIEW_NAME} "
+                        "ไม่มีคอลัมน์ call_status สำหรับกรองสถานะโทร"
+                    )
+
                 where_parts.append("`call_status` IS NOT NULL")
-            elif has_column("assignment_status"):
+            else:
+                if not has_column("assignment_status"):
+                    raise PatrolReportPdfBuildError(
+                        f"view {PatrolReportPdfService.VIEW_NAME} "
+                        "ไม่มีคอลัมน์ assignment_status สำหรับกรองสถานะ"
+                    )
+
                 where_parts.append("`assignment_status` = :assignment_status")
                 params["assignment_status"] = selected_status
+
+        reservation_status = (
+            get_filter("reservation_status")
+            or get_filter("reservationStatus")
+            or "all"
+        )
+        if (
+            selected_status == "pending"
+            and reservation_status != "all"
+        ):
+            if not has_column("reserved_by"):
+                raise PatrolReportPdfBuildError(
+                    f"view {PatrolReportPdfService.VIEW_NAME} "
+                    "ไม่มีคอลัมน์ reserved_by สำหรับกรองการจอง"
+                )
+
+            reserved_expression = (
+                "NULLIF(TRIM(CAST(`reserved_by` AS CHAR)), '')"
+            )
+            if reservation_status == "reserved":
+                where_parts.append(f"{reserved_expression} IS NOT NULL")
+            elif reservation_status == "unreserved":
+                where_parts.append(f"{reserved_expression} IS NULL")
 
         # ไฟล์นี้ใช้กับ vw_checkin_report ซึ่งเป็นข้อมูลตามแผนอยู่แล้ว.
         # ห้ามตีความ planned/outside_plan จาก plan_day เพราะหน้า Patrol Report
@@ -554,17 +952,33 @@ class PatrolReportPdfService:
                 if has_column(column)
             ]
 
-            if keyword_columns:
-                keyword_conditions = [
-                    f"`{column}` LIKE :keyword"
-                    for column in keyword_columns
-                ]
-                where_parts.append(
-                    "(" + " OR ".join(keyword_conditions) + ")"
+            if not keyword_columns:
+                raise PatrolReportPdfBuildError(
+                    f"view {PatrolReportPdfService.VIEW_NAME} "
+                    "ไม่มีคอลัมน์สำหรับค้นหาด้วยคำสำคัญ"
                 )
-                params["keyword"] = f"%{keyword}%"
 
-        sql = f"SELECT * FROM `{PatrolReportPdfService.VIEW_NAME}`"
+            keyword_conditions = [
+                f"`{column}` LIKE :keyword"
+                for column in keyword_columns
+            ]
+            where_parts.append(
+                "(" + " OR ".join(keyword_conditions) + ")"
+            )
+            params["keyword"] = f"%{keyword}%"
+
+        select_columns = PatrolReportPdfService._get_report_select_columns(
+            available_columns=available_columns,
+            include_images=include_images,
+        )
+        select_clause = ", ".join(
+            f"`{column_name}`"
+            for column_name in select_columns
+        )
+        sql = (
+            f"SELECT {select_clause} "
+            f"FROM `{PatrolReportPdfService.VIEW_NAME}`"
+        )
 
         if where_parts:
             sql += " WHERE " + " AND ".join(where_parts)
@@ -601,6 +1015,92 @@ class PatrolReportPdfService:
         return sql, params
 
     @staticmethod
+    def _get_report_select_columns(
+        *,
+        available_columns: set[str],
+        include_images: bool,
+    ) -> list[str]:
+        """
+        เลือกเฉพาะคอลัมน์ที่ใช้สร้าง PDF
+
+        เมื่อไม่แนบรูป จะไม่ดึงคอลัมน์รูปหรือ Base64 จาก MySQL เพื่อลด RAM
+        ของ Worker และลดข้อมูลที่ต้องส่งจากฐานข้อมูล.
+        """
+        base_columns = (
+            "workday",
+            "work_date",
+            "started_datetime",
+            "completed_datetime",
+            "check_in_date_time",
+            "check_in_datetime",
+            "check_out_date_time",
+            "check_out_datetime",
+            "contract_code",
+            "location_name",
+            "site_name",
+            "department_name",
+            "department_name_th",
+            "department_label",
+            "division_name",
+            "division_name_th",
+            "division_label",
+            "route_name",
+            "route_name_th",
+            "route_label",
+            "shift_name_th",
+            "shift_label",
+            "assignment_status",
+            "status",
+            "call_status",
+            "reserved_by",
+            "employee_code",
+            "first_name",
+            "last_name",
+            "operator_name",
+            "employee_name",
+            "position_name",
+            "contact_detail",
+            "call_note",
+        )
+        image_columns = (
+            "images_checkin_1",
+            "images_checkin_2",
+            "images_checkin_3",
+            "images_checkout_1",
+            "images_checkout_2",
+            "images_checkout_3",
+            "check_in_image_url",
+            "checkin_image_url",
+            "check_out_image_url",
+            "checkout_image_url",
+            "check_in_picture",
+            "checkin_picture",
+            "check_out_picture",
+            "checkout_picture",
+            "first_in_picture",
+            "last_out_picture",
+        )
+
+        requested_columns = (
+            base_columns + image_columns
+            if include_images
+            else base_columns
+        )
+        selected_columns = [
+            column_name
+            for column_name in requested_columns
+            if column_name in available_columns
+        ]
+
+        if not selected_columns:
+            raise PatrolReportPdfBuildError(
+                f"view {PatrolReportPdfService.VIEW_NAME} "
+                "ไม่มีคอลัมน์ที่ใช้สร้างรายงาน"
+            )
+
+        return selected_columns
+
+    @staticmethod
     def _fetch_scope_names(
         *,
         db: Session,
@@ -610,7 +1110,7 @@ class PatrolReportPdfService:
         อ่านชื่อ ภาค / เขต / เส้นทาง จาก master table
         เพื่อไม่ให้หัวรายงาน PDF แสดงเป็นรหัส ID.
 
-        ถ้า filter ไม่ได้เลือกค่าใด จะปล่อยว่างไว้ แล้วส่วนหัวจะแสดง "ทั้งหมด".
+        ถ้า filter ไม่ได้เลือกค่าใด จะปล่อยว่างไว้และไม่แสดงขอบเขตนั้นในหัวรายงาน.
         ถ้า query ชื่อไม่สำเร็จ จะไม่ทำให้การสร้าง PDF ล้มเหลว;
         ระบบจะแสดง "ไม่พบชื่อ" แทน โดยดูรายละเอียดใน worker log ได้.
         """
@@ -684,6 +1184,8 @@ class PatrolReportPdfService:
         *,
         mapping: Mapping[str, Any],
         number: int,
+        plan_mode: PatrolReportPlanMode,
+        include_images: bool = True,
     ) -> PatrolReportPdfRow:
         row = {
             str(key).lower(): value
@@ -775,8 +1277,32 @@ class PatrolReportPdfService:
         elif operator_name:
             operator_text = operator_name
 
+        raw_check_in_datetime = (
+            row.get("started_datetime")
+            or row.get("check_in_date_time")
+            or row.get("check_in_datetime")
+            or row.get("started_at")
+        )
+        raw_check_out_datetime = (
+            row.get("completed_datetime")
+            or row.get("check_out_date_time")
+            or row.get("check_out_datetime")
+            or row.get("completed_at")
+        )
+        parsed_workday = PatrolReportPdfService._parse_datetime(plan_date)
+
         return PatrolReportPdfRow(
             number=number,
+            plan_mode=plan_mode,
+            workday=(
+                parsed_workday.date() if parsed_workday is not None else None
+            ),
+            check_in_datetime=PatrolReportPdfService._parse_datetime(
+                raw_check_in_datetime,
+            ),
+            check_out_datetime=PatrolReportPdfService._parse_datetime(
+                raw_check_out_datetime,
+            ),
             contract_code=contract_code,
             location_name=location_name,
             department_name=department_name,
@@ -786,16 +1312,10 @@ class PatrolReportPdfService:
             display_status=display_status,
             plan_date_text=PatrolReportPdfService._format_thai_date(plan_date),
             check_in_text=PatrolReportPdfService._format_thai_datetime(
-                row.get("started_datetime")
-                or row.get("check_in_date_time")
-                or row.get("check_in_datetime")
-                or row.get("started_at")
+                raw_check_in_datetime
             ),
             check_out_text=PatrolReportPdfService._format_thai_datetime(
-                row.get("completed_datetime")
-                or row.get("check_out_date_time")
-                or row.get("check_out_datetime")
-                or row.get("completed_at")
+                raw_check_out_datetime
             ),
             operator_text=operator_text,
             contact_detail=PatrolReportPdfService._text(
@@ -806,43 +1326,215 @@ class PatrolReportPdfService:
                 row.get("call_note"),
                 "-",
             ),
-            check_in_image=PatrolReportPdfService._first_image_value(
-                row,
-                (
-                    "images_checkin_1",
-                    "images_checkin_2",
-                    "images_checkin_3",
-                    "check_in_image_url",
-                    "checkin_image_url",
-                    "check_in_picture",
-                    "checkin_picture",
-                    "first_in_picture",
-                ),
+            check_in_image=(
+                PatrolReportPdfService._first_image_value(
+                    row,
+                    (
+                        "images_checkin_1",
+                        "images_checkin_2",
+                        "images_checkin_3",
+                        "check_in_image_url",
+                        "checkin_image_url",
+                        "check_in_picture",
+                        "checkin_picture",
+                        "first_in_picture",
+                    ),
+                )
+                if include_images
+                else None
             ),
-            check_out_image=PatrolReportPdfService._first_image_value(
-                row,
-                (
-                    "images_checkout_1",
-                    "images_checkout_2",
-                    "images_checkout_3",
-                    "check_out_image_url",
-                    "checkout_image_url",
-                    "check_out_picture",
-                    "checkout_picture",
-                    "last_out_picture",
-                ),
+            check_out_image=(
+                PatrolReportPdfService._first_image_value(
+                    row,
+                    (
+                        "images_checkout_1",
+                        "images_checkout_2",
+                        "images_checkout_3",
+                        "check_out_image_url",
+                        "checkout_image_url",
+                        "check_out_picture",
+                        "checkout_picture",
+                        "last_out_picture",
+                    ),
+                )
+                if include_images
+                else None
             ),
         )
 
     @staticmethod
     def _build_story(
         *,
-        rows: list[PatrolReportPdfRow],
+        planned_rows: list[PatrolReportPdfRow],
+        outside_plan_rows: list[PatrolReportPdfRow],
         filters: PatrolReportExportFilter,
         scope: PatrolReportPdfScope,
         include_images: bool,
         progress_callback: ProgressCallback | None,
         is_cancelled: CancelledCallback | None,
+    ) -> list[Any]:
+        """รวมทุกรายการเป็นตารางเดียวและเรียงตามวันเวลาเข้าจริง."""
+        selected_modes = PatrolReportPdfService._get_selected_plan_modes(filters)
+        total_rows = len(planned_rows) + len(outside_plan_rows)
+        progress_offset = 0
+        story: list[Any] = []
+
+        sections: list[
+            tuple[
+                PatrolReportPlanMode,
+                str,
+                list[PatrolReportPdfRow],
+            ]
+        ] = []
+
+        if "planned" in selected_modes:
+            sections.append(
+                (
+                    "planned",
+                    "รายงาน-การเข้าตรวจหน่วยงานตามแผน",
+                    planned_rows,
+                )
+            )
+
+        if "outside_plan" in selected_modes:
+            sections.append(
+                (
+                    "outside_plan",
+                    "รายงาน - งานอื่น ๆ (ติดตาม / มอบหมาย)",
+                    outside_plan_rows,
+                )
+            )
+
+        numbered_sections: list[
+            tuple[
+                PatrolReportPlanMode,
+                str,
+                list[PatrolReportPdfRow],
+            ]
+        ] = []
+
+        if not sections:
+            return story
+
+        # รวมข้อมูลตามแผนและงานอื่น ๆ ก่อน แล้วเรียงตามวันเวลาเข้าเดียวกัน
+        # เพื่อไม่ให้งานอื่น ๆ ถูกนำไปต่อท้ายโดยไม่คำนึงถึงเวลาเข้าจริง.
+        merged_rows = [
+            row
+            for _, _, rows in sections
+            for row in rows
+        ]
+
+        merged_rows.sort(
+            key=PatrolReportPdfService._combined_report_sort_key,
+        )
+
+        combined_rows = [
+            replace(row, number=index)
+            for index, row in enumerate(merged_rows, start=1)
+        ]
+
+        # เก็บกลุ่มตามประเภทไว้สำหรับข้อมูลหัวรายงาน ส่วนหน้ารายละเอียดรูปภาพ
+        # จะใช้ combined_rows เพื่อเรียงลำดับเดียวกับตารางสรุป.
+        for plan_mode, section_title, _ in sections:
+            numbered_sections.append(
+                (
+                    plan_mode,
+                    section_title,
+                    [
+                        row
+                        for row in combined_rows
+                        if row.plan_mode == plan_mode
+                    ],
+                )
+            )
+
+        is_combined_report = len(numbered_sections) > 1
+
+        first_plan_mode, first_section_title, _ = numbered_sections[0]
+
+        story.extend(
+            PatrolReportPdfService._build_report_section_story(
+                rows=combined_rows,
+                plan_mode=first_plan_mode,
+                section_title=(
+                    "รายงานการเข้าตรวจหน่วยงาน"
+                    if is_combined_report
+                    else first_section_title
+                ),
+                filters=filters,
+                scope=scope,
+                include_images=include_images,
+                progress_offset=progress_offset,
+                progress_total=total_rows,
+                progress_callback=progress_callback,
+                is_cancelled=is_cancelled,
+                combined_sections=(
+                    numbered_sections
+                    if is_combined_report
+                    else None
+                ),
+            )
+        )
+
+        return story
+
+    @staticmethod
+    def _combined_report_sort_key(
+        row: PatrolReportPdfRow,
+    ) -> tuple[Any, ...]:
+        """ลำดับตารางรวม: เวลาเข้า, เวลาออก และข้อมูลคงที่สำหรับกรณีเวลาเท่ากัน."""
+
+        check_in_datetime = PatrolReportPdfService._normalize_sort_datetime(
+            row.check_in_datetime,
+        )
+        check_out_datetime = PatrolReportPdfService._normalize_sort_datetime(
+            row.check_out_datetime,
+        )
+
+        return (
+            row.workday is None,
+            row.workday or date.max,
+            check_in_datetime is None,
+            check_in_datetime or datetime.max,
+            check_out_datetime is None,
+            check_out_datetime or datetime.max,
+            0 if row.plan_mode == "planned" else 1,
+            row.contract_code,
+            row.location_name,
+            row.operator_text,
+        )
+
+    @staticmethod
+    def _normalize_sort_datetime(value: datetime | None) -> datetime | None:
+        """ทำ datetime ให้เปรียบเทียบกันได้ทั้งค่าที่มีและไม่มี timezone."""
+        if value is None:
+            return None
+
+        if value.tzinfo is not None:
+            return value.replace(tzinfo=None)
+
+        return value
+
+    @staticmethod
+    def _build_report_section_story(
+        *,
+        rows: list[PatrolReportPdfRow],
+        plan_mode: PatrolReportPlanMode,
+        section_title: str,
+        filters: PatrolReportExportFilter,
+        scope: PatrolReportPdfScope,
+        include_images: bool,
+        progress_offset: int,
+        progress_total: int,
+        progress_callback: ProgressCallback | None,
+        is_cancelled: CancelledCallback | None,
+        combined_sections: list[
+            tuple[
+                PatrolReportPlanMode,
+                str,
+                list[PatrolReportPdfRow],
+            ]
+        ] | None = None,
     ) -> list[Any]:
         styles = PatrolReportPdfService._make_styles()
 
@@ -857,7 +1549,7 @@ class PatrolReportPdfService:
 
         story.append(
             Paragraph(
-                "รายงานการเข้าตรวจหน่วยงาน",
+                html.escape(section_title),
                 styles["title"],
             )
         )
@@ -878,7 +1570,14 @@ class PatrolReportPdfService:
             [
                 [
                     Paragraph(
-                        PatrolReportPdfService._format_selected_filters(filters),
+                        PatrolReportPdfService._format_selected_filters(
+                            filters,
+                            plan_mode=(
+                                None
+                                if combined_sections
+                                else plan_mode
+                            ),
+                        ),
                         styles["filter_left"],
                     ),
                     Paragraph(
@@ -907,13 +1606,30 @@ class PatrolReportPdfService:
         story.append(header_info_table)
         story.append(Spacer(1, 4 * mm))
 
+        if not rows:
+            story.append(
+                Paragraph(
+                    "ไม่พบข้อมูลรายงานในส่วนนี้ตามเงื่อนไขที่เลือก",
+                    styles["cell_center"],
+                )
+            )
+            return story
+
         table_header = [
             "ลำดับ",
             "รหัสสัญญา",
             "ชื่อจุดรักษาการณ์",
             "ผลัด",
             "สถานะ",
-            "ตารางแผนงาน",
+            (
+                "วันที่ตามแผน / วันที่ปฏิบัติงาน"
+                if combined_sections
+                else (
+                    "ตารางแผนงาน"
+                    if plan_mode == "planned"
+                    else "วันที่ปฏิบัติงาน"
+                )
+            ),
             "วันเวลาเข้า",
             "วันเวลาออก",
             "ผู้ดำเนินการ",
@@ -928,36 +1644,68 @@ class PatrolReportPdfService:
             ]
         ]
 
-        total = len(rows)
+        processed_rows = 0
 
-        for current, row in enumerate(rows, start=1):
+        for row in rows:
             PatrolReportPdfService._raise_if_cancelled(is_cancelled)
 
-            # แยกข้อมูลการติดต่อและหมายเหตุเป็นคนละคอลัมน์
-            # เพื่อให้หัวรายงานตรงกับตารางหน้า Patrol Report.
+            # แสดงทั้งข้อมูลตามแผนและงานอื่น ๆ ในตารางเดียวตามลำดับเวลาเข้า.
             table_data.append(
                 [
                     Paragraph(str(row.number), styles["cell_center"]),
                     Paragraph(html.escape(row.contract_code), styles["cell"]),
                     Paragraph(html.escape(row.location_name), styles["cell"]),
-                    Paragraph(html.escape(row.shift_label), styles["cell_center"]),
                     Paragraph(
-                        html.escape(row.display_status).replace("\n", "<br/>"),
+                        html.escape(row.shift_label),
                         styles["cell_center"],
                     ),
-                    Paragraph(html.escape(row.plan_date_text), styles["cell_center"]),
-                    Paragraph(html.escape(row.check_in_text), styles["cell_center"]),
-                    Paragraph(html.escape(row.check_out_text), styles["cell_center"]),
-                    # เพิ่มความกว้างของคอลัมน์ผู้ดำเนินการและลด font ลงเล็กน้อย
-                    # เพื่อให้รหัสพนักงานพร้อมชื่อ-นามสกุลแสดงได้ครบขึ้น.
-                    Paragraph(html.escape(row.operator_text), styles["operator_cell"]),
-                    Paragraph(html.escape(row.contact_detail), styles["cell"]),
-                    Paragraph(html.escape(row.call_note), styles["cell"]),
+                    Paragraph(
+                        html.escape(row.display_status).replace("\n", "<br/>"),
+                        PatrolReportPdfService._get_status_badge_style(
+                            display_status=row.display_status,
+                            styles=styles,
+                        ),
+                    ),
+                    Paragraph(
+                        html.escape(row.plan_date_text),
+                        styles["cell_center"],
+                    ),
+                    Paragraph(
+                        html.escape(row.check_in_text),
+                        styles["cell_center"],
+                    ),
+                    Paragraph(
+                        html.escape(row.check_out_text),
+                        styles["cell_center"],
+                    ),
+                    Paragraph(
+                        html.escape(row.operator_text),
+                        styles["operator_cell"],
+                    ),
+                    Paragraph(
+                        html.escape(row.contact_detail),
+                        styles["cell"],
+                    ),
+                    Paragraph(
+                        html.escape(row.call_note),
+                        styles["cell"],
+                    ),
                 ]
             )
 
+            processed_rows += 1
             if progress_callback:
-                progress_callback(current, total)
+                completed_rows = progress_offset + processed_rows
+                # สงวนขั้นสุดท้ายไว้ให้ document.build() เขียน PDF เสร็จก่อน
+                # โดยเฉพาะรายงานที่แนบรูปซึ่งอาจใช้เวลาหลังสร้างตารางอีกมาก.
+                reported_rows = min(
+                    completed_rows,
+                    max(progress_total - 1, 0),
+                )
+                progress_callback(
+                    reported_rows,
+                    progress_total,
+                )
 
         main_table = Table(
             table_data,
@@ -967,15 +1715,15 @@ class PatrolReportPdfService:
             colWidths=[
                 8 * mm,
                 17 * mm,
-                31 * mm,
+                29 * mm,
                 14 * mm,
-                24 * mm,
+                30 * mm,
                 21 * mm,
-                25 * mm,
-                25 * mm,
-                42 * mm,
-                31 * mm,
-                31 * mm,
+                24 * mm,
+                24 * mm,
+                38 * mm,
+                28 * mm,
+                28 * mm,
             ],
             repeatRows=1,
             hAlign="LEFT",
@@ -1003,70 +1751,107 @@ class PatrolReportPdfService:
                 ]
             )
         )
+
         story.append(main_table)
 
         if include_images:
+            scope_text = PatrolReportPdfService._format_scope_summary(
+                rows=rows,
+                filters=filters,
+                scope=scope,
+            )
             image_rows = [
                 row
                 for row in rows
                 if row.check_in_image or row.check_out_image
             ]
 
-            if image_rows:
-                scope_text = PatrolReportPdfService._format_scope_summary(
-                    rows=rows,
-                    filters=filters,
-                    scope=scope,
+            # ใช้ลำดับเดียวกับตารางสรุป และไม่รวมงานต่างประเภทไว้หน้าเดียวกัน
+            # เพื่อให้หัวหน้ารายละเอียดตรงกับข้อมูลทุกแถวในหน้านั้น
+            image_pages: list[
+                tuple[PatrolReportPlanMode, list[PatrolReportPdfRow]]
+            ] = []
+
+            for row in image_rows:
+                if (
+                    not image_pages
+                    or image_pages[-1][0] != row.plan_mode
+                    or len(image_pages[-1][1])
+                    >= PatrolReportPdfService.IMAGE_DETAIL_ROWS_PER_PAGE
+                ):
+                    image_pages.append((row.plan_mode, [row]))
+                else:
+                    image_pages[-1][1].append(row)
+
+            for image_plan_mode, page_rows in image_pages:
+                PatrolReportPdfService._raise_if_cancelled(is_cancelled)
+
+                story.append(PageBreak())
+                story.extend(
+                    PatrolReportPdfService._build_image_detail_page_header_story(
+                        scope_text=scope_text,
+                        plan_mode=image_plan_mode,
+                        styles=styles,
+                    )
                 )
 
-                # เริ่มหน้ารายละเอียดรูปภาพหน้าใหม่ และจัด 2 จุดรักษาการณ์ต่อ 1 หน้า
-                for page_start in range(
-                    0,
-                    len(image_rows),
-                    PatrolReportPdfService.IMAGE_DETAIL_ROWS_PER_PAGE,
-                ):
+                for row_index, row in enumerate(page_rows):
                     PatrolReportPdfService._raise_if_cancelled(is_cancelled)
 
-                    story.append(PageBreak())
                     story.extend(
-                        PatrolReportPdfService._build_image_detail_page_header_story(
-                            scope_text=scope_text,
+                        PatrolReportPdfService._build_image_detail_story(
+                            row=row,
                             styles=styles,
                         )
                     )
 
-                    page_rows = image_rows[
-                        page_start:
-                        page_start + PatrolReportPdfService.IMAGE_DETAIL_ROWS_PER_PAGE
-                    ]
-
-                    for row_index, row in enumerate(page_rows):
-                        PatrolReportPdfService._raise_if_cancelled(is_cancelled)
-
-                        story.extend(
-                            PatrolReportPdfService._build_image_detail_story(
-                                row=row,
-                                styles=styles,
-                            )
-                        )
-
-                        # เว้นระยะระหว่างจุดที่ 1 และจุดที่ 2 ในหน้าเดียวกัน
-                        if row_index < len(page_rows) - 1:
-                            story.append(Spacer(1, 4 * mm))
+                    # เว้นระยะระหว่างจุดที่ 1 และจุดที่ 2 ในหน้าเดียวกัน
+                    if row_index < len(page_rows) - 1:
+                        story.append(Spacer(1, 4 * mm))
 
         return story
+
+    @staticmethod
+    def _get_status_badge_style(
+        *,
+        display_status: str,
+        styles: Mapping[str, ParagraphStyle],
+    ) -> ParagraphStyle:
+        """เลือกสีป้ายสถานะในตารางสรุป โดยไม่เปลี่ยนค่าสถานะจริง."""
+        normalized_status = str(display_status or "").strip()
+
+        if normalized_status == "ตรวจแล้ว":
+            return styles["status_completed"]
+
+        if normalized_status.startswith("เรียบร้อย"):
+            return styles["status_finished"]
+
+        if normalized_status == "อยู่ระหว่างการเข้าตรวจ":
+            return styles["status_in_progress"]
+
+        if normalized_status == "ตรวจแล้ว(โทร)":
+            return styles["status_completed_call"]
+
+        return styles["cell_center"]
 
     @staticmethod
     def _build_image_detail_page_header_story(
         *,
         scope_text: str,
+        plan_mode: PatrolReportPlanMode,
         styles: Mapping[str, ParagraphStyle],
     ) -> list[Any]:
         """สร้างหัวหน้ารายละเอียดรูปภาพ 1 ครั้งต่อ 1 หน้า."""
+        detail_title = (
+            "ข้อมูลรายละเอียดผู้เข้าตรวจหน่วยงาน รายบุคคล"
+            if plan_mode == "planned"
+            else "ข้อมูลรายละเอียดงานอื่น ๆ (ติดตาม / มอบหมาย) รายบุคคล"
+        )
+
         return [
             Paragraph(
                 (
-                    "ข้อมูลรายละเอียดผู้เข้าตรวจหน่วยงาน รายบุคคล "
+                    f"{html.escape(detail_title)} "
                     '<font color="#DC2626">'
                     "(รูปเวลาเข้า และเวลาออกต้องเป็นบุคคลคนเดียวกัน)"
                     "</font>"
@@ -1100,7 +1885,10 @@ class PatrolReportPdfService:
                 Paragraph("สถานะ :", styles["detail_label_right"]),
                 Paragraph(
                     html.escape(row.display_status).replace("\n", "<br/>"),
-                    styles["detail_cell_center"],
+                    PatrolReportPdfService._get_status_badge_style(
+                        display_status=row.display_status,
+                        styles=styles,
+                    ),
                 ),
             ],
             [
@@ -1239,21 +2027,88 @@ class PatrolReportPdfService:
             return Paragraph("ไม่มีรูปภาพ", styles["image_empty"])
 
         try:
-            with PilImage.open(io.BytesIO(image_bytes)) as image:
-                image.verify()
+            compressed_bytes = (
+                PatrolReportPdfService._prepare_image_bytes_for_pdf(
+                    image_bytes
+                )
+            )
+            image_buffer = io.BytesIO(compressed_bytes)
 
-            pdf_image = PdfImage(io.BytesIO(image_bytes))
-            pdf_image._source_buffer = image_bytes  # type: ignore[attr-defined]
+            pdf_image = PdfImage(image_buffer)
+            # เก็บ buffer ไว้ตลอดอายุของ Flowable จน ReportLab สร้าง PDF เสร็จ
+            pdf_image._source_buffer = image_buffer  # type: ignore[attr-defined]
             pdf_image._restrictSize(
                 PatrolReportPdfService.IMAGE_MAX_WIDTH_MM * mm,
                 PatrolReportPdfService.IMAGE_MAX_HEIGHT_MM * mm,
             )
             return pdf_image
         except Exception:
+            logger.exception("ไม่สามารถเตรียมรูปภาพสำหรับ PDF ได้")
             return Paragraph(
                 "ไม่สามารถแสดงรูปภาพได้",
                 styles["image_empty"],
             )
+
+    @staticmethod
+    def _prepare_image_bytes_for_pdf(image_bytes: bytes) -> bytes:
+        """
+        ย่อและบีบอัดสำเนารูปสำหรับฝังใน PDF ด้วย pyvips
+
+        - ไม่แก้ไขไฟล์รูปต้นฉบับ
+        - หมุนรูปตาม EXIF
+        - รักษาอัตราส่วนภาพและไม่ขยายรูปที่เล็กกว่าขนาดเป้าหมาย
+        - วางภาพโปร่งใสบนพื้นหลังสีขาวก่อนบันทึกเป็น JPEG
+        """
+        max_width_px = max(
+            1,
+            round(
+                PatrolReportPdfService.IMAGE_MAX_WIDTH_MM
+                / 25.4
+                * PatrolReportPdfService.PDF_IMAGE_DPI
+            ),
+        )
+        max_height_px = max(
+            1,
+            round(
+                PatrolReportPdfService.IMAGE_MAX_HEIGHT_MM
+                / 25.4
+                * PatrolReportPdfService.PDF_IMAGE_DPI
+            ),
+        )
+
+        # อ่านและย่อจาก bytes โดยตรง เพื่อไม่ต้องถอดรหัสรูปขนาดเต็ม
+        # size="down" ป้องกันการขยายรูปที่เล็กกว่าขนาดเป้าหมาย
+        # no_rotate=False ให้หมุนรูปตาม EXIF โดยอัตโนมัติ
+        image = pyvips.Image.thumbnail_buffer(
+            image_bytes,
+            max_width_px,
+            height=max_height_px,
+            size="down",
+            no_rotate=False,
+            fail_on="error",
+        )
+
+        # JPEG ไม่มี alpha channel จึงวางภาพโปร่งใสบนพื้นหลังสีขาวก่อน
+        if image.hasalpha():
+            image = image.flatten(background=[255, 255, 255])
+
+        # รองรับรูป Grayscale, CMYK และรูปแบบสีอื่นก่อนบันทึกเป็น JPEG
+        if image.interpretation != "srgb":
+            image = image.colourspace("srgb")
+
+        compressed_bytes = bytes(
+            image.jpegsave_buffer(
+                Q=PatrolReportPdfService.PDF_IMAGE_JPEG_QUALITY,
+                optimize_coding=True,
+                interlace=False,
+                subsample_mode="on",
+            )
+        )
+
+        if not compressed_bytes:
+            raise ValueError("ไม่สามารถบีบอัดรูปภาพสำหรับ PDF ได้")
+
+        return compressed_bytes
 
     @staticmethod
     def _read_image_bytes(value: str | None) -> bytes | None:
@@ -1395,8 +2250,45 @@ class PatrolReportPdfService:
         return None
 
     @staticmethod
+    def _get_selected_plan_modes(
+        filters: PatrolReportExportFilter,
+    ) -> list[PatrolReportPlanMode]:
+        """อ่านโหมดจาก schema ใหม่ และยังรองรับ Job เก่าที่มี plan_mode ค่าเดียว."""
+        raw_modes = PatrolReportPdfService._get_filter_value(
+            filters,
+            "plan_modes",
+            "planModes",
+        )
+
+        if raw_modes is None:
+            legacy_mode = (
+                PatrolReportPdfService._get_filter_value(
+                    filters,
+                    "plan_mode",
+                    "planMode",
+                )
+                or "planned"
+            )
+            raw_modes = [legacy_mode]
+
+        if isinstance(raw_modes, str):
+            raw_modes = [raw_modes]
+
+        selected_modes: list[PatrolReportPlanMode] = []
+        for raw_mode in raw_modes:
+            if raw_mode not in ("planned", "outside_plan"):
+                continue
+
+            if raw_mode not in selected_modes:
+                selected_modes.append(raw_mode)
+
+        return selected_modes or ["planned"]
+
+    @staticmethod
     def _format_selected_filters(
         filters: PatrolReportExportFilter,
+        *,
+        plan_mode: PatrolReportPlanMode | None,
     ) -> str:
         """ข้อความเงื่อนไขที่เลือกดูสำหรับแสดงด้านซ้ายของส่วนหัว."""
         workday_start = PatrolReportPdfService._get_filter_value(
@@ -1413,14 +2305,6 @@ class PatrolReportPdfService:
             "end_date",
             "endDate",
         )
-        plan_mode = (
-            PatrolReportPdfService._get_filter_value(
-                filters,
-                "plan_mode",
-                "planMode",
-            )
-            or "planned"
-        )
         shift_type = (
             PatrolReportPdfService._get_filter_value(
                 filters,
@@ -1430,7 +2314,15 @@ class PatrolReportPdfService:
             or "all"
         )
 
-        plan_text = "ตามแผน" if plan_mode == "planned" else "นอกแผน"
+        if plan_mode == "planned":
+            plan_text = "การตรวจหน่วยงานตามแผน"
+        elif plan_mode == "outside_plan":
+            plan_text = "งานอื่น ๆ (ติดตาม / มอบหมาย)"
+        else:
+            plan_text = (
+                "การตรวจหน่วยงานตามแผน และ "
+                "งานอื่น ๆ (ติดตาม / มอบหมาย)"
+            )
         shift_text = {
             "all": "ทั้งหมด",
             "day": "ผลัดกลางวัน",
@@ -1441,7 +2333,7 @@ class PatrolReportPdfService:
             "ข้อมูลที่เลือกตรวจสอบ: "
             f"ช่วงวันที่ {html.escape(PatrolReportPdfService._format_thai_date(workday_start))}"
             f" - {html.escape(PatrolReportPdfService._format_thai_date(workday_end))}"
-            f" | ประเภทแผน: {html.escape(plan_text)}"
+            f" | ประเภทรายงาน: {html.escape(plan_text)}"
             f" | ผลัด: {html.escape(shift_text)}"
         )
 
@@ -1461,9 +2353,17 @@ class PatrolReportPdfService:
             master_name: str,
             row_value: str | None,
             filter_names: tuple[str, ...],
-            all_text: str = "ทั้งหมด",
-        ) -> str:
-            # ลำดับความสำคัญ: ตาราง master > view > ทั้งหมด/ไม่พบชื่อ
+        ) -> str | None:
+            # ต้องตรวจ filter ก่อน เพื่อไม่ให้กรณีเลือก "ทั้งหมด"
+            # หยิบชื่อขอบเขตจากข้อมูลแถวแรกมาแสดงโดยไม่ได้ตั้งใจ.
+            filter_value = PatrolReportPdfService._get_filter_value(
+                filters,
+                *filter_names,
+            )
+            if filter_value is None:
+                return None
+
+            # เมื่อมีการเลือก filter: ตาราง master > view > ไม่พบชื่อ
             master_text = str(master_name or "").strip()
             if master_text:
                 return master_text
@@ -1472,11 +2372,7 @@ class PatrolReportPdfService:
             if row_text:
                 return row_text
 
-            filter_value = PatrolReportPdfService._get_filter_value(
-                filters,
-                *filter_names,
-            )
-            return all_text if filter_value is None else "ไม่พบชื่อ"
+            return "ไม่พบชื่อ"
 
         department_text = get_scope_label(
             master_name=scope.department_name,
@@ -1494,13 +2390,15 @@ class PatrolReportPdfService:
             filter_names=("route_id", "routeId"),
         )
 
-        # ใช้ชื่อจริงจาก master/view โดยไม่ฟิกหัวข้อ "ภาค / เขต / เส้นทาง"
+        # แสดงเฉพาะขอบเขตที่ผู้ใช้เลือกจริง เช่น route_id=None จะไม่แสดงเส้นทาง.
         return " | ".join(
-            (
-                html.escape(department_text),
-                html.escape(division_text),
-                html.escape(route_text),
+            html.escape(scope_text)
+            for scope_text in (
+                department_text,
+                division_text,
+                route_text,
             )
+            if scope_text
         )
 
     @staticmethod
@@ -1511,7 +2409,11 @@ class PatrolReportPdfService:
         เก็บ method เดิมไว้สำหรับ compatibility กับ code อื่น
         แต่หน้า PDF ใหม่ใช้ _format_selected_filters() แยกจากเวลาที่ดึงข้อมูลแล้ว.
         """
-        return PatrolReportPdfService._format_selected_filters(filters)
+        selected_modes = PatrolReportPdfService._get_selected_plan_modes(filters)
+        return PatrolReportPdfService._format_selected_filters(
+            filters,
+            plan_mode=selected_modes[0],
+        )
 
     @staticmethod
     def _format_thai_date(value: Any) -> str:
@@ -1789,6 +2691,15 @@ class PatrolReportPdfService:
                 alignment=TA_CENTER,
                 textColor=colors.black,
             ),
+            "table_group": ParagraphStyle(
+                "PatrolReportTableGroup",
+                parent=base_styles["Normal"],
+                fontName=PatrolReportPdfService.FONT_BOLD_NAME,
+                fontSize=PatrolReportPdfService.FONT_SIZE_TABLE_HEADER,
+                leading=PatrolReportPdfService.FONT_LEADING_TABLE_HEADER,
+                alignment=TA_LEFT,
+                textColor=colors.HexColor("#1E3A8A"),
+            ),
             "cell": ParagraphStyle(
                 "PatrolReportCell",
                 parent=base_styles["Normal"],
@@ -1804,6 +2715,59 @@ class PatrolReportPdfService:
                 fontSize=PatrolReportPdfService.FONT_SIZE_TABLE_CELL,
                 leading=PatrolReportPdfService.FONT_LEADING_TABLE_CELL,
                 alignment=TA_CENTER,
+            ),
+            "status_completed": ParagraphStyle(
+                "PatrolReportStatusCompleted",
+                parent=base_styles["Normal"],
+                fontName=PatrolReportPdfService.FONT_BOLD_NAME,
+                fontSize=PatrolReportPdfService.FONT_SIZE_TABLE_CELL,
+                leading=PatrolReportPdfService.FONT_LEADING_TABLE_CELL,
+                alignment=TA_CENTER,
+                textColor=colors.HexColor("#15803D"),
+                backColor=colors.HexColor("#DCFCE7"),
+                borderColor=colors.HexColor("#86EFAC"),
+                borderWidth=0.5,
+                borderPadding=2,
+            ),
+            "status_finished": ParagraphStyle(
+                "PatrolReportStatusFinished",
+                parent=base_styles["Normal"],
+                fontName=PatrolReportPdfService.FONT_BOLD_NAME,
+                fontSize=6,
+                leading=7.5,
+                alignment=TA_CENTER,
+                splitLongWords=False,
+                textColor=colors.HexColor("#1D4ED8"),
+                backColor=colors.HexColor("#DBEAFE"),
+                borderColor=colors.HexColor("#93C5FD"),
+                borderWidth=0.5,
+                borderPadding=2,
+            ),
+            "status_in_progress": ParagraphStyle(
+                "PatrolReportStatusInProgress",
+                parent=base_styles["Normal"],
+                fontName=PatrolReportPdfService.FONT_BOLD_NAME,
+                fontSize=PatrolReportPdfService.FONT_SIZE_TABLE_CELL,
+                leading=PatrolReportPdfService.FONT_LEADING_TABLE_CELL,
+                alignment=TA_CENTER,
+                textColor=colors.HexColor("#9A3412"),
+                backColor=colors.HexColor("#FFF7ED"),
+                borderColor=colors.HexColor("#FDBA74"),
+                borderWidth=0.5,
+                borderPadding=2,
+            ),
+            "status_completed_call": ParagraphStyle(
+                "PatrolReportStatusCompletedCall",
+                parent=base_styles["Normal"],
+                fontName=PatrolReportPdfService.FONT_BOLD_NAME,
+                fontSize=PatrolReportPdfService.FONT_SIZE_TABLE_CELL,
+                leading=PatrolReportPdfService.FONT_LEADING_TABLE_CELL,
+                alignment=TA_CENTER,
+                textColor=colors.HexColor("#7E22CE"),
+                backColor=colors.HexColor("#F3E8FF"),
+                borderColor=colors.HexColor("#D8B4FE"),
+                borderWidth=0.5,
+                borderPadding=2,
             ),
             "operator_cell": ParagraphStyle(
                 "PatrolReportOperatorCell",
@@ -1853,6 +2817,9 @@ class PatrolReportPdfService:
         **kwargs: Any,
     ) -> PatrolReportPdfNumberedCanvas:
         """สร้าง Canvas ที่แสดงเลขหน้าแบบ X/จำนวนหน้าทั้งหมด."""
+        # บีบอัด content stream ของข้อความ เส้น และตารางใน PDF
+        kwargs["pageCompression"] = 1
+
         return PatrolReportPdfNumberedCanvas(
             *args,
             footer_right_margin=12 * mm,

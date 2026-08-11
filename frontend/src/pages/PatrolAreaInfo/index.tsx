@@ -800,7 +800,7 @@ export default function PatrolAreaInfo({
                                     styles.outsidePlanSubLine
                                   }
                                 >
-                                  (นอกแผน)
+                                  (ติดตาม\มอบหมาย)
                                 </span>
                               </div>
                             </div>

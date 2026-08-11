@@ -1,140 +1,135 @@
 // frontend/src/types/patrolReportExport.ts
 
 export type PatrolReportExportJobStatus =
-| "queued"
-| "processing"
-| "completed"
-| "failed"
-| "cancelled"
-| "expired";
+  | "queued"
+  | "processing"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "expired";
 
 export type PatrolReportExportType = "patrol_report";
 
 export type PatrolReportExportPlanMode =
-| "planned"
-| "outside_plan";
+  | "planned"
+  | "outside_plan";
 
 export type PatrolReportExportShiftType =
-| "all"
-| "day"
-| "night";
+  | "all"
+  | "day"
+  | "night";
 
 export type PatrolReportExportStatus =
-| "all"
-| "completed"
-| "completed_call"
-| "in_progress"
-| "pending";
+  | "all"
+  | "completed"
+  | "completed_call"
+  | "in_progress"
+  | "pending";
 
 /**
-
-* Filter ที่ส่งให้ Backend เพื่อสร้างรายงาน PDF
-*
-* ใช้ camelCase ใน Frontend
-* patrolReportExportApi.ts จะแปลงเป็น snake_case ก่อนส่ง API
-  */
-  export type PatrolReportExportFilter = {
+ * Filter ที่ส่งให้ Backend เพื่อสร้างรายงาน PDF
+ *
+ * ใช้ camelCase ใน Frontend
+ * patrolReportExportApi.ts จะแปลงเป็น snake_case ก่อนส่ง API
+ */
+export type PatrolReportExportFilter = {
   workdayStart: string;
   workdayEnd: string;
 
-departmentId: number;
-divisionId: number;
+  departmentId: number;
+  divisionId: number;
 
-routeId?: number;
-locationId?: number;
-employeeCode?: string;
+  routeId?: number;
+  locationId?: number;
+  employeeCode?: string;
 
-planMode: PatrolReportExportPlanMode;
-shiftType: PatrolReportExportShiftType;
-status: PatrolReportExportStatus;
+  planModes: PatrolReportExportPlanMode[];
+  shiftType: PatrolReportExportShiftType;
+  status: PatrolReportExportStatus;
 
-keyword: string;
+  keyword: string;
 };
 
 /**
-
-* Payload สำหรับ POST /patrol-report-exports/
-  */
-  export type PatrolReportExportCreatePayload = {
+ * Payload สำหรับ POST /patrol-report-exports/
+ */
+export type PatrolReportExportCreatePayload = {
   filters: PatrolReportExportFilter;
 
-// true = รวมรูปเวลาเข้า / ออก ใน PDF
-includeImages: boolean;
+  // true = รวมรูปเวลาเข้า / ออก ใน PDF
+  includeImages: boolean;
 
-// รหัสพนักงานของผู้ใช้งานที่ Login อยู่จริง
-requestedBy: string;
+  // รหัสพนักงานของผู้ใช้งานที่ Login อยู่จริง
+  requestedBy: string;
 };
 
 /**
-
-* Payload สำหรับ cancel / retry / delete
-  */
-  export type PatrolReportExportActionPayload = {
+ * Payload สำหรับ cancel / retry / delete
+ */
+export type PatrolReportExportActionPayload = {
   updatedBy: string;
-  };
+};
 
 /**
-
-* Response ของ Job ที่ Backend ส่งกลับมา
-*
-* patrolReportExportApi.ts จะแปลงจาก snake_case
-* เป็น camelCase ก่อนคืนค่าให้ Component
-  */
-  export type PatrolReportExportJobResponse = {
+ * Response ของ Job ที่ Backend ส่งกลับมา
+ *
+ * patrolReportExportApi.ts จะแปลงจาก snake_case
+ * เป็น camelCase ก่อนคืนค่าให้ Component
+ */
+export type PatrolReportExportJobResponse = {
   reportExportJobId: number;
 
-reportType: PatrolReportExportType;
+  reportType: PatrolReportExportType;
 
-// Filter ณ เวลาที่ผู้ใช้กดสร้างรายงาน
-filtersJson: Record<string, unknown>;
+  // Filter ณ เวลาที่ผู้ใช้กดสร้างรายงาน
+  filtersJson: Record<string, unknown>;
 
-includeImages: boolean;
+  includeImages: boolean;
 
-jobStatus: PatrolReportExportJobStatus;
+  jobStatus: PatrolReportExportJobStatus;
 
-progressCurrent: number;
-progressTotal: number;
-progressPercent: number;
+  progressCurrent: number;
+  progressTotal: number;
+  progressPercent: number;
 
-// true เมื่อ PDF สร้างเสร็จและดาวน์โหลดได้
-downloadReady: boolean;
+  // true เมื่อ PDF สร้างเสร็จและดาวน์โหลดได้
+  downloadReady: boolean;
 
-// Relative path บน Server
-fileRelativePath: string | null;
+  // Relative path บน Server
+  fileRelativePath: string | null;
 
-// ชื่อไฟล์สำหรับ Browser ดาวน์โหลด
-downloadFilename: string | null;
+  // ชื่อไฟล์สำหรับ Browser ดาวน์โหลด
+  downloadFilename: string | null;
 
-fileSizeBytes: number | null;
+  fileSizeBytes: number | null;
 
-// แสดงเมื่อ job_status = failed
-errorMessage: string | null;
+  // แสดงเมื่อ job_status = failed
+  errorMessage: string | null;
 
-startedAt: string | null;
-completedAt: string | null;
-expiresAt: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  expiresAt: string | null;
 
-requestedBy: string;
-updatedBy: string | null;
+  requestedBy: string;
+  updatedBy: string | null;
 
-markFlag: boolean;
+  markFlag: boolean;
 
-createdAt: string;
-updatedAt: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 /**
-
-* Parameters สำหรับหน้า History ในอนาคต
-* GET /patrol-report-exports/
-  */
-  export type GetPatrolReportExportJobsParams = {
+ * Parameters สำหรับหน้า History ในอนาคต
+ * GET /patrol-report-exports/
+ */
+export type GetPatrolReportExportJobsParams = {
   skip?: number;
   limit?: number;
 
-requestedBy?: string;
+  requestedBy?: string;
 
-jobStatus?: PatrolReportExportJobStatus;
+  jobStatus?: PatrolReportExportJobStatus;
 
-includeDeleted?: boolean;
+  includeDeleted?: boolean;
 };

@@ -1,0 +1,730 @@
+/* src/pages/Attendance/WorkAssignment/WorkAssignment.module.css */
+
+:root {
+  --work-assignment-title-size: clamp(20px, 5vw, 24px);
+  --work-assignment-section-size: clamp(15px, 3.9vw, 18px);
+  --work-assignment-text-size: clamp(15px, 3.8vw, 17px);
+  --work-assignment-button-size: clamp(17px, 4.4vw, 20px);
+  --work-assignment-blue: #024b76;
+  --work-assignment-blue-dark: #013a5a;
+  --work-assignment-text: #1b2b4a;
+  --work-assignment-red: #d60000;
+  --work-assignment-green: #12a44a;
+  --work-assignment-border: rgba(2, 75, 118, 0.18);
+}
+
+.pageCard {
+  width: 100%;
+  min-width: 0;
+}
+
+.pageTitle {
+  width: 100%;
+  margin: 14px 0 4px;
+  color: var(--work-assignment-text);
+  font-size: var(--work-assignment-title-size);
+  font-weight: 900;
+  line-height: 1.3;
+  text-align: center;
+}
+
+.unitStatus {
+  width: 100%;
+  margin: 0 0 12px;
+  color: var(--work-assignment-green);
+  font-size: clamp(15px, 3.8vw, 17px);
+  font-weight: 700;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.unitName {
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.formCard {
+  width: 100%;
+  overflow: hidden;
+  border: 2px solid var(--work-assignment-border);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.1);
+}
+
+.formSection + .formSection {
+  margin-top: 12px;
+}
+
+.sectionTitle {
+  margin: 0;
+  padding: 11px 14px;
+  color: #fff;
+  font-size: var(--work-assignment-section-size);
+  font-weight: 900;
+  line-height: 1.35;
+  background: linear-gradient(
+    90deg,
+    var(--work-assignment-blue),
+    var(--work-assignment-blue-dark)
+  );
+}
+
+.purposeList {
+  display: grid;
+  padding: 0 12px;
+}
+
+.purposeOption {
+  width: 100%;
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 0;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.13);
+  background: transparent;
+  color: var(--work-assignment-text);
+  font: inherit;
+  font-size: var(--work-assignment-text-size);
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+}
+
+.purposeOption:last-child {
+  border-bottom: 0;
+}
+
+.purposeOption:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.purposeOptionSelected {
+  color: var(--work-assignment-blue);
+  font-weight: 800;
+}
+
+.radioMark {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: grid;
+  place-items: center;
+  border: 2px solid #a9b5c4;
+  border-radius: 7px;
+  color: #fff;
+  font-size: 15px;
+  background: #fff;
+}
+
+.purposeOptionSelected .radioMark {
+  border-color: var(--work-assignment-blue);
+  background: var(--work-assignment-blue);
+}
+
+.addButton {
+  min-height: 48px;
+  margin: 12px auto;
+  padding: 8px 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border: 2px solid var(--work-assignment-blue);
+  border-radius: 14px;
+  background: #fff;
+  color: var(--work-assignment-blue);
+  font-size: var(--work-assignment-text-size);
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.addButton:hover:not(:disabled) {
+  background: rgba(2, 75, 118, 0.06);
+}
+
+.addButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.workItemList {
+  margin: 0 12px;
+  overflow: hidden;
+  border: 1px solid rgba(15, 23, 42, 0.16);
+  border-radius: 14px;
+}
+
+.workItemRow {
+  min-height: 72px;
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 52px auto auto;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 10px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.14);
+  background: #fff;
+}
+
+.workItemRow:last-child {
+  border-bottom: 0;
+}
+
+.workItemNumber {
+  color: #526277;
+  font-size: 14px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.workItemTitle {
+  min-width: 0;
+  color: var(--work-assignment-text);
+  font-size: clamp(14px, 3.5vw, 16px);
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.imagePreview {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(2, 75, 118, 0.18);
+  border-radius: 10px;
+  background: rgba(2, 75, 118, 0.08);
+  color: rgba(2, 75, 118, 0.7);
+  font-size: 20px;
+}
+
+.imagePreview img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.imagePicker {
+  color: #075fd4;
+  font-size: clamp(13px, 3.2vw, 15px);
+  font-weight: 700;
+  text-decoration: underline;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.imagePicker input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+.deleteButton {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 9px;
+  background: rgba(214, 0, 0, 0.07);
+  color: var(--work-assignment-red);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.deleteButton:disabled,
+.imagePicker:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.emptyItems {
+  padding: 20px 12px;
+  color: #64748b;
+  font-size: 15px;
+  text-align: center;
+  background: #fff;
+}
+
+.noteWrap {
+  padding: 12px;
+}
+
+.noteInput {
+  width: 100%;
+  min-height: 126px;
+  display: block;
+  resize: vertical;
+  padding: 13px 14px;
+  border: 1px solid #aeb8c5;
+  border-radius: 12px;
+  outline: none;
+  color: var(--work-assignment-text);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.5;
+  background: #fff;
+}
+
+.noteInput:focus {
+  border-color: var(--work-assignment-blue);
+  box-shadow: 0 0 0 3px rgba(2, 75, 118, 0.12);
+}
+
+.noteInput::placeholder {
+  color: #8a96a6;
+}
+
+.characterCount {
+  margin-top: 5px;
+  color: #64748b;
+  font-size: 12px;
+  text-align: right;
+}
+
+.errorMessage {
+  margin: 0 12px 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(184, 0, 0, 0.18);
+  border-radius: 12px;
+  background: rgba(192, 0, 0, 0.08);
+  color: #b80000;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.actionArea {
+  display: grid;
+  gap: 10px;
+  padding: 2px 14px 14px;
+}
+
+.saveStayButton,
+.saveCheckoutButton,
+.backButton {
+  width: 100%;
+  min-height: 58px;
+  border: 0;
+  border-radius: 999px;
+  color: #fff;
+  font: inherit;
+  font-size: var(--work-assignment-button-size);
+  font-weight: 900;
+  cursor: pointer;
+  transition:
+    transform 0.08s ease,
+    filter 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.saveStayButton {
+  background: linear-gradient(
+    90deg,
+    var(--work-assignment-blue),
+    var(--work-assignment-blue-dark)
+  );
+  box-shadow: 0 12px 22px rgba(2, 75, 118, 0.2);
+}
+
+.saveCheckoutButton {
+  background: linear-gradient(90deg, #e00000, #b90000);
+  box-shadow: 0 12px 22px rgba(185, 0, 0, 0.18);
+}
+
+.backButtonWrap {
+  margin-top: 2px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(2, 75, 118, 0.18);
+}
+
+.backButton {
+  background: #000;
+  box-shadow: 0 10px 16px rgba(0, 0, 0, 0.2);
+}
+
+.saveStayButton:hover:not(:disabled),
+.saveCheckoutButton:hover:not(:disabled),
+.backButton:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.saveStayButton:active:not(:disabled),
+.saveCheckoutButton:active:not(:disabled),
+.backButton:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.saveStayButton:disabled,
+.saveCheckoutButton:disabled,
+.backButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+/* ===== Add work item modal ===== */
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.58);
+  backdrop-filter: blur(3px);
+}
+
+.modal {
+  width: min(100%, 430px);
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  border: 1px solid rgba(2, 75, 118, 0.22);
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
+}
+
+.modalHeader {
+  margin: 0;
+  padding: 15px 16px 13px;
+  border-bottom: 1px solid rgba(2, 75, 118, 0.16);
+  color: var(--work-assignment-text);
+  font-size: clamp(18px, 4.8vw, 21px);
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+.modalSectionTitle {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  align-items: center;
+  min-height: 48px;
+  color: #fff;
+  font-size: clamp(15px, 3.9vw, 17px);
+  font-weight: 900;
+  background: linear-gradient(
+    90deg,
+    var(--work-assignment-blue),
+    var(--work-assignment-blue-dark)
+  );
+}
+
+.modalSectionTitle span:first-child {
+  text-align: center;
+}
+
+.modalBody {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+}
+
+.modalItemRow {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.modalItemNumber {
+  min-height: 48px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  border-radius: 10px;
+  color: #526277;
+  background: #f8fafc;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.modalField {
+  min-width: 0;
+}
+
+.modalLabel {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--work-assignment-text);
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.modalLabel span {
+  color: var(--work-assignment-red);
+}
+
+.modalSelect,
+.modalDetailInput {
+  width: 100%;
+  border: 1px solid #aeb8c5;
+  border-radius: 10px;
+  outline: none;
+  color: var(--work-assignment-text);
+  font: inherit;
+  font-size: 16px;
+  background: #fff;
+}
+
+.modalSelect {
+  min-height: 48px;
+  padding: 9px 38px 9px 12px;
+}
+
+.modalDetailInput {
+  min-height: 92px;
+  display: block;
+  resize: vertical;
+  padding: 11px 12px;
+  line-height: 1.45;
+}
+
+.modalSelect:focus,
+.modalDetailInput:focus {
+  border-color: var(--work-assignment-blue);
+  box-shadow: 0 0 0 3px rgba(2, 75, 118, 0.12);
+}
+
+.modalDetailInput::placeholder {
+  color: #8a96a6;
+}
+
+.modalCharacterCount {
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 12px;
+  text-align: right;
+}
+
+.modalImagePreview {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  max-height: 220px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(2, 75, 118, 0.2);
+  border-radius: 12px;
+  background: #f2f6fa;
+}
+
+.modalImagePreview img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+}
+
+.modalImagePlaceholder {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  color: #718096;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.modalImagePlaceholder svg {
+  color: rgba(2, 75, 118, 0.7);
+  font-size: 34px;
+}
+
+.modalImagePicker {
+  width: 100%;
+  min-height: 46px;
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 2px solid var(--work-assignment-blue);
+  border-radius: 12px;
+  color: var(--work-assignment-blue);
+  background: #fff;
+  font-size: 15px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.modalImagePicker input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+.modalImagePicker:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.modalImageName {
+  margin-top: 6px;
+  overflow: hidden;
+  color: #64748b;
+  font-size: 12px;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modalError {
+  padding: 10px 12px;
+  border: 1px solid rgba(184, 0, 0, 0.18);
+  border-radius: 11px;
+  color: #b80000;
+  background: rgba(192, 0, 0, 0.08);
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.modalActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: 13px 14px 15px;
+  border-top: 1px solid rgba(2, 75, 118, 0.16);
+  background: #f8fafc;
+}
+
+.modalCloseButton,
+.modalSaveButton {
+  min-height: 50px;
+  border-radius: 13px;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.modalCloseButton {
+  border: 2px solid #b91c1c;
+  color: #b91c1c;
+  background: #fff;
+}
+
+.modalSaveButton {
+  border: 2px solid var(--work-assignment-blue);
+  color: #fff;
+  background: linear-gradient(
+    90deg,
+    var(--work-assignment-blue),
+    var(--work-assignment-blue-dark)
+  );
+}
+
+.modalCloseButton:disabled,
+.modalSaveButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+@media (max-width: 420px) {
+  .sectionTitle {
+    padding: 10px 11px;
+  }
+
+  .purposeList,
+  .noteWrap {
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+
+  .workItemList {
+    margin-right: 10px;
+    margin-left: 10px;
+  }
+
+  .workItemRow {
+    grid-template-columns: 40px minmax(0, 1fr) 48px;
+    gap: 8px;
+    padding: 9px;
+  }
+
+  .imagePreview {
+    width: 48px;
+    height: 48px;
+  }
+
+  .imagePicker {
+    grid-column: 2 / 3;
+  }
+
+  .deleteButton {
+    grid-column: 3 / 4;
+    min-height: 36px;
+  }
+
+  .actionArea {
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+
+  .modalOverlay {
+    padding: 9px;
+  }
+
+  .modal {
+    max-height: calc(100dvh - 18px);
+  }
+
+  .modalHeader {
+    padding: 13px 12px 11px;
+  }
+
+  .modalBody {
+    padding: 12px;
+  }
+}
+
+@media (max-width: 340px) {
+  .workItemRow {
+    grid-template-columns: 38px minmax(0, 1fr) 46px;
+  }
+
+  .imagePicker {
+    grid-column: 2 / 3;
+  }
+
+  .deleteButton {
+    grid-column: 3 / 4;
+  }
+
+  .modalItemRow {
+    grid-template-columns: 48px minmax(0, 1fr);
+  }
+
+  .modalActions {
+    gap: 8px;
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .saveStayButton,
+  .saveCheckoutButton,
+  .backButton,
+  .modalCloseButton,
+  .modalSaveButton {
+    transition: none;
+  }
+}

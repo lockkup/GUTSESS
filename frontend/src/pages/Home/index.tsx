@@ -255,7 +255,7 @@ export default function Home({
                   <span className={styles.menuMainLine}>
                     ลงเวลา เข้า-ออกงาน
                   </span>
-                  <span className={styles.menuSubLine}>(นอกแผน)</span>
+                  <span className={styles.menuSubLine}>(ติดตาม\มอบหมาย)</span>
                 </div>
               </div>
             </button>

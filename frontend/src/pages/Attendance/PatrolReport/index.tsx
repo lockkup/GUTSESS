@@ -12,10 +12,7 @@ import {
   Search,
   UserRoundPen,
 } from "lucide-react";
-import {
-  BsCalendar2Check,
-  BsFileEarmarkPdf,
-} from "react-icons/bs";
+import { BsCalendar2Check, BsFileEarmarkPdf } from "react-icons/bs";
 
 import BackButton from "@/components/BackButton";
 import { useStore } from "@/store/store";
@@ -31,6 +28,7 @@ import ReportTimePhotoCell from "@/components/ReportTimePhotoCell";
 import ReportImagePreviewModal, {
   type PreviewImageState,
 } from "@/components/ReportImagePreviewModal";
+import PdfExportErrorModal from "@/components/PdfExportErrorModal";
 import {
   createPatrolReportExportJob,
   downloadPatrolReportExportFile,
@@ -42,14 +40,12 @@ import styles from "./PatrolReport.module.css";
 
 type ShiftValue = "all" | "day" | "night";
 type ReportPlanMode = "planned" | "outside_plan";
+type ReportPlanModeSelection = Record<ReportPlanMode, boolean>;
 
 type PatrolNotificationLevel = "none" | "green" | "yellow" | "orange" | "red";
 
 type ReportDisplayStatus = PatrolStatus | "completed_call";
-type StatusFilterValue =
-  | "all"
-  | ReportDisplayStatus
-  | "pending_reserved";
+type StatusFilterValue = "all" | ReportDisplayStatus | "pending_reserved";
 type DatePickerField = "start" | "end";
 
 type PatrolReportPageProps = {
@@ -60,7 +56,7 @@ type FetchPatrolReportOptions = {
   startDate: string;
   endDate: string;
   shiftValue: ShiftValue;
-  planMode: ReportPlanMode;
+  planModes: ReportPlanMode[];
   searchText: string;
   departmentIdText: string;
   divisionIdText: string;
@@ -71,8 +67,8 @@ type FetchPatrolReportOptions = {
 
 type ExtraPatrolReportFilterParams = {
   workdayStart?: string;
-  planMode?: ReportPlanMode;
-  plan_mode?: ReportPlanMode;
+  planModes?: ReportPlanMode[];
+  plan_modes?: ReportPlanMode[];
   workdayEnd?: string;
   startDate?: string;
   endDate?: string;
@@ -85,6 +81,8 @@ type ExtraPatrolReportFilterParams = {
 };
 
 type PatrolReportDisplayRow = PatrolReportRow & {
+  reportPlanMode: ReportPlanMode;
+
   assignmentStatus?: PatrolStatus | null;
   assignment_status?: PatrolStatus | null;
 
@@ -226,12 +224,7 @@ const THAI_DATE_LOCALE = "th-TH-u-ca-buddhist";
 const THAI_WEEKDAY_LOCALE = "th-TH";
 
 type IntlDateTimePartType =
-  | "weekday"
-  | "day"
-  | "month"
-  | "year"
-  | "hour"
-  | "minute";
+  "weekday" | "day" | "month" | "year" | "hour" | "minute";
 
 const thaiShortDatePartsFormatter = new Intl.DateTimeFormat(THAI_DATE_LOCALE, {
   day: "numeric",
@@ -246,13 +239,10 @@ const thaiLongDatePartsFormatter = new Intl.DateTimeFormat(THAI_DATE_LOCALE, {
   year: "numeric",
 });
 
-const thaiMonthYearPartsFormatter = new Intl.DateTimeFormat(
-  THAI_DATE_LOCALE,
-  {
-    month: "long",
-    year: "numeric",
-  },
-);
+const thaiMonthYearPartsFormatter = new Intl.DateTimeFormat(THAI_DATE_LOCALE, {
+  month: "long",
+  year: "numeric",
+});
 
 const thaiDateTimePartsFormatter = new Intl.DateTimeFormat(THAI_DATE_LOCALE, {
   day: "numeric",
@@ -263,12 +253,9 @@ const thaiDateTimePartsFormatter = new Intl.DateTimeFormat(THAI_DATE_LOCALE, {
   hour12: false,
 });
 
-const thaiWeekdayShortFormatter = new Intl.DateTimeFormat(
-  THAI_WEEKDAY_LOCALE,
-  {
-    weekday: "short",
-  },
-);
+const thaiWeekdayShortFormatter = new Intl.DateTimeFormat(THAI_WEEKDAY_LOCALE, {
+  weekday: "short",
+});
 
 function getIntlPart(
   formatter: Intl.DateTimeFormat,
@@ -390,7 +377,6 @@ function formatReportDateText(value: string | null | undefined) {
   });
 }
 
-
 function parseApiDateTime(value: string | null | undefined) {
   if (!value) return null;
 
@@ -441,8 +427,11 @@ function formatDateTimeThaiShort(value: string | null | undefined) {
   const hour = normalizeHourPart(
     getIntlPart(thaiDateTimePartsFormatter, date, "hour"),
   );
-  const minute = getIntlPart(thaiDateTimePartsFormatter, date, "minute")
-    .padStart(2, "0");
+  const minute = getIntlPart(
+    thaiDateTimePartsFormatter,
+    date,
+    "minute",
+  ).padStart(2, "0");
 
   return `${day} ${month} ${year} ${hour}:${minute}`;
 }
@@ -597,7 +586,10 @@ const SHIFT_ID_BY_VALUE: Record<Exclude<ShiftValue, "all">, number> = {
 };
 
 const DEFAULT_SHIFT_VALUE: ShiftValue = "all";
-const DEFAULT_PLAN_MODE: ReportPlanMode = "planned";
+const DEFAULT_PLAN_MODES: ReportPlanModeSelection = {
+  planned: true,
+  outside_plan: false,
+};
 const DEFAULT_STATUS_VALUE: StatusFilterValue = "all";
 const DEFAULT_SEARCH_TEXT = "";
 
@@ -632,7 +624,14 @@ function getStatusLabel(status: ReportDisplayStatus) {
   }
 }
 
-function getStatusClass(status: ReportDisplayStatus) {
+function getStatusClass(
+  row: PatrolReportDisplayRow,
+  status: ReportDisplayStatus,
+) {
+  if (row.reportPlanMode === "outside_plan" && status === "completed") {
+    return styles.statusFinished;
+  }
+
   switch (status) {
     case "completed":
       return styles.statusCompleted;
@@ -677,6 +676,17 @@ function getDisplayStatus(row: PatrolReportDisplayRow): ReportDisplayStatus {
   }
 
   return getAssignmentStatus(row);
+}
+
+function getReportStatusLabel(
+  row: PatrolReportDisplayRow,
+  status: ReportDisplayStatus,
+) {
+  if (row.reportPlanMode === "outside_plan" && status === "completed") {
+    return "เรียบร้อย(ติดตาม/มอบหมาย)";
+  }
+
+  return getStatusLabel(status);
 }
 
 function getEffectiveFromText(row: PatrolReportDisplayRow) {
@@ -843,6 +853,15 @@ function getCheckInDateTimeText(row: PatrolReportDisplayRow) {
   );
 }
 
+function getCheckInDateTime(row: PatrolReportDisplayRow) {
+  return parseApiDateTime(
+    row.checkInDateTime ??
+      row.check_in_date_time ??
+      row.check_in_datetime ??
+      null,
+  );
+}
+
 function getCheckOutDateTimeText(row: PatrolReportDisplayRow) {
   return formatDateTimeThaiShort(
     row.checkOutDateTime ??
@@ -903,7 +922,10 @@ function getReportCountText(count: number) {
   return `แสดง 1 - ${count} จาก ${count} รายการ`;
 }
 
-function getDepartmentOptionLabel(departmentName: string, departmentId: number) {
+function getDepartmentOptionLabel(
+  departmentName: string,
+  departmentId: number,
+) {
   const name = departmentName.trim();
 
   if (!name) {
@@ -988,9 +1010,7 @@ function getApiOriginForImage() {
     return "";
   }
 
-  return apiBaseUrl
-    .replace(/\/api(?:\/v\d+)?\/?$/i, "")
-    .replace(/\/$/, "");
+  return apiBaseUrl.replace(/\/api(?:\/v\d+)?\/?$/i, "").replace(/\/$/, "");
 }
 
 function resolveReportImageUrl(value: string | null | undefined) {
@@ -1101,9 +1121,11 @@ function EmptyReportState({
 function StatusIcon({
   status,
   isReservedPending,
+  reportPlanMode,
 }: {
   status: ReportDisplayStatus;
   isReservedPending: boolean;
+  reportPlanMode: ReportPlanMode;
 }) {
   if (status === "completed_call") {
     return (
@@ -1114,8 +1136,13 @@ function StatusIcon({
   }
 
   if (status === "completed") {
+    const completedIconClass =
+      reportPlanMode === "outside_plan"
+        ? styles.iconFinished
+        : styles.iconCompleted;
+
     return (
-      <span className={`${styles.statusIcon} ${styles.iconCompleted}`}>
+      <span className={`${styles.statusIcon} ${completedIconClass}`}>
         <Check size={18} strokeWidth={3} />
       </span>
     );
@@ -1144,9 +1171,7 @@ function StatusIcon({
   );
 }
 
-export default function PatrolReportPage({
-  onBack,
-}: PatrolReportPageProps) {
+export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
   // รหัสผู้สั่ง Export ต้องเป็นผู้ที่ Login อยู่จริง
   // ไม่ใช้ employeeCodeText เพราะเป็นเพียงตัวกรองรายสายตรวจ
   const requestedBy = useStore(
@@ -1157,11 +1182,14 @@ export default function PatrolReportPage({
   const [filterOptions, setFilterOptions] =
     useState<PatrolReportFilterOptions>(EMPTY_FILTER_OPTIONS);
 
-  const [startDateValue, setStartDateValue] = useState(() => getTodayYYYYMMDD());
+  const [startDateValue, setStartDateValue] = useState(() =>
+    getTodayYYYYMMDD(),
+  );
   const [endDateValue, setEndDateValue] = useState(() => getTodayYYYYMMDD());
   const [shiftValue, setShiftValue] = useState<ShiftValue>(DEFAULT_SHIFT_VALUE);
-  const [planMode, setPlanMode] =
-    useState<ReportPlanMode>(DEFAULT_PLAN_MODE);
+  const [planModes, setPlanModes] = useState<ReportPlanModeSelection>(() => ({
+    ...DEFAULT_PLAN_MODES,
+  }));
   const [statusValue, setStatusValue] =
     useState<StatusFilterValue>(DEFAULT_STATUS_VALUE);
   const [searchText, setSearchText] = useState(DEFAULT_SEARCH_TEXT);
@@ -1229,6 +1257,10 @@ export default function PatrolReportPage({
     [],
   );
 
+  const handleCloseExportErrorModal = useCallback(() => {
+    setExportErrorMessage(null);
+  }, []);
+
   const handleCloseImagePreview = useCallback(() => {
     setPreviewImage(null);
   }, []);
@@ -1252,7 +1284,7 @@ export default function PatrolReportPage({
       startDate,
       endDate,
       shiftValue,
-      planMode,
+      planModes,
       searchText,
       departmentIdText,
       divisionIdText,
@@ -1272,8 +1304,8 @@ export default function PatrolReportPage({
           endDate,
           status: "all",
           keyword: searchText,
-          planMode,
-          plan_mode: planMode,
+          planModes,
+          plan_modes: planModes,
         } as Parameters<typeof getPatrolReport>[0] &
           ExtraPatrolReportFilterParams;
 
@@ -1307,9 +1339,24 @@ export default function PatrolReportPage({
           requestParams.employeeCode = employeeCode;
         }
 
-        const rows = await getPatrolReport(requestParams);
+        // เรียกข้อมูลแยกทีละโหมดเพื่อระบุประเภทของแต่ละแถว
+        // จากนั้นนำมารวมและเรียงตามเวลาเข้าแบบเดียวกับ PDF
+        const rowsByMode = await Promise.all(
+          planModes.map(async (mode) => {
+            const modeRows = await getPatrolReport({
+              ...requestParams,
+              planModes: [mode],
+              plan_modes: [mode],
+            });
 
-        setPatrolRows(rows as PatrolReportDisplayRow[]);
+            return modeRows.map((row) => ({
+              ...row,
+              reportPlanMode: mode,
+            })) as PatrolReportDisplayRow[];
+          }),
+        );
+
+        setPatrolRows(rowsByMode.flat());
         setExpandedId(null);
         setEmptyReason("no_data");
       } catch (err) {
@@ -1338,8 +1385,7 @@ export default function PatrolReportPage({
     if (
       !exportingPdf ||
       !exportJob ||
-      (exportJob.jobStatus !== "queued" &&
-        exportJob.jobStatus !== "processing")
+      (exportJob.jobStatus !== "queued" && exportJob.jobStatus !== "processing")
     ) {
       return;
     }
@@ -1487,6 +1533,22 @@ export default function PatrolReportPage({
         originalIndex,
       }))
       .sort((a, b) => {
+        const aCheckInDateTime = getCheckInDateTime(a.row);
+        const bCheckInDateTime = getCheckInDateTime(b.row);
+
+        if (aCheckInDateTime && bCheckInDateTime) {
+          const timeDifference =
+            aCheckInDateTime.getTime() - bCheckInDateTime.getTime();
+
+          if (timeDifference !== 0) {
+            return timeDifference;
+          }
+        } else if (aCheckInDateTime) {
+          return -1;
+        } else if (bCheckInDateTime) {
+          return 1;
+        }
+
         const aStatus = getDisplayStatus(a.row);
         const bStatus = getDisplayStatus(b.row);
 
@@ -1602,8 +1664,20 @@ export default function PatrolReportPage({
   const emptyTitle = emptyStateText.title;
   const emptyHint = emptyStateText.hint;
 
+  const selectedPlanModes = (Object.keys(planModes) as ReportPlanMode[]).filter(
+    (mode) => planModes[mode],
+  );
+
+  const hasSelectedPlanMode = selectedPlanModes.length > 0;
+
   const handlePlanModeChange = (value: ReportPlanMode) => {
-    setPlanMode(value);
+    const nextPlanModes: ReportPlanModeSelection = {
+      ...planModes,
+      [value]: !planModes[value],
+    };
+
+    setPlanModes(nextPlanModes);
+
     setPatrolRows([]);
     setExpandedId(null);
     setEmptyReason("need_filter");
@@ -1611,6 +1685,14 @@ export default function PatrolReportPage({
   };
 
   const handleSearch = () => {
+    if (!hasSelectedPlanMode) {
+      setPatrolRows([]);
+      setExpandedId(null);
+      setEmptyReason("error");
+      setEmptyErrorMessage("กรุณาเลือกประเภทงานอย่างน้อย 1 รายการ");
+      return;
+    }
+
     if (!hasRequiredReportScope) {
       setPatrolRows([]);
       setExpandedId(null);
@@ -1634,7 +1716,7 @@ export default function PatrolReportPage({
       startDate: startDateValue,
       endDate: endDateValue,
       shiftValue,
-      planMode,
+      planModes: selectedPlanModes,
       searchText,
       departmentIdText,
       divisionIdText,
@@ -1654,7 +1736,7 @@ export default function PatrolReportPage({
       new Date(todayDate.getFullYear(), todayDate.getMonth(), 1),
     );
     setShiftValue(DEFAULT_SHIFT_VALUE);
-    setPlanMode(DEFAULT_PLAN_MODE);
+    setPlanModes({ ...DEFAULT_PLAN_MODES });
     setStatusValue(DEFAULT_STATUS_VALUE);
     setSearchText(DEFAULT_SEARCH_TEXT);
     setDepartmentIdText(DEFAULT_DEPARTMENT_ID_TEXT);
@@ -1714,7 +1796,9 @@ export default function PatrolReportPage({
     const todayDate = parseYYYYMMDD(today) ?? new Date();
 
     handleSelectDate(field, today);
-    setCalendarMonth(new Date(todayDate.getFullYear(), todayDate.getMonth(), 1));
+    setCalendarMonth(
+      new Date(todayDate.getFullYear(), todayDate.getMonth(), 1),
+    );
   };
 
   const renderDatePopover = (field: DatePickerField) => {
@@ -1802,7 +1886,6 @@ export default function PatrolReportPage({
     );
   };
 
-
   const exportButtonText = useMemo(() => {
     if (!exportingPdf) {
       return "ดาวน์โหลด PDF";
@@ -1832,13 +1915,18 @@ export default function PatrolReportPage({
       return;
     }
 
+    if (!hasSelectedPlanMode) {
+      setExportErrorMessage("กรุณาเลือกประเภทงานอย่างน้อย 1 รายการ");
+      return;
+    }
+
     if (!hasRequiredReportScope) {
-      window.alert("กรุณาเลือก ภาค และ เขต ก่อน Export PDF");
+      setExportErrorMessage("กรุณาเลือก ภาค และ เขต ก่อนดาวน์โหลด PDF");
       return;
     }
 
     if (filteredRows.length === 0) {
-      window.alert("ไม่มีข้อมูลรายงานสำหรับ Export PDF");
+      setExportErrorMessage("ไม่มีข้อมูลรายงานสำหรับดาวน์โหลด PDF");
       return;
     }
 
@@ -1847,12 +1935,12 @@ export default function PatrolReportPage({
     const requestedByText = requestedBy.trim();
 
     if (departmentId === undefined || divisionId === undefined) {
-      window.alert("กรุณาเลือก ภาค และ เขต ก่อน Export PDF");
+      setExportErrorMessage("กรุณาเลือก ภาค และ เขต ก่อนดาวน์โหลด PDF");
       return;
     }
 
     if (!requestedByText) {
-      window.alert(
+      setExportErrorMessage(
         "ไม่พบรหัสพนักงานของผู้ใช้งานที่ Login สำหรับสร้างรายงาน PDF",
       );
       return;
@@ -1862,7 +1950,7 @@ export default function PatrolReportPage({
     const endDate = parseYYYYMMDD(endDateValue);
 
     if (startDate && endDate && startDate > endDate) {
-      window.alert("วันที่เริ่มต้นต้องไม่มากกว่าวันที่สิ้นสุด");
+      setExportErrorMessage("วันที่เริ่มต้นต้องไม่มากกว่าวันที่สิ้นสุด");
       return;
     }
 
@@ -1881,10 +1969,9 @@ export default function PatrolReportPage({
           routeId: toPositiveNumber(routeIdText),
           locationId: toPositiveNumber(locationIdText),
           employeeCode: employeeCodeText.trim() || undefined,
-          planMode,
+          planModes: selectedPlanModes,
           shiftType: shiftValue,
-          status:
-            statusValue === "pending_reserved" ? "pending" : statusValue,
+          status: statusValue === "pending_reserved" ? "pending" : statusValue,
           keyword: searchText.trim(),
         },
         includeImages: true,
@@ -1903,7 +1990,6 @@ export default function PatrolReportPage({
       );
     }
   };
-
 
   return (
     <main className={styles.page}>
@@ -1934,28 +2020,30 @@ export default function PatrolReportPage({
         <section className={styles.filterPanel} aria-label="ตัวกรองรายงาน">
           <h2 className={styles.panelTitle}>ตัวกรองรายงาน</h2>
 
-          <div className={styles.planModeGroup} role="group" aria-label="ประเภทแผน">
-            <button
-              type="button"
-              className={`${styles.planModeButton} ${
-                planMode === "planned" ? styles.planModeButtonActive : ""
-              }`}
-              onClick={() => handlePlanModeChange("planned")}
-            >
-              ตามแผน
-            </button>
+          <div
+            className={styles.planModeGroup}
+            role="group"
+            aria-label="ประเภทงาน"
+          >
+            <label className={styles.planModeOption}>
+              <input
+                className={styles.planModeCheckbox}
+                type="checkbox"
+                checked={planModes.planned}
+                onChange={() => handlePlanModeChange("planned")}
+              />
+              <span>ตามแผน</span>
+            </label>
 
-            <button
-              type="button"
-              className={`${styles.planModeButton} ${
-                planMode === "outside_plan"
-                  ? styles.planModeButtonActive
-                  : ""
-              }`}
-              onClick={() => handlePlanModeChange("outside_plan")}
-            >
-              นอกแผน
-            </button>
+            <label className={styles.planModeOption}>
+              <input
+                className={styles.planModeCheckbox}
+                type="checkbox"
+                checked={planModes.outside_plan}
+                onChange={() => handlePlanModeChange("outside_plan")}
+              />
+              <span>งานอื่น ๆ (ติดตาม / มอบหมาย)</span>
+            </label>
           </div>
 
           <label className={styles.fieldGroup}>
@@ -1980,11 +2068,7 @@ export default function PatrolReportPage({
               <option value="">โปรดเลือก</option>
               {departmentOptions.map((option, index) => (
                 <option
-                  key={makeReactKey(
-                    "department",
-                    option.departmentId,
-                    index,
-                  )}
+                  key={makeReactKey("department", option.departmentId, index)}
                   value={String(option.departmentId)}
                 >
                   {getDepartmentOptionLabel(
@@ -2128,7 +2212,13 @@ export default function PatrolReportPage({
               disabled={!hasRequiredReportScope}
             >
               <option value="all">ทั้งหมด</option>
-              <option value="completed">ตรวจแล้ว</option>
+              <option value="completed">
+                {planModes.planned && planModes.outside_plan
+                  ? "ตรวจแล้ว / เรียบร้อย(ติดตาม/มอบหมาย)"
+                  : planModes.outside_plan
+                    ? "เรียบร้อย(ติดตาม/มอบหมาย)"
+                    : "ตรวจแล้ว"}
+              </option>
               <option value="completed_call">ตรวจแล้ว(โทร)</option>
               <option value="in_progress">อยู่ระหว่างการเข้าตรวจ</option>
               <option value="pending_reserved">
@@ -2274,12 +2364,6 @@ export default function PatrolReportPage({
               </button>
             </div>
 
-            {exportErrorMessage && (
-              <p className={styles.mobileFooter} role="alert">
-                {exportErrorMessage}
-              </p>
-            )}
-
             <div className={styles.tableWrap}>
               <table className={styles.table}>
                 <thead>
@@ -2309,10 +2393,7 @@ export default function PatrolReportPage({
                   ) : filteredRows.length === 0 ? (
                     <tr>
                       <td colSpan={14} className={styles.emptyTableCell}>
-                        <EmptyReportState
-                          title={emptyTitle}
-                          hint={emptyHint}
-                        />
+                        <EmptyReportState title={emptyTitle} hint={emptyHint} />
                       </td>
                     </tr>
                   ) : (
@@ -2323,7 +2404,9 @@ export default function PatrolReportPage({
                         status === "pending" && reservedBy !== null;
                       const checkInImageUrl = getCheckInImageUrl(row);
                       const checkOutImageUrl = getCheckOutImageUrl(row);
-                      const contractText = getContractCodeText(row.contractCode);
+                      const contractText = getContractCodeText(
+                        row.contractCode,
+                      );
                       const checkInDateTimeText = getCheckInDateTimeText(row);
                       const checkOutDateTimeText = getCheckOutDateTimeText(row);
 
@@ -2337,13 +2420,14 @@ export default function PatrolReportPage({
                             index,
                           )}
                         >
-                          <td>{row.id}</td>
+                          <td>{index + 1}</td>
                           <td>{contractText}</td>
                           <td className={styles.textLeft}>{row.siteName}</td>
-                          <td>{row.shiftLabel}</td>
+                          <td>{row.shiftLabel || "-"}</td>
                           <td>
                             <span
                               className={`${styles.statusBadge} ${getStatusClass(
+                                row,
                                 status,
                               )} ${
                                 isReservedPending ? styles.statusReserved : ""
@@ -2351,13 +2435,15 @@ export default function PatrolReportPage({
                             >
                               {isReservedPending && reservedBy ? (
                                 <span className={styles.statusTextGroup}>
-                                  <span>{getStatusLabel(status)}</span>
+                                  <span>
+                                    {getReportStatusLabel(row, status)}
+                                  </span>
                                   <span className={styles.reservedByText}>
                                     โดยผู้จอง: {reservedBy}
                                   </span>
                                 </span>
                               ) : (
-                                getStatusLabel(status)
+                                getReportStatusLabel(row, status)
                               )}
                             </span>
                           </td>
@@ -2455,12 +2541,6 @@ export default function PatrolReportPage({
             </button>
           </div>
 
-          {exportErrorMessage && (
-            <p className={styles.mobileFooter} role="alert">
-              {exportErrorMessage}
-            </p>
-          )}
-
           <div className={styles.mobileList}>
             {loading ? (
               <p className={styles.mobileFooter}>กำลังโหลดข้อมูล...</p>
@@ -2501,11 +2581,12 @@ export default function PatrolReportPage({
                       <StatusIcon
                         status={status}
                         isReservedPending={isReservedPending}
+                        reportPlanMode={row.reportPlanMode}
                       />
 
                       <div className={styles.mobileMain}>
                         <div className={styles.mobileContractRow}>
-                          <span className={styles.mobileNo}>{row.id}</span>
+                          <span className={styles.mobileNo}>{index + 1}</span>
 
                           <span className={styles.mobileCode}>
                             {contractText}
@@ -2519,20 +2600,25 @@ export default function PatrolReportPage({
 
                       <span
                         className={`${styles.mobileStatusBadge} ${getStatusClass(
+                          row,
                           status,
-                        )} ${
-                          isReservedPending ? styles.statusReserved : ""
-                        }`}
+                        )} ${isReservedPending ? styles.statusReserved : ""}`}
                       >
                         {isReservedPending && reservedBy ? (
                           <span className={styles.statusTextGroup}>
-                            <span>{getStatusLabel(status)}</span>
+                            <span>{getReportStatusLabel(row, status)}</span>
                             <span className={styles.reservedByText}>
                               โดยผู้จอง: {reservedBy}
                             </span>
                           </span>
+                        ) : row.reportPlanMode === "outside_plan" &&
+                          status === "completed" ? (
+                          <span className={styles.statusTextGroup}>
+                            <span>เรียบร้อย</span>
+                            <span>(ติดตาม/มอบหมาย)</span>
+                          </span>
                         ) : (
-                          getStatusLabel(status)
+                          getReportStatusLabel(row, status)
                         )}
                       </span>
 
@@ -2554,13 +2640,13 @@ export default function PatrolReportPage({
 
                         <div className={styles.detailRow}>
                           <span>ผลัด</span>
-                          <strong>{row.shiftLabel}</strong>
+                          <strong>{row.shiftLabel || "-"}</strong>
                         </div>
 
                         <div className={styles.detailRow}>
                           <span>สถานะ</span>
                           <strong>
-                            {getStatusLabel(status)}
+                            {getReportStatusLabel(row, status)}
                             {isReservedPending && reservedBy
                               ? ` โดยผู้จอง: ${reservedBy}`
                               : ""}
@@ -2647,6 +2733,11 @@ export default function PatrolReportPage({
             <BackButton onClick={onBack} className="guts-fv-backBtn" />
           </div>
         </section>
+
+        <PdfExportErrorModal
+          message={exportErrorMessage}
+          onClose={handleCloseExportErrorModal}
+        />
 
         <ReportImagePreviewModal
           previewImage={previewImage}

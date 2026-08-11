@@ -318,9 +318,9 @@ export type GetPatrolReportParams = {
   // คง workday ไว้รองรับ backend เดิม
   workday: string;
 
-  // แยกตามแผน / นอกแผน
-  planMode?: ReportPlanMode;
-  plan_mode?: ReportPlanMode;
+  // เลือกประเภทงานได้หลายรายการ
+  planModes?: ReportPlanMode[];
+  plan_modes?: ReportPlanMode[];
 
   // รองรับ backend ใหม่แบบช่วงวันที่
   workdayStart?: string;
@@ -675,8 +675,8 @@ export async function getPatrolReportFilterOptions() {
 
 export async function getPatrolReport({
   workday,
-  planMode,
-  plan_mode,
+  planModes,
+  plan_modes,
   workdayStart,
   workdayEnd,
   startDate,
@@ -694,10 +694,12 @@ export async function getPatrolReport({
     workday,
   };
 
-  const selectedPlanMode = planMode ?? plan_mode;
+  const selectedPlanModes = Array.from(
+    new Set(planModes ?? plan_modes ?? []),
+  );
 
-  if (selectedPlanMode) {
-    params.plan_mode = selectedPlanMode;
+  if (selectedPlanModes.length > 0) {
+    params.plan_modes = selectedPlanModes.join(",");
   }
 
   if (workdayStart?.trim()) {

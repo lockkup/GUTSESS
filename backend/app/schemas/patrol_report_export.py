@@ -1,4 +1,3 @@
-# backend/app/schemas/patrol_report_export.py
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -76,7 +75,11 @@ class PatrolReportExportFilter(BaseModel):
         max_length=DBConstants.EMPLOYEE_CODE_LENGTH,
     )
 
-    plan_mode: PatrolReportPlanMode = "planned"
+    plan_modes: list[PatrolReportPlanMode] = Field(
+        default_factory=lambda: ["planned"],
+        min_length=1,
+        max_length=2,
+    )
     shift_type: PatrolReportShiftType = "all"
     status: PatrolReportStatusFilter = "all"
 
@@ -94,11 +97,41 @@ class PatrolReportExportFilter(BaseModel):
         max_length=DBConstants.REPORT_EXPORT_KEYWORD_LENGTH,
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_legacy_plan_mode(cls, data: Any) -> Any:
+        """
+        รองรับ Job เก่าที่ filters_json ยังใช้ plan_mode ค่าเดียว
+        โดยแปลงเป็น plan_modes ก่อนตรวจสอบข้อมูล
+        """
+
+        if not isinstance(data, dict):
+            return data
+
+        normalized_data = dict(data)
+
+        if "plan_mode" in normalized_data:
+            if "plan_modes" in normalized_data:
+                raise ValueError(
+                    "Use either plan_mode or plan_modes, not both",
+                )
+
+            normalized_data["plan_modes"] = [
+                normalized_data.pop("plan_mode"),
+            ]
+
+        return normalized_data
+
     @model_validator(mode="after")
-    def validate_workday_range(self) -> "PatrolReportExportFilter":
+    def validate_filters(self) -> "PatrolReportExportFilter":
         if self.workday_end < self.workday_start:
             raise ValueError(
                 "workday_end must be greater than or equal to workday_start",
+            )
+
+        if len(set(self.plan_modes)) != len(self.plan_modes):
+            raise ValueError(
+                "plan_modes must not contain duplicate values",
             )
 
         return self

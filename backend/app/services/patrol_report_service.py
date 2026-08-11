@@ -630,66 +630,6 @@ def _select_operator_employee_name_column(
     )
 
 
-def _build_unplanned_resolved_shift_id_sql(
-    view_column_names: set[str],
-    *,
-    table_alias: str = "v",
-) -> str:
-    """
-    คืน SQL expression สำหรับหา shift_id ของรายการนอกแผน
-
-    ลำดับการใช้ค่า:
-    1. ใช้ shift_id ที่ถูกบันทึกใน view / time_record ก่อน
-    2. ถ้า shift_id เป็น NULL, 0 หรือค่าว่าง ให้คำนวณจากเวลาเข้า
-
-    กติกาผลัด:
-    - 08:00:00 ถึง 19:59:59 = ผลัดกลางวัน (shift_id = 1)
-    - 20:00:00 ถึง 07:59:59 = ผลัดกลางคืน (shift_id = 2)
-
-    started_datetime ใช้ก่อนเมื่อ view มีคอลัมน์นี้; ถ้าไม่มีจึงใช้ started_at
-    เพื่อให้รองรับทั้ง view รุ่นใหม่และข้อมูลเก่าที่เก็บเวลาเป็นข้อความ
-    """
-    stored_shift_id_source_sql = (
-        f"{table_alias}.{PatrolReportConstants.COLUMN_SHIFT_ID}"
-        if PatrolReportConstants.COLUMN_SHIFT_ID in view_column_names
-        else "NULL"
-    )
-
-    # CAST + NULLIF ทำให้ NULL / 0 / '' ถูกมองว่าไม่มี shift_id
-    # แล้วจึง fallback ไปคำนวณจากเวลาเข้า
-    stored_shift_id_sql = (
-        "NULLIF("
-        f"CAST(TRIM(CAST({stored_shift_id_source_sql} AS CHAR)) AS UNSIGNED), "
-        "0"
-        ")"
-    )
-
-    started_time_source_sql = (
-        f"{table_alias}.{STARTED_DATETIME_COLUMN}"
-        if STARTED_DATETIME_COLUMN in view_column_names
-        else f"{table_alias}.{PatrolReportConstants.COLUMN_STARTED_AT}"
-    )
-
-    return f"""
-        CASE
-            WHEN {stored_shift_id_sql} IS NOT NULL
-                THEN {stored_shift_id_sql}
-
-            WHEN {started_time_source_sql} IS NULL
-                THEN NULL
-
-            WHEN TIME({started_time_source_sql}) IS NULL
-                THEN NULL
-
-            WHEN TIME({started_time_source_sql}) >= '08:00:00'
-             AND TIME({started_time_source_sql}) < '20:00:00'
-                THEN 1
-
-            ELSE 2
-        END
-    """
-
-
 def _get_time_record_flags(
     db: Session,
     rows: list[Mapping[str, Any]],
@@ -1109,14 +1049,9 @@ def get_patrol_report_filter_options(
     )
 
     if plan_mode == "outside_plan":
-        view_column_names = _get_view_column_names(db, UNPLANNED_VIEW_NAME)
-        resolved_unplanned_shift_id_sql = _build_unplanned_resolved_shift_id_sql(
-            view_column_names,
-        )
-
         # vw_checkin_unplanned ระบุ department_id / division_id / route_id /
-        # location_id ไว้แล้ว จึงใช้ ID จาก View ตรง ๆ เพื่อให้กติกาการ
-        # กรองตรงกับ View และไม่ต้อง JOIN ซ้ำจากชื่อหรือ location อีกครั้ง
+        # location_id / shift_id ไว้แล้ว จึงใช้ ID จาก View ตรง ๆ
+        # เพื่อให้กติกาการกรองตรงกับ View และไม่ต้องคำนวณผลัดจากเวลา
         employees_sql = text(
             f"""
             SELECT DISTINCT
@@ -1141,7 +1076,7 @@ def get_patrol_report_filter_options(
             WHERE v.{PatrolReportConstants.COLUMN_EMPLOYEE_CODE} IS NOT NULL
               AND (
                   :shift_id IS NULL
-                  OR ({resolved_unplanned_shift_id_sql}) = :shift_id
+                  OR v.{PatrolReportConstants.COLUMN_SHIFT_ID} = :shift_id
               )
               AND (
                   :department_id IS NULL
@@ -1322,10 +1257,6 @@ def _get_patrol_report_unplanned_rows(
         UNPLANNED_VIEW_NAME,
     )
 
-    resolved_unplanned_shift_id_sql = _build_unplanned_resolved_shift_id_sql(
-        view_column_names,
-    )
-
     checkin_image_select = _select_first_view_column(
         view_column_names,
         *CHECKIN_IMAGE_COLUMN_CANDIDATES,
@@ -1381,7 +1312,7 @@ def _get_patrol_report_unplanned_rows(
             v.{PatrolReportConstants.COLUMN_CONTRACT_CODE},
             v.{PatrolReportConstants.COLUMN_LOCATION_NAME},
 
-            'นอกแผน' AS {PatrolReportConstants.COLUMN_SHIFT_NAME_TH},
+            v.{PatrolReportConstants.COLUMN_SHIFT_NAME_TH},
 
             CASE
                 WHEN v.{PatrolReportConstants.COLUMN_COMPLETED_AT} IS NOT NULL
@@ -1419,8 +1350,7 @@ def _get_patrol_report_unplanned_rows(
             {location_id_select}
                 AS {PatrolReportConstants.COLUMN_LOCATION_ID},
 
-            {resolved_unplanned_shift_id_sql}
-                AS {PatrolReportConstants.COLUMN_SHIFT_ID},
+            v.{PatrolReportConstants.COLUMN_SHIFT_ID},
 
             NULL AS {PatrolReportConstants.COLUMN_CONTACT_DETAIL},
             NULL AS {PatrolReportConstants.COLUMN_CALL_STATUS},
@@ -1442,7 +1372,7 @@ def _get_patrol_report_unplanned_rows(
     if shift_id is not None:
         sql_parts.append(
             f"""
-            AND ({resolved_unplanned_shift_id_sql}) = :shift_id
+            AND v.{PatrolReportConstants.COLUMN_SHIFT_ID} = :shift_id
             """
         )
         params["shift_id"] = shift_id
@@ -1527,7 +1457,7 @@ def _get_patrol_report_unplanned_rows(
         f"""
         ORDER BY
             v.{PatrolReportConstants.COLUMN_WORKDAY} DESC,
-            {resolved_unplanned_shift_id_sql} ASC,
+            v.{PatrolReportConstants.COLUMN_SHIFT_ID} ASC,
             CASE
                 WHEN v.{PatrolReportConstants.COLUMN_COMPLETED_AT} IS NULL
                     THEN 1
@@ -1613,10 +1543,9 @@ def _get_patrol_report_unplanned_rows(
     return results
 
 
-def get_patrol_report_rows(
+def _get_patrol_report_planned_rows(
     db: Session,
     *,
-    plan_mode: ReportPlanMode = "planned",
     workday: date | None = None,
     workday_start: date | None = None,
     workday_end: date | None = None,
@@ -1645,28 +1574,6 @@ def get_patrol_report_rows(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=PATROL_REPORT_INVALID_DATE_RANGE_DETAIL,
         )
-
-    if plan_mode == "outside_plan":
-        try:
-            return _get_patrol_report_unplanned_rows(
-                db=db,
-                report_start=report_start,
-                report_end=report_end,
-                shift_id=shift_id,
-                department_id=department_id,
-                division_id=division_id,
-                route_id=route_id,
-                location_id=location_id,
-                employee_code=employee_code,
-                status_filter=status_filter,
-                keyword=keyword,
-            )
-
-        except SQLAlchemyError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=PATROL_REPORT_FETCH_FAILED_DETAIL,
-            ) from exc
 
     view_column_names = _get_view_column_names(
         db,
@@ -1901,3 +1808,109 @@ def get_patrol_report_rows(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=PATROL_REPORT_FETCH_FAILED_DETAIL,
         ) from exc
+
+
+def _normalize_report_plan_modes(
+    plan_modes: list[ReportPlanMode] | None,
+) -> list[ReportPlanMode]:
+    raw_modes = plan_modes or ["planned"]
+    selected_modes: list[ReportPlanMode] = []
+
+    for raw_mode in raw_modes:
+        if raw_mode not in ("planned", "outside_plan"):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"plan_modes ไม่ถูกต้อง: {raw_mode} "
+                    "(รองรับ planned, outside_plan)"
+                ),
+            )
+
+        mode = cast(ReportPlanMode, raw_mode)
+
+        if mode not in selected_modes:
+            selected_modes.append(mode)
+
+    return selected_modes
+
+
+def get_patrol_report_rows(
+    db: Session,
+    *,
+    plan_modes: list[ReportPlanMode] | None = None,
+    workday: date | None = None,
+    workday_start: date | None = None,
+    workday_end: date | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    shift_id: int | None = None,
+    department_id: int | None = None,
+    division_id: int | None = None,
+    route_id: int | None = None,
+    location_id: int | None = None,
+    employee_code: str | None = None,
+    status_filter: PatrolStatus | None = None,
+    keyword: str | None = None,
+) -> list[PatrolReportResponse]:
+    report_start = workday_start or start_date or workday
+    report_end = workday_end or end_date or workday_start or start_date or workday
+
+    if report_start is None or report_end is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=PATROL_REPORT_DATE_REQUIRED_DETAIL,
+        )
+
+    if report_start > report_end:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=PATROL_REPORT_INVALID_DATE_RANGE_DETAIL,
+        )
+
+    selected_modes = _normalize_report_plan_modes(plan_modes)
+    combined_results: list[PatrolReportResponse] = []
+
+    if "planned" in selected_modes:
+        combined_results.extend(
+            _get_patrol_report_planned_rows(
+                db=db,
+                workday_start=report_start,
+                workday_end=report_end,
+                shift_id=shift_id,
+                department_id=department_id,
+                division_id=division_id,
+                route_id=route_id,
+                location_id=location_id,
+                employee_code=employee_code,
+                status_filter=status_filter,
+                keyword=keyword,
+            )
+        )
+
+    if "outside_plan" in selected_modes:
+        try:
+            combined_results.extend(
+                _get_patrol_report_unplanned_rows(
+                    db=db,
+                    report_start=report_start,
+                    report_end=report_end,
+                    shift_id=shift_id,
+                    department_id=department_id,
+                    division_id=division_id,
+                    route_id=route_id,
+                    location_id=location_id,
+                    employee_code=employee_code,
+                    status_filter=status_filter,
+                    keyword=keyword,
+                )
+            )
+        except SQLAlchemyError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=PATROL_REPORT_FETCH_FAILED_DETAIL,
+            ) from exc
+
+    return [
+        row.model_copy(update={"id": index})
+        for index, row in enumerate(combined_results, start=1)
+    ]

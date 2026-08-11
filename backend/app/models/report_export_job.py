@@ -62,12 +62,15 @@ class ReportExportJob(Base):
             "file_size_bytes IS NULL OR file_size_bytes >= 0",
             name="ck_report_export_job_file_size",
         ),
-        # Worker ใช้ index นี้เพื่อหา Job ที่รอสร้างตามลำดับเวลา
+        # Worker ใช้ Index นี้เพื่อหา Job ของแต่ละคิวตามลำดับเวลา
         Index(
-            "ix_report_export_job_worker_queue",
+            "ix_report_export_job_queue_status_created",
+            "queue_key",
+            "report_type",
             "job_status",
             "mark_flag",
             "created_at",
+            "report_export_job_id",
         ),
         # ใช้กับหน้า history / รายงานที่ผู้ใช้เคยสั่งสร้าง
         Index(
@@ -92,9 +95,20 @@ class ReportExportJob(Base):
         server_default=text("'patrol_report'"),
     )
 
+    # แยกคิว Worker ตามโปรเจกต์ ประเภทรายงาน และ Environment
+    # เช่น:
+    # guts_ess.patrol_report.production
+    # guts_ess.patrol_report.development
+    queue_key: Mapped[str] = mapped_column(
+        String(DBConstants.REPORT_EXPORT_QUEUE_KEY_LENGTH),
+        nullable=False,
+        default="guts_ess.patrol_report.production",
+        server_default=text("'guts_ess.patrol_report.production'"),
+    )
+
     # เก็บ filter ที่ผู้ใช้เลือก ณ เวลาสั่ง Export
     # เช่น workday_start, workday_end, department_id, division_id,
-    # route_id, location_id, employee_code, plan_mode, shift, status, keyword
+    # route_id, location_id, employee_code, plan_modes, shift, status, keyword
     filters_json: Mapped[dict[str, Any]] = mapped_column(
         JSON,
         nullable=False,
@@ -173,7 +187,7 @@ class ReportExportJob(Base):
     )
 
     # ผู้ใช้ที่สั่งสร้าง Job
-    # ใช้ requested_by แทน created_by เพื่อให้สื่อความหมายตรงกับงาน Export
+    # ใช้ requested_by แทน created_byเพื่อให้สื่อความหมายตรงกับงาน Export
     requested_by: Mapped[str] = mapped_column(
         String(DBConstants.EMPLOYEE_CODE_LENGTH),
         ForeignKey("employees.employee_code"),
