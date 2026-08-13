@@ -1208,7 +1208,7 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
     DEFAULT_EMPLOYEE_CODE_TEXT,
   );
 
-  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [activeDatePicker, setActiveDatePicker] =
     useState<DatePickerField | null>(null);
   const [calendarMonth, setCalendarMonth] = useState(() => {
@@ -2548,7 +2548,15 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
               <EmptyReportState title={emptyTitle} hint={emptyHint} />
             ) : (
               filteredRows.map((row, index) => {
-                const isExpanded = expandedId === row.id;
+                const mobileRowKey = makeReactKey(
+                  "mobile-row",
+                  row.reportPlanMode,
+                  row.id,
+                  row.contractCode,
+                  row.locationId ?? row.location_id,
+                  index,
+                );
+                const isExpanded = expandedId === mobileRowKey;
                 const status = getDisplayStatus(row);
                 const reservedBy = getReservedBy(row);
                 const isReservedPending =
@@ -2561,13 +2569,7 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
 
                 return (
                   <article
-                    key={makeReactKey(
-                      "mobile-row",
-                      row.id,
-                      row.contractCode,
-                      row.locationId ?? row.location_id,
-                      index,
-                    )}
+                    key={mobileRowKey}
                     className={`${styles.mobileCard} ${
                       isExpanded ? styles.mobileCardExpanded : ""
                     }`}
@@ -2575,7 +2577,9 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                     <button
                       type="button"
                       className={styles.mobileCardButton}
-                      onClick={() => setExpandedId(isExpanded ? null : row.id)}
+                      onClick={() =>
+                        setExpandedId(isExpanded ? null : mobileRowKey)
+                      }
                       aria-expanded={isExpanded}
                     >
                       <StatusIcon
@@ -2602,7 +2606,14 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                         className={`${styles.mobileStatusBadge} ${getStatusClass(
                           row,
                           status,
-                        )} ${isReservedPending ? styles.statusReserved : ""}`}
+                        )} ${
+                          isReservedPending ? styles.statusReserved : ""
+                        } ${
+                          row.reportPlanMode === "outside_plan" &&
+                          status === "completed"
+                            ? styles.mobileFinishedBadge
+                            : ""
+                        }`}
                       >
                         {isReservedPending && reservedBy ? (
                           <span className={styles.statusTextGroup}>
