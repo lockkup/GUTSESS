@@ -682,6 +682,10 @@ function getReportStatusLabel(
   row: PatrolReportDisplayRow,
   status: ReportDisplayStatus,
 ) {
+  if (status === "pending" && getReservedBy(row) !== null) {
+    return "จองแล้ว";
+  }
+
   if (row.reportPlanMode === "outside_plan" && status === "completed") {
     return "เรียบร้อย(ติดตาม/มอบหมาย)";
   }
