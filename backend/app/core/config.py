@@ -77,6 +77,16 @@ class Settings(BaseSettings):
 
     MFA_ISSUER_NAME: str = "GUTS-ESS"
 
+    # ============================================================
+    # Patrol Report Export
+    # ============================================================
+
+    REPORT_EXPORT_QUEUE_KEY: str = ""
+    REPORT_EXPORT_ROOT: str = ""
+    REPORT_EXPORT_WORKER_POLL_SECONDS: float = 2.0
+    REPORT_EXPORT_RETENTION_HOURS: int = 24
+    REPORT_EXPORT_WORKER_LOG_LEVEL: str = "INFO"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

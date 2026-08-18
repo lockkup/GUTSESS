@@ -1,6 +1,12 @@
 // src/pages/Attendance/Checkpoint/index.tsx
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  type ChangeEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { ClipboardList, Info, RefreshCcw, Search } from "lucide-react";
 
 import Header from "@/layout/Header";
@@ -9,6 +15,7 @@ import LoadingModal from "@/components/LoadingModal";
 import SuccessModal from "@/components/SuccessModal";
 import OutOfAreaModal from "@/components/OutOfAreaModal";
 import CheckpointInProgressModal from "@/components/CheckpointInProgressModal/CheckpointInProgressModal";
+import CheckpointAreaConfirmModal from "@/components/CheckpointAreaConfirmModal";
 import CheckpointMapModal, {
   type CheckpointMapLocation,
 } from "@/components/CheckpointMapModal";
@@ -24,6 +31,7 @@ import {
 
 import {
   cancelCheckpointAssignmentReservation,
+  getCheckpointAreaOptions,
   getDailyCheckpointAssignments,
   getCheckpointMapLocation,
   reserveCheckpointAssignment,
@@ -32,6 +40,7 @@ import { createCheckpointAssignmentCall } from "@/services/checkpointAssignmentC
 import { verifyCheckpointLocation } from "@/services/checkpointLocationService";
 
 import type {
+  CheckpointAreaOptionResponse,
   CheckpointAssignmentStatus,
   CheckpointDailyRow,
   ShiftType,
@@ -100,6 +109,21 @@ type Props = {
   regionLabel?: string | null;
   districtLabel?: string | null;
   routeLabel?: string | null;
+
+  /**
+   * เขต / เส้นทางล่าสุดที่ App.tsx จำไว้
+   * ใช้ restore หลังกลับมาจาก CheckInOut / FaceVerify
+   */
+  restoreDivisionId?: number | null;
+  restoreRouteId?: number | null;
+
+  /**
+   * แจ้ง App.tsx เมื่อผู้ใช้ยืนยันเปลี่ยนเขต / เส้นทางจาก Dropdown
+   */
+  onPatrolAreaChange?: (
+    divisionId: number,
+    routeId: number,
+  ) => void;
 
   onBack: () => void;
   onGoCheckInOut: (payload: GoCheckInOutPayload) => void;
@@ -543,6 +567,14 @@ const normalizeShiftId = (value: unknown): number | null => {
   return null;
 };
 
+const normalizePositiveId = (value: unknown): number | null => {
+  const numericValue = Number(value);
+
+  return Number.isInteger(numericValue) && numericValue > 0
+    ? numericValue
+    : null;
+};
+
 const normalizeBoolean = (value: unknown, fallback: boolean): boolean => {
   if (typeof value === "boolean") {
     return value;
@@ -802,6 +834,9 @@ export default function Checkpoint({
   regionLabel,
   districtLabel,
   routeLabel,
+  restoreDivisionId,
+  restoreRouteId,
+  onPatrolAreaChange,
   onBack,
   onGoCheckInOut,
 }: Props) {
@@ -829,6 +864,18 @@ export default function Checkpoint({
   const [isCancellingReservation, setIsCancellingReservation] =
     useState(false);
   const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
+
+  const [patrolAreaOptions, setPatrolAreaOptions] = useState<
+    CheckpointAreaOptionResponse[]
+  >([]);
+  const [isAreaOptionsLoading, setIsAreaOptionsLoading] = useState(false);
+  const [selectedPatrolArea, setSelectedPatrolArea] =
+    useState<CheckpointAreaOptionResponse | null>(null);
+  const [draftDivisionId, setDraftDivisionId] = useState<number | null>(null);
+  const [draftRouteId, setDraftRouteId] = useState<number | null>(null);
+  const [pendingPatrolArea, setPendingPatrolArea] =
+    useState<CheckpointAreaOptionResponse | null>(null);
+  const [isAreaConfirmModalOpen, setIsAreaConfirmModalOpen] = useState(false);
 
   const isReservationActionLoading =
     isSavingReservation || isCancellingReservation;
@@ -858,21 +905,124 @@ export default function Checkpoint({
     [currentDate],
   );
 
-  /**
-   * รับชื่อภาค / เขต / เส้นทางที่หน้า Home โหลดไว้แล้ว
-   * Home ส่งค่ากลับไป App.tsx ผ่าน onPatrolAreaLoaded
-   * แล้ว App.tsx ส่งต่อมายัง Checkpoint ผ่าน props:
-   * regionLabel / districtLabel / routeLabel
-   *
-   * หน้า Checkpoint จึงไม่เรียก API /employees/{employee_code} ซ้ำ
-   */
-  const patrolAreaValues = useMemo(
+  useEffect(() => {
+    const normalizedEmployeeCode = empCode.trim();
+
+    if (!normalizedEmployeeCode) {
+      setPatrolAreaOptions([]);
+      setSelectedPatrolArea(null);
+      setDraftDivisionId(null);
+      setDraftRouteId(null);
+      setIsAreaOptionsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadAreaOptions() {
+      try {
+        setIsAreaOptionsLoading(true);
+
+        const areaOptions = await getCheckpointAreaOptions({
+          employeeCode: normalizedEmployeeCode,
+        });
+
+        if (cancelled) {
+          return;
+        }
+
+        setPatrolAreaOptions(areaOptions);
+
+        const homeArea = areaOptions.find((option) => option.is_home) ?? null;
+
+        /**
+         * ถ้า App.tsx จำเขต / เส้นทางล่าสุดไว้
+         * ให้ restore พื้นที่นั้นก่อน
+         *
+         * ถ้าไม่มีค่าที่จำไว้
+         * จึงใช้พื้นที่ประจำ is_home ตามเดิม
+         */
+        const restoredArea =
+          restoreDivisionId != null && restoreRouteId != null
+            ? areaOptions.find(
+                (option) =>
+                  option.division_id === restoreDivisionId &&
+                  option.route_id === restoreRouteId,
+              ) ?? null
+            : null;
+
+        const initialArea = restoredArea ?? homeArea;
+
+        setSelectedPatrolArea(initialArea);
+        setDraftDivisionId(initialArea?.division_id ?? null);
+        setDraftRouteId(initialArea?.route_id ?? null);
+      } catch (error) {
+        logDevError("[Checkpoint] LOAD AREA OPTIONS ERROR", error);
+
+        if (!cancelled) {
+          // ถ้าโหลดตัวเลือกพื้นที่ไม่ได้ ให้ระบบงานประจำเดิมยังทำงานต่อได้
+          setPatrolAreaOptions([]);
+          setSelectedPatrolArea(null);
+          setDraftDivisionId(null);
+          setDraftRouteId(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsAreaOptionsLoading(false);
+        }
+      }
+    }
+
+    void loadAreaOptions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [empCode, restoreDivisionId, restoreRouteId]);
+
+  const divisionOptions = useMemo(() => {
+    const divisionMap = new Map<number, string>();
+
+    patrolAreaOptions.forEach((option) => {
+      if (!divisionMap.has(option.division_id)) {
+        divisionMap.set(option.division_id, option.division_name);
+      }
+    });
+
+    return [...divisionMap.entries()].map(([divisionId, divisionName]) => ({
+      divisionId,
+      divisionName,
+    }));
+  }, [patrolAreaOptions]);
+
+  const routeOptions = useMemo(
     () =>
-      [regionLabel, districtLabel, routeLabel]
-        .map((value) => value?.trim() || "")
-        .filter(Boolean),
-    [districtLabel, regionLabel, routeLabel],
+      draftDivisionId === null
+        ? []
+        : patrolAreaOptions.filter(
+            (option) => option.division_id === draftDivisionId,
+          ),
+    [draftDivisionId, patrolAreaOptions],
   );
+
+  /**
+   * พื้นที่ประจำยังใช้ข้อความเดิมจาก Home/App ตามเดิม
+   * เมื่อยืนยันพื้นที่อื่นแล้วจึงเปลี่ยนเฉพาะข้อความเขต/เส้นทางบนหน้า Checkpoint
+   */
+  const patrolAreaValues = useMemo(() => {
+    const areaValues =
+      selectedPatrolArea && !selectedPatrolArea.is_home
+        ? [
+            regionLabel,
+            selectedPatrolArea.division_name,
+            selectedPatrolArea.route_name,
+          ]
+        : [regionLabel, districtLabel, routeLabel];
+
+    return areaValues
+      .map((value) => value?.trim() || "")
+      .filter(Boolean);
+  }, [districtLabel, regionLabel, routeLabel, selectedPatrolArea]);
 
   const selectedWorkDate = useMemo(
     () => getCheckpointWorkDate(currentDate, selectedShift),
@@ -922,16 +1072,25 @@ export default function Checkpoint({
 
       const workDate = selectedWorkDateText;
 
+      const selectedAreaOverride =
+        selectedPatrolArea && !selectedPatrolArea.is_home
+          ? selectedPatrolArea
+          : null;
+
       logDev("[Checkpoint] FETCH ASSIGNMENTS", {
         workDate,
         selectedShift,
         currentShift,
+        divisionId: selectedAreaOverride?.division_id ?? null,
+        routeId: selectedAreaOverride?.route_id ?? null,
       });
 
       const data = await getDailyCheckpointAssignments({
         workDate,
         shiftType: selectedShift,
         employeeCode: normalizedEmpCode,
+        divisionId: selectedAreaOverride?.division_id,
+        routeId: selectedAreaOverride?.route_id,
       });
 
       setCheckRows(mapDailyRowsToCheckRows(data));
@@ -945,7 +1104,13 @@ export default function Checkpoint({
     } finally {
       setIsLoading(false);
     }
-  }, [empCode, selectedShift, selectedWorkDateText, currentShift]);
+  }, [
+    currentShift,
+    empCode,
+    selectedPatrolArea,
+    selectedShift,
+    selectedWorkDateText,
+  ]);
 
   const fetchLatestLocationSetting =
     useCallback(async (): Promise<AttendanceLocationSetting | null> => {
@@ -1124,6 +1289,83 @@ export default function Checkpoint({
   const handleRefresh = () => {
     void fetchCheckpointAssignments();
     void fetchLatestLocationSetting();
+  };
+
+  const handleDivisionChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    const nextDivisionId = normalizePositiveId(event.target.value);
+
+    setDraftDivisionId(nextDivisionId);
+    setDraftRouteId(null);
+    setPendingPatrolArea(null);
+    setIsAreaConfirmModalOpen(false);
+  };
+
+  const handleRouteChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    const nextRouteId = normalizePositiveId(event.target.value);
+
+    setDraftRouteId(nextRouteId);
+
+    if (draftDivisionId === null || nextRouteId === null) {
+      setPendingPatrolArea(null);
+      setIsAreaConfirmModalOpen(false);
+      return;
+    }
+
+    const nextArea = patrolAreaOptions.find(
+      (option) =>
+        option.division_id === draftDivisionId &&
+        option.route_id === nextRouteId,
+    );
+
+    if (!nextArea) {
+      setErrorMessage("ไม่พบข้อมูลเขตและเส้นทางที่เลือก");
+      return;
+    }
+
+    const isCurrentArea =
+      selectedPatrolArea?.division_id === nextArea.division_id &&
+      selectedPatrolArea?.route_id === nextArea.route_id;
+
+    if (isCurrentArea) {
+      return;
+    }
+
+    setPendingPatrolArea(nextArea);
+    setIsAreaConfirmModalOpen(true);
+  };
+
+  const closeAreaConfirmModal = () => {
+    setIsAreaConfirmModalOpen(false);
+    setPendingPatrolArea(null);
+    setDraftDivisionId(selectedPatrolArea?.division_id ?? null);
+    setDraftRouteId(selectedPatrolArea?.route_id ?? null);
+  };
+
+  const confirmPatrolArea = () => {
+    if (!pendingPatrolArea) {
+      return;
+    }
+
+    const nextArea = pendingPatrolArea;
+
+    setSelectedPatrolArea(nextArea);
+    setDraftDivisionId(nextArea.division_id);
+    setDraftRouteId(nextArea.route_id);
+
+    /**
+     * ให้ App.tsx จำพื้นที่ล่าสุดที่ผู้ใช้ยืนยันเลือก
+     * เพื่อให้หลัง Check-in / Check-out แล้วกลับมา
+     * ยังคงอยู่เขต / เส้นทางเดิม
+     */
+    onPatrolAreaChange?.(
+      nextArea.division_id,
+      nextArea.route_id,
+    );
+
+    setCheckRows([]);
+    setErrorMessage("");
+    setPendingPatrolArea(null);
+    setIsAreaConfirmModalOpen(false);
   };
 
   const openCheckpointMapModal = async (row: CheckRow) => {
@@ -1886,6 +2128,14 @@ export default function Checkpoint({
   const canCancelReservationFromOutOfArea =
     Boolean(reservationRow) && isReservationOwnedByCurrentEmployee;
 
+  const isAreaSelectionDisabled =
+    isLoading ||
+    isAreaOptionsLoading ||
+    settingLoading ||
+    isCheckingLocation ||
+    isSavingCall ||
+    isReservationActionLoading;
+
   return (
     <>
       <main className="guts-bg">
@@ -1894,6 +2144,67 @@ export default function Checkpoint({
             <Header empCode={empCode} displayName={displayName} />
 
             <h2 className={styles.attTitle}>หน้าจอ-ตารางงานสายตรวจประจำวัน</h2>
+            <div className={styles.attSubtitle}>
+              เลือกหน่วยงาน ที่ได้รับมอบหมายให้ช่วยตรวจ
+            </div>
+
+            <fieldset
+              className={styles.areaSelector}
+              aria-label="เลือกเขตและเส้นทางที่ต้องการเปิดดู"
+            >
+              <legend className={styles.visuallyHidden}>
+                เลือกเขตและเส้นทาง
+              </legend>
+
+              <div className={styles.areaSelectorGrid}>
+                <label className={styles.areaSelectorField}>
+                  <span>เขต</span>
+                  <select
+                    value={draftDivisionId ?? ""}
+                    onChange={handleDivisionChange}
+                    disabled={
+                      isAreaSelectionDisabled || divisionOptions.length === 0
+                    }
+                    aria-label="เลือกเขตที่ต้องการเปิดดู"
+                    className={styles.areaSelect}
+                  >
+                    <option value="">
+                      {isAreaOptionsLoading
+                        ? "กำลังโหลดข้อมูล..."
+                        : "เลือกเขต"}
+                    </option>
+                    {divisionOptions.map((option) => (
+                      <option
+                        key={option.divisionId}
+                        value={option.divisionId}
+                      >
+                        {option.divisionName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className={styles.areaSelectorField}>
+                  <span>เส้นทาง</span>
+                  <select
+                    value={draftRouteId ?? ""}
+                    onChange={handleRouteChange}
+                    disabled={
+                      isAreaSelectionDisabled || draftDivisionId === null
+                    }
+                    aria-label="เลือกเส้นทางที่ต้องการเปิดดู"
+                    className={styles.areaSelect}
+                  >
+                    <option value="">เลือกเส้นทาง</option>
+                    {routeOptions.map((option) => (
+                      <option key={option.route_id} value={option.route_id}>
+                        {option.route_name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </fieldset>
 
             {patrolAreaValues.length > 0 && (
               <div
@@ -2214,6 +2525,17 @@ export default function Checkpoint({
           </section>
         </div>
       </main>
+
+      <CheckpointAreaConfirmModal
+        open={isAreaConfirmModalOpen}
+        regionLabel={regionLabel?.trim() || "-"}
+        districtLabel={pendingPatrolArea?.division_name ?? "-"}
+        routeLabel={pendingPatrolArea?.route_name ?? "-"}
+        onCancel={closeAreaConfirmModal}
+        onConfirm={confirmPatrolArea}
+        closeOnBackdrop={false}
+        closeOnEsc={false}
+      />
 
       <CheckpointCallModal
         isOpen={isCallModalOpen}

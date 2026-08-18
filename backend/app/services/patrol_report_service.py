@@ -44,6 +44,7 @@ OPERATOR_LAST_NAME_ALIAS = "operator_last_name"
 
 CHECKIN_IMAGE_ALIAS = "checkin_image_url"
 CHECKOUT_IMAGE_ALIAS = "checkout_image_url"
+TIME_RECORD_ID_COLUMN = "time_record_id"
 
 # ใช้สำหรับเรียงรายงานตามเวลาเช็กอินจริง
 # ถ้า view vw_checkin_report / vw_checkin_unplanned มีคอลัมน์นี้
@@ -1238,6 +1239,96 @@ def get_patrol_report_filter_options(
             detail=PATROL_REPORT_FETCH_FAILED_DETAIL,
         ) from exc
 
+
+def _attach_unplanned_time_record_images(
+    db: Session,
+    rows: list[dict[str, Any]],
+) -> None:
+    """
+    โหลดรูปของงานนอกแผนแบบ batch หลังจาก query รายงานกรองรายการเสร็จแล้ว
+
+    - Query หลักไม่อ่าน image columns จาก vw_checkin_unplanned
+    - ใช้ time_record_id กลับมาอ่าน time_record ด้วย Primary Key
+    - โหลดรูปเพียง 1 query ต่อชุดรายการ เพื่อหลีกเลี่ยง N+1
+    """
+    time_record_ids = sorted(
+        {
+            time_record_id
+            for row in rows
+            if (
+                time_record_id := _to_optional_positive_int(
+                    row.get(TIME_RECORD_ID_COLUMN),
+                )
+            )
+            is not None
+        }
+    )
+
+    if not time_record_ids:
+        return
+
+    image_params: dict[str, Any] = {}
+    placeholders: list[str] = []
+
+    for index, time_record_id in enumerate(time_record_ids):
+        key = f"time_record_id_{index}"
+        placeholders.append(f":{key}")
+        image_params[key] = time_record_id
+
+    image_sql = text(
+        f"""
+        SELECT
+            tr.time_record_id AS {TIME_RECORD_ID_COLUMN},
+            COALESCE(
+                NULLIF(tr.images_checkin_1, ''),
+                NULLIF(tr.images_checkin_2, '')
+            ) AS {CHECKIN_IMAGE_ALIAS},
+            COALESCE(
+                NULLIF(tr.images_checkout_1, ''),
+                NULLIF(tr.images_checkout_2, '')
+            ) AS {CHECKOUT_IMAGE_ALIAS}
+        FROM time_record tr
+        WHERE tr.time_record_id IN ({', '.join(placeholders)})
+        """
+    )
+
+    image_rows = db.execute(
+        image_sql,
+        image_params,
+    ).mappings().all()
+
+    images_by_time_record_id: dict[int, tuple[Any, Any]] = {}
+
+    for image_row in image_rows:
+        time_record_id = _to_optional_positive_int(
+            image_row.get(TIME_RECORD_ID_COLUMN),
+        )
+
+        if time_record_id is None:
+            continue
+
+        images_by_time_record_id[time_record_id] = (
+            image_row.get(CHECKIN_IMAGE_ALIAS),
+            image_row.get(CHECKOUT_IMAGE_ALIAS),
+        )
+
+    for row in rows:
+        time_record_id = _to_optional_positive_int(
+            row.get(TIME_RECORD_ID_COLUMN),
+        )
+
+        if time_record_id is None:
+            continue
+
+        image_values = images_by_time_record_id.get(time_record_id)
+
+        if image_values is None:
+            continue
+
+        row[CHECKIN_IMAGE_ALIAS] = image_values[0]
+        row[CHECKOUT_IMAGE_ALIAS] = image_values[1]
+
+
 def _get_patrol_report_unplanned_rows(
     db: Session,
     *,
@@ -1257,16 +1348,6 @@ def _get_patrol_report_unplanned_rows(
         UNPLANNED_VIEW_NAME,
     )
 
-    checkin_image_select = _select_first_view_column(
-        view_column_names,
-        *CHECKIN_IMAGE_COLUMN_CANDIDATES,
-        alias=CHECKIN_IMAGE_ALIAS,
-    )
-    checkout_image_select = _select_first_view_column(
-        view_column_names,
-        *CHECKOUT_IMAGE_COLUMN_CANDIDATES,
-        alias=CHECKOUT_IMAGE_ALIAS,
-    )
     operator_first_name_select = _select_operator_employee_name_column(
         view_column_names,
         EMPLOYEE_FIRST_NAME_COLUMN,
@@ -1327,8 +1408,12 @@ def _get_patrol_report_unplanned_rows(
             {completed_datetime_select},
             NULL AS {RESERVED_BY_COLUMN},
             NULL AS {RESERVED_AT_COLUMN},
-            {checkin_image_select},
-            {checkout_image_select},
+
+            v.{TIME_RECORD_ID_COLUMN} AS {TIME_RECORD_ID_COLUMN},
+
+            NULL AS {CHECKIN_IMAGE_ALIAS},
+            NULL AS {CHECKOUT_IMAGE_ALIAS},
+
             v.{PatrolReportConstants.COLUMN_EMPLOYEE_CODE},
             {operator_first_name_select},
             {operator_last_name_select},
@@ -1359,12 +1444,20 @@ def _get_patrol_report_unplanned_rows(
             NULL AS last_inspection_date
         FROM {UNPLANNED_VIEW_NAME} v
         {' '.join(join_parts)}
-        WHERE v.{PatrolReportConstants.COLUMN_WORKDAY}
+        WHERE v.source_work_date
+            BETWEEN :source_workday_start AND :source_workday_end
+          AND v.{PatrolReportConstants.COLUMN_WORKDAY}
             BETWEEN :workday_start AND :workday_end
         """
     ]
 
     params: dict[str, Any] = {
+        # Pre-filter จาก time_record.work_date โดยตรงผ่าน source_work_date
+        # เผื่อก่อน/หลัง 1 วัน เพื่อไม่ให้รายการผลัดข้ามวันตกหล่น
+        "source_workday_start": report_start - timedelta(days=1),
+        "source_workday_end": report_end + timedelta(days=1),
+
+        # Filter สุดท้ายยังใช้ business workday เดิม
         "workday_start": report_start,
         "workday_end": report_end,
     }
@@ -1505,6 +1598,12 @@ def _get_patrol_report_unplanned_rows(
 
         row[PatrolReportConstants.COLUMN_WORKDAY] = report_workday
         filtered_rows.append(row)
+
+    # โหลดรูปเฉพาะรายการที่ผ่าน filter แล้ว
+    _attach_unplanned_time_record_images(
+        db,
+        filtered_rows,
+    )
 
     filtered_rows.sort(
         key=lambda row: (

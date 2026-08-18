@@ -13,6 +13,7 @@ click==8.3.1
 colorama==0.4.6
 cryptography==47.0.0
 ecdsa==0.19.1
+email-validator
 fastapi==0.135.1
 filelock==3.29.0
 fire==0.7.1
@@ -61,11 +62,14 @@ pydantic_core==2.41.5
 Pygments==2.20.0
 PyMySQL==1.1.2
 PySocks==1.7.1
+pythainlp==5.3.4
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.2
 python-jose==3.5.0
 python-multipart==0.0.22
+pyvips[binary]==3.1.1
 PyYAML==6.0.3
+reportlab[shaping]==5.0.0
 requests==2.33.1
 rich==15.0.0
 rsa==4.9.1
@@ -87,4 +91,3 @@ websockets==16.0
 Werkzeug==3.1.8
 wheel==0.46.3
 wrapt==2.1.2
-email-validator

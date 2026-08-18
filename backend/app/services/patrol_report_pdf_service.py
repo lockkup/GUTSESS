@@ -7,12 +7,15 @@ import html
 import io
 import logging
 import re
+import unicodedata
 from dataclasses import dataclass, replace
+from functools import lru_cache
 from datetime import date, datetime, time
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping
 
 import pyvips
+from pythainlp.tokenize import word_tokenize
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A4, landscape
@@ -233,6 +236,14 @@ class PatrolReportPdfService:
     FONT_LEADING_IMAGE_EMPTY = 10
 
     FONT_SIZE_FOOTER = 7
+
+    # ===== ตารางสรุป: ชื่อจุดรักษาการณ์ =====
+    # คงความกว้างไว้ที่ 29 mm แล้วใช้ Thai word wrapping ช่วยจัดบรรทัด
+    # เพื่อไม่ต้องขยายคอลัมน์ตามชื่อหน่วยงานที่ยาวขึ้น.
+    LOCATION_NAME_COLUMN_WIDTH = 29 * mm
+
+    # TableStyle ใช้ LEFTPADDING / RIGHTPADDING อย่างละ 3 pt.
+    TABLE_CELL_HORIZONTAL_PADDING = 6
 
     _fonts_registered = False
 
@@ -1654,7 +1665,18 @@ class PatrolReportPdfService:
                 [
                     Paragraph(str(row.number), styles["cell_center"]),
                     Paragraph(html.escape(row.contract_code), styles["cell"]),
-                    Paragraph(html.escape(row.location_name), styles["cell"]),
+                    Paragraph(
+                        PatrolReportPdfService._wrap_thai_pdf_text(
+                            row.location_name,
+                            max_width=(
+                                PatrolReportPdfService.LOCATION_NAME_COLUMN_WIDTH
+                                - PatrolReportPdfService.TABLE_CELL_HORIZONTAL_PADDING
+                            ),
+                            font_name=PatrolReportPdfService.FONT_REGULAR_NAME,
+                            font_size=PatrolReportPdfService.FONT_SIZE_TABLE_CELL,
+                        ),
+                        styles["cell"],
+                    ),
                     Paragraph(
                         html.escape(row.shift_label),
                         styles["cell_center"],
@@ -1715,13 +1737,13 @@ class PatrolReportPdfService:
             colWidths=[
                 8 * mm,
                 17 * mm,
-                29 * mm,
+                PatrolReportPdfService.LOCATION_NAME_COLUMN_WIDTH,
                 14 * mm,
                 30 * mm,
                 21 * mm,
                 24 * mm,
                 24 * mm,
-                38 * mm,
+                36 * mm,
                 28 * mm,
                 28 * mm,
             ],
@@ -2495,12 +2517,242 @@ class PatrolReportPdfService:
 
     @staticmethod
     def _text(value: Any, fallback: str = "-") -> str:
+        """
+        แปลงค่าจากฐานข้อมูลเป็นข้อความมาตรฐานสำหรับ PDF.
+
+        - Unicode NFC
+        - แปลง Unicode space เช่น NBSP เป็น space ปกติ
+        - ลบ zero-width / BOM ที่มักติดมาจาก Copy/Paste
+        - รวม whitespace ซ้ำให้เหลือช่องว่างเดียว
+        """
         if value is None:
             return fallback
 
-        text_value = str(value).strip()
+        text_value = PatrolReportPdfService._normalize_pdf_text(str(value))
 
         return text_value or fallback
+
+    @staticmethod
+    @lru_cache(maxsize=4096)
+    def _normalize_pdf_text(value: str) -> str:
+        """Normalize Unicode/whitespace โดยไม่แก้ความหมายของข้อความ."""
+        if not value:
+            return ""
+
+        normalized = unicodedata.normalize("NFC", value)
+        cleaned_chars: list[str] = []
+
+        for character in normalized:
+            if character in {"\u200b", "\u2060", "\ufeff"}:
+                continue
+
+            if unicodedata.category(character) == "Zs":
+                cleaned_chars.append(" ")
+                continue
+
+            cleaned_chars.append(character)
+
+        cleaned = "".join(cleaned_chars)
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+
+        return cleaned
+
+    @staticmethod
+    @lru_cache(maxsize=4096)
+    def _thai_pdf_tokens(value: str) -> tuple[str, ...]:
+        """
+        ตัดคำภาษาไทยด้วย PyThaiNLP newmm.
+
+        ใช้ขอบเขตคำจริงเพื่อหลีกเลี่ยงการตัดแบบ:
+        "ประเทศไ" / "ทย"
+        """
+        normalized = PatrolReportPdfService._normalize_pdf_text(value)
+
+        if not normalized:
+            return ()
+
+        return tuple(
+            token
+            for token in word_tokenize(
+                normalized,
+                engine="newmm",
+                keep_whitespace=True,
+            )
+            if token
+        )
+
+    @staticmethod
+    def _wrap_thai_pdf_text(
+        value: str,
+        *,
+        max_width: float,
+        font_name: str,
+        font_size: float,
+    ) -> str:
+        """
+        จัดบรรทัดตามขอบเขตคำไทยจริงและความกว้างจริงของฟอนต์.
+
+        จะตัดบรรทัดระหว่าง token ก่อนเสมอ และจะ fallback ไปแบ่ง
+        ภายใน token เฉพาะเมื่อ token เดียวยาวเกิน cell 29 mm จริง ๆ.
+        """
+        normalized = PatrolReportPdfService._normalize_pdf_text(value)
+
+        if not normalized:
+            return ""
+
+        if max_width <= 0:
+            return html.escape(normalized)
+
+        raw_tokens = PatrolReportPdfService._thai_pdf_tokens(normalized)
+        tokens = PatrolReportPdfService._group_pdf_tokens(raw_tokens)
+
+        lines: list[str] = []
+        current_line = ""
+
+        for token in tokens:
+            if not token:
+                continue
+
+            if token.isspace():
+                if current_line and not current_line.endswith(" "):
+                    current_line += " "
+                continue
+
+            candidate = f"{current_line}{token}" if current_line else token
+
+            if pdfmetrics.stringWidth(candidate, font_name, font_size) <= max_width:
+                current_line = candidate
+                continue
+
+            if current_line.strip():
+                lines.append(current_line.rstrip())
+                current_line = ""
+
+            clean_token = token.strip()
+            if not clean_token:
+                continue
+
+            if pdfmetrics.stringWidth(clean_token, font_name, font_size) <= max_width:
+                current_line = clean_token
+                continue
+
+            parts = PatrolReportPdfService._split_oversized_pdf_token(
+                clean_token,
+                max_width=max_width,
+                font_name=font_name,
+                font_size=font_size,
+            )
+
+            if parts:
+                lines.extend(parts[:-1])
+                current_line = parts[-1]
+
+        if current_line.strip():
+            lines.append(current_line.rstrip())
+
+        if not lines:
+            lines = [normalized]
+
+        return "<br/>".join(html.escape(line) for line in lines)
+
+    @staticmethod
+    def _group_pdf_tokens(tokens: tuple[str, ...]) -> list[str]:
+        """
+        รวมข้อความในวงเล็บเป็นกลุ่มเดียวเมื่อทำได้ เช่น "(พระนครใต้)"
+        เพื่อไม่ให้วงเล็บเปิด/ปิดค้างคนละบรรทัดโดยไม่จำเป็น.
+        """
+        grouped: list[str] = []
+        index = 0
+
+        while index < len(tokens):
+            token = tokens[index]
+
+            if token == "(":
+                buffer = [token]
+                index += 1
+
+                while index < len(tokens):
+                    part = tokens[index]
+                    buffer.append(part)
+                    index += 1
+                    if part == ")":
+                        break
+
+                grouped.append("".join(buffer))
+                continue
+
+            grouped.append(token)
+            index += 1
+
+        return grouped
+
+    @staticmethod
+    def _split_oversized_pdf_token(
+        token: str,
+        *,
+        max_width: float,
+        font_name: str,
+        font_size: float,
+    ) -> list[str]:
+        """
+        Fallback สำหรับ token เดียวที่กว้างเกิน 29 mm จริง ๆ.
+        ไม่ใช้กับคำปกติอย่าง "ประเทศไทย" หากทั้งคำยังใส่ใน cell ได้.
+        """
+        clusters = PatrolReportPdfService._safe_pdf_clusters(token)
+
+        if not clusters:
+            return [token] if token else []
+
+        parts: list[str] = []
+        current = ""
+
+        for cluster in clusters:
+            candidate = f"{current}{cluster}"
+
+            if (
+                current
+                and pdfmetrics.stringWidth(candidate, font_name, font_size)
+                > max_width
+            ):
+                parts.append(current)
+                current = cluster
+            else:
+                current = candidate
+
+        if current:
+            parts.append(current)
+
+        return parts
+
+    @staticmethod
+    def _safe_pdf_clusters(value: str) -> list[str]:
+        """ไม่แยก combining mark และสระนำไทยออกจากอักษรฐาน."""
+        if not value:
+            return []
+
+        thai_leading_vowels = {"เ", "แ", "โ", "ใ", "ไ"}
+        clusters: list[str] = []
+        index = 0
+
+        while index < len(value):
+            character = value[index]
+            cluster = character
+            index += 1
+
+            if character in thai_leading_vowels and index < len(value):
+                cluster += value[index]
+                index += 1
+
+            while (
+                index < len(value)
+                and unicodedata.category(value[index]).startswith("M")
+            ):
+                cluster += value[index]
+                index += 1
+
+            clusters.append(cluster)
+
+        return clusters
 
     @staticmethod
     def _looks_like_raw_base64(value: str) -> bool:

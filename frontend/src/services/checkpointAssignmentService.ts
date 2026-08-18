@@ -2,6 +2,7 @@
 
 import api from "@/lib/api";
 import type {
+  CheckpointAreaOptionResponse,
   CheckpointDailyRow,
   CheckpointMapLocationResponse,
   CheckpointReservationActionRequest,
@@ -21,10 +22,29 @@ type GetDailyCheckpointAssignmentsParams = {
   shiftType?: ShiftType | null;
 
   /**
-   * ใช้ให้ Backend กรองตารางงานสายตรวจตามผู้ที่ล็อกอิน
-   * Backend เอา employee_code ไปหา division_id / routes_id เอง
-   * ไม่ควรเชื่อ division_id / route_id จาก frontend ตรง ๆ
+   * รหัสพนักงานที่ล็อกอิน
+   *
+   * ถ้าไม่ได้เลือกพื้นที่อื่น Backend จะใช้ employee_code
+   * เพื่อกรองเขต / เส้นทางประจำเหมือนระบบเดิม
    */
+  employeeCode: string;
+
+  /**
+   * เขตที่ผู้ใช้เลือกจาก Dropdown
+   *
+   * ไม่ส่ง = ใช้เขต / เส้นทางประจำของพนักงาน
+   */
+  divisionId?: number | null;
+
+  /**
+   * เส้นทางที่ผู้ใช้เลือกจาก Dropdown
+   *
+   * ต้องส่งพร้อม divisionId
+   */
+  routeId?: number | null;
+};
+
+type GetCheckpointAreaOptionsParams = {
   employeeCode: string;
 };
 
@@ -41,6 +61,8 @@ export function getDailyCheckpointAssignments({
   workDate,
   shiftType,
   employeeCode,
+  divisionId,
+  routeId,
 }: GetDailyCheckpointAssignmentsParams): Promise<CheckpointDailyRow[]> {
   const normalizedEmployeeCode = employeeCode.trim();
 
@@ -49,13 +71,61 @@ export function getDailyCheckpointAssignments({
     return Promise.resolve([] as CheckpointDailyRow[]);
   }
 
+  const hasDivisionId = divisionId !== null && divisionId !== undefined;
+  const hasRouteId = routeId !== null && routeId !== undefined;
+
+  // หากเลือกพื้นที่อื่น ต้องมีทั้งเขตและเส้นทาง
+  if (hasDivisionId !== hasRouteId) {
+    return Promise.reject(
+      new Error("กรุณาระบุเขตและเส้นทางให้ครบ"),
+    );
+  }
+
+  if (
+    hasDivisionId &&
+    (!Number.isInteger(divisionId) || Number(divisionId) <= 0)
+  ) {
+    return Promise.reject(new Error("divisionId ไม่ถูกต้อง"));
+  }
+
+  if (
+    hasRouteId &&
+    (!Number.isInteger(routeId) || Number(routeId) <= 0)
+  ) {
+    return Promise.reject(new Error("routeId ไม่ถูกต้อง"));
+  }
+
   return api.get<CheckpointDailyRow[]>("/checkpoint-assignments/daily", {
     work_date: workDate,
     shift_type: shiftType ?? undefined,
     employee_code: normalizedEmployeeCode,
+    division_id: hasDivisionId ? divisionId : undefined,
+    route_id: hasRouteId ? routeId : undefined,
     is_active: true,
     include_deleted: false,
   });
+}
+
+/**
+ * โหลดรายการเขต / เส้นทางที่พนักงานสามารถเลือกเปิดดูได้
+ *
+ * GET /api/checkpoint-assignments/area-options
+ */
+export function getCheckpointAreaOptions({
+  employeeCode,
+}: GetCheckpointAreaOptionsParams): Promise<CheckpointAreaOptionResponse[]> {
+  const normalizedEmployeeCode = employeeCode.trim();
+
+  if (!normalizedEmployeeCode) {
+    return Promise.resolve([] as CheckpointAreaOptionResponse[]);
+  }
+
+  return api.get<CheckpointAreaOptionResponse[]>(
+    "/checkpoint-assignments/area-options",
+    {
+      employee_code: normalizedEmployeeCode,
+    },
+  );
 }
 
 /**

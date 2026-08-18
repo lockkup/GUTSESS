@@ -47,7 +47,7 @@ class RouteSiteLocation(Base):
 
     division_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("division.division_id"),
+        ForeignKey("divisions.division_id"),
         nullable=False,
         index=True,
     )

@@ -50,6 +50,7 @@ class ClaimedExportJob:
 
     report_export_job_id: int
     report_type: str
+    queue_key: str
     filters_json: dict
     include_images: bool
 
@@ -187,9 +188,14 @@ def claim_next_export_job() -> ClaimedExportJob | None:
     """
     Claim Job ที่ queued หนึ่งรายการแบบ atomic.
 
+    Worker จะ claim เฉพาะ Job ที่มี queue_key ตรงกับ Environment ปัจจุบัน
+    เพื่อไม่ให้ DEV / PRODUCTION แย่ง Job กัน.
+
     MySQL 8 รองรับ SKIP LOCKED ทำให้ถ้าอนาคตมี Worker มากกว่า 1 ตัว
-    แต่ละตัวจะไม่หยิบ Job เดียวกันซ้ำ.
+    ใน queue เดียวกัน แต่ละตัวจะไม่หยิบ Job เดียวกันซ้ำ.
     """
+
+    queue_key = PatrolReportExportService.get_report_export_queue_key()
 
     with db_session() as db:
         with db.begin():
@@ -197,6 +203,7 @@ def claim_next_export_job() -> ClaimedExportJob | None:
                 select(ReportExportJob)
                 .where(
                     ReportExportJob.report_type == REPORT_TYPE_PATROL,
+                    ReportExportJob.queue_key == queue_key,
                     ReportExportJob.job_status == STATUS_QUEUED,
                     ReportExportJob.mark_flag.is_(False),
                 )
@@ -229,12 +236,17 @@ def claim_next_export_job() -> ClaimedExportJob | None:
             return ClaimedExportJob(
                 report_export_job_id=export_job.report_export_job_id,
                 report_type=export_job.report_type,
+                queue_key=export_job.queue_key,
                 filters_json=dict(export_job.filters_json or {}),
                 include_images=bool(export_job.include_images),
             )
 
 
-def is_job_cancelled(report_export_job_id: int) -> bool:
+def is_job_cancelled(
+    report_export_job_id: int,
+    *,
+    queue_key: str,
+) -> bool:
     """
     PDF Service จะเรียก function นี้ระหว่างสร้างตาราง/รูปภาพ.
     ถ้า Admin กด cancel จะหยุดสร้างโดยเร็วที่สุด.
@@ -246,6 +258,7 @@ def is_job_cancelled(report_export_job_id: int) -> bool:
             ReportExportJob.mark_flag,
         ).where(
             ReportExportJob.report_export_job_id == report_export_job_id,
+            ReportExportJob.queue_key == queue_key,
         )
 
         result = db.execute(statement).one_or_none()
@@ -261,6 +274,7 @@ def is_job_cancelled(report_export_job_id: int) -> bool:
 def update_progress(
     report_export_job_id: int,
     *,
+    queue_key: str,
     current: int,
     total: int,
 ) -> None:
@@ -280,6 +294,7 @@ def update_progress(
             update(ReportExportJob)
             .where(
                 ReportExportJob.report_export_job_id == report_export_job_id,
+                ReportExportJob.queue_key == queue_key,
                 ReportExportJob.job_status == STATUS_PROCESSING,
                 ReportExportJob.mark_flag.is_(False),
             )
@@ -314,6 +329,7 @@ def finish_completed_job(
                 .where(
                     ReportExportJob.report_export_job_id
                     == claimed_job.report_export_job_id,
+                    ReportExportJob.queue_key == claimed_job.queue_key,
                 )
                 .with_for_update()
             )
@@ -373,6 +389,7 @@ def mark_job_failed(
                 .where(
                     ReportExportJob.report_export_job_id
                     == claimed_job.report_export_job_id,
+                    ReportExportJob.queue_key == claimed_job.queue_key,
                 )
                 .with_for_update()
             )
@@ -436,11 +453,13 @@ def process_claimed_export_job(
                 output_path=output_file,
                 progress_callback=lambda current, total: update_progress(
                     claimed_job.report_export_job_id,
+                    queue_key=claimed_job.queue_key,
                     current=current,
                     total=total,
                 ),
                 is_cancelled=lambda: is_job_cancelled(
                     claimed_job.report_export_job_id,
+                    queue_key=claimed_job.queue_key,
                 ),
             )
 
@@ -518,8 +537,9 @@ def process_one_export_job(*, retention_hours: int) -> bool:
         return False
 
     logger.info(
-        "เริ่มสร้าง PDF: job_id=%s",
+        "เริ่มสร้าง PDF: job_id=%s queue_key=%s",
         claimed_job.report_export_job_id,
+        claimed_job.queue_key,
     )
 
     process_claimed_export_job(
@@ -607,6 +627,9 @@ def main() -> int:
         raise SystemExit("--retention-hours ต้องมากกว่า 0")
 
     configure_logging(args.log_level)
+
+    queue_key = PatrolReportExportService.get_report_export_queue_key()
+    logger.info("Worker queue_key=%s", queue_key)
 
     if args.once:
         processed = process_one_export_job(

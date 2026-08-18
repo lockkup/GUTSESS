@@ -25,11 +25,14 @@ from app.core.error_messages import (
 from app.models.checkpoint_assignment import CheckpointAssignment
 from app.models.checkpoint_assignment_call import CheckpointAssignmentCall
 from app.models.checkpoint_schedule_item import CheckpointScheduleItem
+from app.models.divisions import Divisions
 from app.models.employees import Employees
+from app.models.route import Route
 from app.models.route_site_location import RouteSiteLocation
 from app.models.site_location import SiteLocation
 from app.schemas.checkpoint_assignment import (
     AssignmentStatus,
+    CheckpointAreaOptionResponse,
     CheckpointAssignmentCreate,
     CheckpointAssignmentDailyResponse,
     CheckpointAssignmentRecheck,
@@ -570,6 +573,61 @@ class CheckpointAssignmentService:
         return db.scalar(stmt)
 
     @staticmethod
+    def _ensure_daily_scope_exists(
+        db: Session,
+        division_id: int,
+        route_id: int,
+        field_id: int | None,
+        department_id: int | None,
+        work_date: date,
+    ) -> None:
+        stmt = (
+            select(RouteSiteLocation.route_site_location_id)
+            .select_from(RouteSiteLocation)
+            .join(
+                Divisions,
+                Divisions.division_id == RouteSiteLocation.division_id,
+            )
+            .join(
+                Route,
+                Route.route_id == RouteSiteLocation.routes_id,
+            )
+            .where(
+                RouteSiteLocation.division_id == division_id,
+                RouteSiteLocation.routes_id == route_id,
+                RouteSiteLocation.mark_flag.is_(False),
+                RouteSiteLocation.is_active.is_(True),
+                Divisions.is_active.is_(True),
+                Route.is_active.is_(True),
+                or_(
+                    RouteSiteLocation.effective_from.is_(None),
+                    RouteSiteLocation.effective_from <= work_date,
+                ),
+                or_(
+                    RouteSiteLocation.effective_to.is_(None),
+                    RouteSiteLocation.effective_to >= work_date,
+                ),
+            )
+            .limit(1)
+        )
+
+        if field_id is not None:
+            stmt = stmt.where(
+                Divisions.field_id == field_id,
+            )
+
+        if department_id is not None:
+            stmt = stmt.where(
+                Divisions.department_id == department_id,
+            )
+
+        if db.scalar(stmt) is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=INVALID_REFERENCE_DETAIL,
+            )
+
+    @staticmethod
     def _ensure_schedule_item_exists(
         db: Session,
         schedule_item_id: int,
@@ -679,6 +737,86 @@ class CheckpointAssignmentService:
 
         setattr(checkpoint_assignment, at_field, action_time)
         setattr(checkpoint_assignment, by_field, employee_code)
+
+    @staticmethod
+    def get_checkpoint_area_options(
+        db: Session,
+        employee_code: str,
+    ) -> list[CheckpointAreaOptionResponse]:
+        employee = (
+            CheckpointAssignmentService._get_active_employee_for_daily_filter(
+                db=db,
+                employee_code=employee_code,
+            )
+        )
+
+        if employee is None:
+            return []
+
+        field_id = getattr(employee, "field_id", None)
+        department_id = getattr(employee, "department_id", None)
+        employee_division_id = getattr(employee, "division_id", None)
+        employee_route_id = getattr(employee, "routes_id", None)
+
+        if field_id is None or department_id is None:
+            return []
+
+        effective_date = CheckpointAssignmentService._now_bangkok_naive().date()
+
+        stmt = (
+            select(
+                Divisions.division_id.label("division_id"),
+                Route.route_id.label("route_id"),
+                Divisions.division_name.label("division_name"),
+                Route.route_name.label("route_name"),
+            )
+            .select_from(RouteSiteLocation)
+            .join(
+                Divisions,
+                Divisions.division_id == RouteSiteLocation.division_id,
+            )
+            .join(
+                Route,
+                Route.route_id == RouteSiteLocation.routes_id,
+            )
+            .where(
+                Divisions.field_id == field_id,
+                Divisions.department_id == department_id,
+                Divisions.is_active.is_(True),
+                Route.is_active.is_(True),
+                RouteSiteLocation.mark_flag.is_(False),
+                RouteSiteLocation.is_active.is_(True),
+                or_(
+                    RouteSiteLocation.effective_from.is_(None),
+                    RouteSiteLocation.effective_from <= effective_date,
+                ),
+                or_(
+                    RouteSiteLocation.effective_to.is_(None),
+                    RouteSiteLocation.effective_to >= effective_date,
+                ),
+            )
+            .distinct()
+            .order_by(
+                Divisions.division_name.asc(),
+                Route.route_name.asc(),
+            )
+        )
+
+        rows = db.execute(stmt).mappings().all()
+
+        return [
+            CheckpointAreaOptionResponse(
+                division_id=int(row["division_id"]),
+                route_id=int(row["route_id"]),
+                division_name=str(row["division_name"] or "").strip(),
+                route_name=str(row["route_name"] or "").strip(),
+                is_home=(
+                    row["division_id"] == employee_division_id
+                    and row["route_id"] == employee_route_id
+                ),
+            )
+            for row in rows
+        ]
 
     @staticmethod
     def get_checkpoint_map_location(
@@ -860,6 +998,8 @@ class CheckpointAssignmentService:
         work_date: date,
         shift_type: ShiftType | None = None,
         employee_code: str | None = None,
+        division_id: int | None = None,
+        route_id: int | None = None,
         is_active: bool | None = True,
         include_deleted: bool = False,
     ) -> list[CheckpointAssignmentDailyResponse]:
@@ -995,6 +1135,16 @@ class CheckpointAssignmentService:
                 SiteLocation.is_active.is_(is_active),
             )
 
+        selected_scope = division_id is not None or route_id is not None
+
+        if selected_scope and (division_id is None or route_id is None):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=INVALID_REFERENCE_DETAIL,
+            )
+
+        employee: Employees | None = None
+
         if employee_code is not None:
             clean_employee_code = employee_code.strip()
 
@@ -1010,32 +1160,62 @@ class CheckpointAssignmentService:
                 if employee is None:
                     return []
 
-                route_division_column = getattr(RouteSiteLocation, "division_id", None)
-                route_routes_column = getattr(RouteSiteLocation, "routes_id", None)
+        route_division_column = getattr(RouteSiteLocation, "division_id", None)
+        route_routes_column = getattr(RouteSiteLocation, "routes_id", None)
 
-                employee_division_id = getattr(employee, "division_id", None)
-                employee_routes_id = getattr(employee, "routes_id", None)
+        if selected_scope:
+            if route_division_column is None or route_routes_column is None:
+                return []
 
-                # กรองตามเขต และเส้นทางพร้อมกัน
-                # เพื่อไม่ให้พนักงานในเขตเดียวกันเห็นข้อมูลของเส้นทางอื่น
-                if (
-                    route_division_column is not None
-                    and employee_division_id is not None
-                ):
-                    stmt = stmt.where(
-                        route_division_column == employee_division_id
-                    )
+            employee_field_id = (
+                getattr(employee, "field_id", None)
+                if employee is not None
+                else None
+            )
+            employee_department_id = (
+                getattr(employee, "department_id", None)
+                if employee is not None
+                else None
+            )
 
-                if (
-                    route_routes_column is not None
-                    and employee_routes_id is not None
-                ):
-                    stmt = stmt.where(
-                        route_routes_column == employee_routes_id
-                    )
+            CheckpointAssignmentService._ensure_daily_scope_exists(
+                db=db,
+                division_id=division_id,
+                route_id=route_id,
+                field_id=employee_field_id,
+                department_id=employee_department_id,
+                work_date=work_date,
+            )
 
-                if employee_division_id is None and employee_routes_id is None:
-                    return []
+            stmt = stmt.where(
+                route_division_column == division_id,
+                route_routes_column == route_id,
+            )
+
+        elif employee is not None:
+            employee_division_id = getattr(employee, "division_id", None)
+            employee_routes_id = getattr(employee, "routes_id", None)
+
+            # พฤติกรรมเดิม:
+            # ถ้าไม่ได้เลือกเขต/เส้นทางอื่น ให้ใช้เขตและเส้นทางประจำของพนักงาน
+            if (
+                route_division_column is not None
+                and employee_division_id is not None
+            ):
+                stmt = stmt.where(
+                    route_division_column == employee_division_id
+                )
+
+            if (
+                route_routes_column is not None
+                and employee_routes_id is not None
+            ):
+                stmt = stmt.where(
+                    route_routes_column == employee_routes_id
+                )
+
+            if employee_division_id is None and employee_routes_id is None:
+                return []
 
         if shift_type is not None:
             target_shift_id = 1 if shift_type == "day" else 2

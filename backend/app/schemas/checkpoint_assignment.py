@@ -264,6 +264,29 @@ class CheckpointAssignmentDailyResponse(BaseModel):
     crosses_midnight: bool | None = None
 
 
+class CheckpointAreaOptionResponse(BaseModel):
+    """
+    เขตและเส้นทางที่พนักงานเลือกเปิดดูงานได้
+    """
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        extra="forbid",
+        str_strip_whitespace=True,
+    )
+
+    division_id: int
+
+    route_id: int
+
+    division_name: str
+
+    route_name: str
+
+    # True = เขต/เส้นทางประจำของพนักงาน
+    is_home: bool = False
+
+
 class CheckpointMapLocationResponse(BaseModel):
     model_config = ConfigDict(
         from_attributes=True,

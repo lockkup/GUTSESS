@@ -2,6 +2,17 @@
 
 :root {
   --checkpoint-title-size: 16px;
+
+  /* ===== ข้อความอธิบายใต้หัวข้อ ===== */
+  --checkpoint-subtitle-size: 15px;
+  --checkpoint-subtitle-weight: 400;
+
+  /* ===== ป้ายเขต / เส้นทาง และข้อความใน Dropdown ===== */
+  --checkpoint-area-label-size: 15px;
+  --checkpoint-area-label-weight: 400;
+  --checkpoint-area-select-size: 13px;
+  --checkpoint-area-select-weight: 400;
+
   --checkpoint-round-size: 15px;
   --checkpoint-shift-size: 16px;
 
@@ -9,7 +20,7 @@
   --checkpoint-patrol-area-size: 15px;
   --checkpoint-patrol-area-weight: 400;
   --checkpoint-patrol-area-color: #000000;
-  --checkpoint-patrol-area-line-height: 1.35;
+
 
   --checkpoint-patrol-area-gap: 10px;
   --checkpoint-patrol-area-item-gap: 2px;
@@ -29,16 +40,58 @@
   --checkpoint-status-height: 60px;
   --checkpoint-call-width: 58px;
 }
-
 .attTitle {
   width: 100%;
   align-self: stretch;
-  margin: 14px 0 6px;
+  margin: 14px 0 3px;
   font-weight: 900;
   color: rgba(27, 43, 74, 0.92);
   font-size: var(--checkpoint-title-size);
   letter-spacing: 0.2px;
   text-align: left;
+}
+
+.attSubtitle {
+  width: 100%;
+  margin: 2px 0 8px;
+  color: #000000;
+  font-size: var(--checkpoint-subtitle-size);
+  font-weight: var(--checkpoint-subtitle-weight);
+  line-height: 1.4;
+  text-align: left;
+}
+
+.areaSelector {
+  min-width: 0;
+  margin: 12px 0;
+  padding: 0;
+  border: 0;
+}
+
+.areaSelectorGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.areaSelectorField {
+  display: grid;
+  flex: 1 1 160px;
+  min-width: 0;
+  gap: 6px;
+  font-size: var(--checkpoint-area-label-size);
+  font-weight: var(--checkpoint-area-label-weight);
+}
+
+.areaSelect {
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
+  font-size: var(--checkpoint-area-select-size);
+  font-weight: var(--checkpoint-area-select-weight);
 }
 
 .patrolAreaInfo {
@@ -627,7 +680,7 @@
 
 @media (max-width: 480px) {
   .attTitle {
-    margin-bottom: 5px;
+    margin-bottom: 3px;
   }
 
   .patrolAreaInfo {

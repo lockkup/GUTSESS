@@ -2,7 +2,6 @@
 # แยก Export Job ของแต่ละ Environment ด้วย queue_key
 from __future__ import annotations
 
-import os
 from datetime import datetime
 from pathlib import Path
 
@@ -13,6 +12,7 @@ from sqlalchemy import exists, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.error_messages import (
     DATABASE_ERROR_DETAIL,
     EMPLOYEE_NOT_FOUND_DETAIL,
@@ -50,11 +50,6 @@ class PatrolReportExportService:
 
     REPORT_TYPE_PATROL = "patrol_report"
 
-    REPORT_EXPORT_QUEUE_KEY_ENV = "REPORT_EXPORT_QUEUE_KEY"
-    DEFAULT_REPORT_EXPORT_QUEUE_KEY = (
-        "guts_ess.patrol_report.production"
-    )
-
     STATUS_QUEUED = "queued"
     STATUS_PROCESSING = "processing"
     STATUS_COMPLETED = "completed"
@@ -81,7 +76,6 @@ class PatrolReportExportService:
 
     # ตั้งค่าใน .env ได้ เช่น:
     # REPORT_EXPORT_ROOT=D:\GutsWebServer\ESS\exports
-    REPORT_EXPORT_ROOT_ENV = "REPORT_EXPORT_ROOT"
 
     @staticmethod
     def queue_patrol_report_export(
@@ -438,10 +432,7 @@ class PatrolReportExportService:
 
     @staticmethod
     def _get_export_root() -> Path:
-        configured_path = os.getenv(
-            PatrolReportExportService.REPORT_EXPORT_ROOT_ENV,
-            "",
-        ).strip()
+        configured_path = settings.REPORT_EXPORT_ROOT.strip()
 
         if configured_path:
             return Path(configured_path).expanduser().resolve()
@@ -452,12 +443,11 @@ class PatrolReportExportService:
 
     @staticmethod
     def get_report_export_queue_key() -> str:
-        configured_queue_key = os.getenv(
-            PatrolReportExportService.REPORT_EXPORT_QUEUE_KEY_ENV,
-            "",
-        ).strip()
+        configured_queue_key = settings.REPORT_EXPORT_QUEUE_KEY.strip()
 
-        return (
-            configured_queue_key
-            or PatrolReportExportService.DEFAULT_REPORT_EXPORT_QUEUE_KEY
-        )
+        if not configured_queue_key:
+            raise RuntimeError(
+                "REPORT_EXPORT_QUEUE_KEY is not configured"
+            )
+
+        return configured_queue_key

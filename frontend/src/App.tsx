@@ -33,6 +33,11 @@ type PunchType = "in" | "out";
 
 type CheckpointActionMode = "checkin" | "checkout";
 
+type CheckpointAreaSelection = {
+  divisionId: number;
+  routeId: number;
+};
+
 type PassedLocation = {
   latitude: number;
   longitude: number;
@@ -387,6 +392,14 @@ export default function App() {
   const [selectedCheckpoint, setSelectedCheckpoint] =
     useState<SelectedCheckpoint | null>(null);
 
+  /**
+   * จำเขต / เส้นทางที่ผู้ใช้เลือกในหน้า Checkpoint
+   * หลัง Check-in / Check-out แล้วกลับมา ให้ยังคงพื้นที่เดิม
+   * หากต้องการกลับพื้นที่ประจำ ผู้ใช้เลือกจาก Dropdown ตามเดิม
+   */
+  const [checkpointAreaSelection, setCheckpointAreaSelection] =
+    useState<CheckpointAreaSelection | null>(null);
+
   const reset = (r: Route) => setStack([r]);
 
   const push = (r: Route) =>
@@ -531,6 +544,7 @@ export default function App() {
     setAttendanceTimeContext(context);
     clearCheckInOutTimeState();
     setSelectedCheckpoint(null);
+    setCheckpointAreaSelection(null);
     setPunchType("in");
 
     reset("home");
@@ -613,6 +627,7 @@ export default function App() {
     setAttendanceTimeContext(null);
     clearCheckInOutTimeState();
     setSelectedCheckpoint(null);
+    setCheckpointAreaSelection(null);
     setPunchType("in");
 
     reset("login");
@@ -1182,6 +1197,14 @@ export default function App() {
           regionLabel={patrolArea.fieldName || null}
           districtLabel={patrolArea.divisionName || null}
           routeLabel={patrolArea.routeName || null}
+          restoreDivisionId={checkpointAreaSelection?.divisionId ?? null}
+          restoreRouteId={checkpointAreaSelection?.routeId ?? null}
+          onPatrolAreaChange={(divisionId, routeId) => {
+            setCheckpointAreaSelection({
+              divisionId,
+              routeId,
+            });
+          }}
           onBack={back}
           onGoCheckInOut={(payload) => {
             void goCheckInOut(payload).catch((error) => {

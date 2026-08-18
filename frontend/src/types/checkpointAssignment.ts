@@ -9,6 +9,26 @@ export type CheckpointAssignmentStatus =
 
 export type ShiftType = "day" | "night";
 
+/**
+ * รายการเขต / เส้นทางสำหรับ Dropdown หน้า Checkpoint
+ *
+ * Response จาก:
+ * GET /api/checkpoint-assignments/area-options
+ */
+export type CheckpointAreaOptionResponse = {
+  division_id: number;
+  route_id: number;
+
+  division_name: string;
+  route_name: string;
+
+  /**
+   * true = เขต / เส้นทางประจำของพนักงาน
+   * false = เขต / เส้นทางอื่นที่สามารถเลือกเปิดดูได้
+   */
+  is_home: boolean;
+};
+
 export type CheckpointDailyRow = {
   assignment_id: number;
   work_date: string;

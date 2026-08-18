@@ -10,6 +10,7 @@ from app.core import get_db
 from app.core.constants import DBConstants
 from app.schemas.checkpoint_assignment import (
     AssignmentStatus,
+    CheckpointAreaOptionResponse,
     CheckpointAssignmentAction,
     CheckpointAssignmentCreate,
     CheckpointAssignmentDailyResponse,
@@ -87,6 +88,8 @@ def get_daily_checkpoint_assignments(
     work_date: date = Query(...),
     shift_type: ShiftType | None = Query(default=None),
     employee_code: str | None = Query(default=None, min_length=1),
+    division_id: int | None = Query(default=None, gt=0),
+    route_id: int | None = Query(default=None, gt=0),
     is_active: bool | None = Query(default=True),
     include_deleted: bool = Query(default=False),
     db: Session = Depends(get_db),
@@ -96,8 +99,29 @@ def get_daily_checkpoint_assignments(
         work_date=work_date,
         shift_type=shift_type,
         employee_code=employee_code,
+        division_id=division_id,
+        route_id=route_id,
         is_active=is_active,
         include_deleted=include_deleted,
+    )
+
+
+@router.get(
+    "/area-options",
+    response_model=list[CheckpointAreaOptionResponse],
+    status_code=status.HTTP_200_OK,
+)
+def get_checkpoint_area_options(
+    employee_code: str = Query(
+        ...,
+        min_length=DBConstants.EMPLOYEE_CODE_LENGTH,
+        max_length=DBConstants.EMPLOYEE_CODE_LENGTH,
+    ),
+    db: Session = Depends(get_db),
+) -> list[CheckpointAreaOptionResponse]:
+    return CheckpointAssignmentService.get_checkpoint_area_options(
+        db=db,
+        employee_code=employee_code,
     )
 
 
