@@ -1106,15 +1106,29 @@ function resolveReportImageUrl(value: string | null | undefined) {
     return `data:image/jpeg;base64,${imageText}`;
   }
 
+  const normalizedImagePath = imageText.replace(/\\/g, "/");
+
+  // รูปใน uploads ให้โหลดผ่าน origin เดียวกับหน้าเว็บ
+  // Caddy เป็นผู้ serve /uploads/*
+  if (normalizedImagePath.startsWith("/uploads/")) {
+    return normalizedImagePath;
+  }
+
+  if (normalizedImagePath.startsWith("uploads/")) {
+    return `/${normalizedImagePath}`;
+  }
+
   const apiOrigin = getApiOriginForImage();
 
   if (!apiOrigin) {
-    return imageText.startsWith("/") ? imageText : `/${imageText}`;
+    return normalizedImagePath.startsWith("/")
+      ? normalizedImagePath
+      : `/${normalizedImagePath}`;
   }
 
-  return imageText.startsWith("/")
-    ? `${apiOrigin}${imageText}`
-    : `${apiOrigin}/${imageText}`;
+  return normalizedImagePath.startsWith("/")
+    ? `${apiOrigin}${normalizedImagePath}`
+    : `${apiOrigin}/${normalizedImagePath}`;
 }
 
 function getCheckInImageUrl(row: PatrolReportDisplayRow) {
