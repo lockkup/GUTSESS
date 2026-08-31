@@ -42,7 +42,7 @@ from app.schemas.patrol_report_export import (
     PatrolReportExportFilter,
     PatrolReportPlanMode,
 )
-from app.services.patrol_report import (
+from app.services.patrol_report_service import (
     _filter_planned_rows_by_rule_state,
     get_patrol_report_rows,
 )
