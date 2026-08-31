@@ -1,4 +1,5 @@
 # backend/app/main.py
+
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
@@ -40,6 +41,7 @@ from app.models import (  # noqa: F401
     SiteLocation,
     SiteLocationChange,
     TimeRecord,
+    TimeRecordImage,
 )
 
 
@@ -47,7 +49,11 @@ def parse_allowed_origins(origin_value: str | None) -> list[str]:
     if not origin_value:
         return []
 
-    return [origin.strip() for origin in origin_value.split(",") if origin.strip()]
+    return [
+        origin.strip()
+        for origin in origin_value.split(",")
+        if origin.strip()
+    ]
 
 
 class AuditContextMiddleware(BaseHTTPMiddleware):
@@ -57,7 +63,10 @@ class AuditContextMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next):
-        set_audit_context(request=request, user_name="SYSTEM")
+        set_audit_context(
+            request=request,
+            user_name="SYSTEM",
+        )
 
         try:
             response = await call_next(request)
@@ -73,7 +82,8 @@ async def lifespan(app: FastAPI):
     # ดังนั้นไม่ต้องให้ backend create table เองตอน start
     #
     # ถ้าเปิดบรรทัดนี้ไว้ และ model มี ForeignKey ไปยังตารางที่ยังไม่มี
-    # ใน SQLAlchemy metadata เช่น fields.field_id อาจทำให้ startup error ได้
+    # ใน SQLAlchemy metadata เช่น fields.field_id
+    # อาจทำให้ startup error ได้
     # ============================================================
 
     # Base.metadata.create_all(bind=engine)
@@ -86,7 +96,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-allowed_origins = parse_allowed_origins(settings.FRONTEND_ORIGIN)
+allowed_origins = parse_allowed_origins(
+    settings.FRONTEND_ORIGIN
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -104,33 +116,81 @@ app.add_middleware(DatabaseErrorMiddleware)
 
 
 @app.exception_handler(HTTPException)
-async def http_exception_handler(request: Request, exc: HTTPException):
+async def http_exception_handler(
+    request: Request,
+    exc: HTTPException,
+):
     return JSONResponse(
         status_code=exc.status_code,
-        content={"detail": exc.detail},
+        content={
+            "detail": exc.detail,
+        },
     )
 
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-UPLOAD_DIR = BASE_DIR / "uploads"
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+# ============================================================
+# Uploads
+#
+# โครงสร้าง:
+#
+# guts-ess/
+# ├── backend/
+# ├── frontend/
+# └── uploads/
+#     └── time_record/
+#         └── YYYY/
+#             └── MM/
+#                 └── employee_code/
+#                     └── time_record_id/
+#                         ├── checkin/
+#                         └── checkout/
+#
+# main.py อยู่ที่:
+# backend/app/main.py
+#
+# parents[2] = project root
+# ============================================================
 
-app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+UPLOAD_DIR = PROJECT_ROOT / "uploads"
+
+UPLOAD_DIR.mkdir(
+    parents=True,
+    exist_ok=True,
+)
+
+app.mount(
+    "/uploads",
+    StaticFiles(
+        directory=str(UPLOAD_DIR),
+    ),
+    name="uploads",
+)
 
 
 @app.get("/")
 def root() -> dict[str, str]:
-    return {"message": f"{settings.APP_NAME} is running"}
+    return {
+        "message": f"{settings.APP_NAME} is running"
+    }
 
 
 @app.get("/health")
 def health_check() -> dict[str, str]:
-    return {"status": "ok"}
+    return {
+        "status": "ok"
+    }
 
 
 @app.get("/api/health")
 def api_health_check() -> dict[str, str]:
-    return {"status": "ok"}
+    return {
+        "status": "ok"
+    }
 
 
-app.include_router(api_router, prefix="/api")
+app.include_router(
+    api_router,
+    prefix="/api",
+)

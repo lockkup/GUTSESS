@@ -53,6 +53,26 @@ type CheckpointReservationParams = {
   employeeCode: string;
 };
 
+export type TakeoverCheckpointAssignmentParams = {
+  /** Assignment เดิมที่มีสถานะ in_progress ค้างข้ามวัน */
+  assignmentId: number;
+
+  /** รหัสพนักงานคนใหม่ที่ยืนยันเข้าตรวจแทน */
+  updatedBy: string;
+};
+
+type TakeoverCheckpointAssignmentRequest = {
+  updated_by: string;
+};
+
+export type TakeoverCheckpointAssignmentResponse = {
+  /** Assignment เดิมที่ Backend ปิดเป็น cancelled */
+  previous_assignment: CheckpointReservationActionResponse;
+
+  /** Assignment ของวันปัจจุบันที่จองให้พนักงานคนใหม่ */
+  current_assignment: CheckpointReservationActionResponse;
+};
+
 type RawCheckpointMapLocationResponse = CheckpointMapLocationResponse & {
   locationDetail?: string | null;
 };
@@ -184,6 +204,40 @@ export function cancelCheckpointAssignmentReservation({
 
   return api.post<CheckpointReservationActionResponse>(
     `/checkpoint-assignments/${assignmentId}/cancel-reservation`,
+    payload,
+  );
+}
+
+/**
+ * ยืนยันเข้าตรวจแทน Assignment ที่ค้างข้ามวัน
+ *
+ * Backend จะปิด Assignment เดิมและคืน Assignment ของวันปัจจุบัน
+ * เพื่อให้หน้า Checkpoint ทำ GPS / Face Verify และเช็กอินตามขั้นตอนปกติ
+ *
+ * POST /api/checkpoint-assignments/{assignmentId}/takeover
+ */
+export function takeoverCheckpointAssignment({
+  assignmentId,
+  updatedBy,
+}: TakeoverCheckpointAssignmentParams): Promise<TakeoverCheckpointAssignmentResponse> {
+  const normalizedUpdatedBy = updatedBy.trim();
+
+  if (!Number.isInteger(assignmentId) || assignmentId <= 0) {
+    return Promise.reject(new Error("assignmentId ไม่ถูกต้อง"));
+  }
+
+  if (!normalizedUpdatedBy) {
+    return Promise.reject(
+      new Error("ไม่พบรหัสพนักงานสำหรับเข้าตรวจแทน"),
+    );
+  }
+
+  const payload: TakeoverCheckpointAssignmentRequest = {
+    updated_by: normalizedUpdatedBy,
+  };
+
+  return api.post<TakeoverCheckpointAssignmentResponse>(
+    `/checkpoint-assignments/${assignmentId}/takeover`,
     payload,
   );
 }

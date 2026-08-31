@@ -4,7 +4,7 @@ from datetime import date, datetime, time, timedelta
 from typing import Any, Literal, Mapping, cast
 
 from fastapi import HTTPException, status
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -22,9 +22,11 @@ from app.schemas.patrol_report import (
     PatrolNotificationLevel,
     PatrolReportFilterOptionsResponse,
     PatrolReportResponse,
+    PatrolReportStatusFilter,
     PatrolRouteOption,
     PatrolStatus,
 )
+from app.services.checkpoint_assignment import CheckpointAssignmentService
 
 
 ReportPlanMode = Literal["planned", "outside_plan"]
@@ -55,6 +57,15 @@ COMPLETED_DATETIME_COLUMN = "completed_datetime"
 # ข้อมูลการจองจาก checkpoint_assignment / vw_checkin_report
 RESERVED_BY_COLUMN = "reserved_by"
 RESERVED_AT_COLUMN = "reserved_at"
+
+# ข้อมูล Assignment ที่ใช้จำแนกงานตรวจแทนและหารอบข้ามวัน
+ASSIGNMENT_ID_COLUMN = "assignment_id"
+PARENT_ASSIGNMENT_ID_COLUMN = "parent_assignment_id"
+SCHEDULE_RULE_RUN_ID_COLUMN = "schedule_rule_run_id"
+RECHECK_REASON_COLUMN = "recheck_reason"
+TAKEOVER_BY_COLUMN = "takeover_by"
+ASSIGNMENT_STARTED_AT_COLUMN = "assignment_started_at"
+ASSIGNMENT_COMPLETED_AT_COLUMN = "assignment_completed_at"
 
 CHECKIN_IMAGE_COLUMN_CANDIDATES = (
     # ชื่อ column จริงในตาราง time_record / view รายงาน
@@ -365,6 +376,39 @@ def _normalize_status(value: Any) -> PatrolStatus:
         return cast(PatrolStatus, text_value)
 
     return cast(PatrolStatus, PatrolReportConstants.STATUS_PENDING)
+
+
+def _is_takeover_assignment_row(row: Mapping[str, Any]) -> bool:
+    return (
+        _to_optional_positive_int(row.get(PARENT_ASSIGNMENT_ID_COLUMN))
+        is not None
+        and _to_optional_positive_int(row.get(SCHEDULE_RULE_RUN_ID_COLUMN))
+        is not None
+        and _to_optional_text(row.get(RECHECK_REASON_COLUMN)) is None
+    )
+
+
+def _is_takeover_pending_row(row: Mapping[str, Any]) -> bool:
+    """
+    Assignment ลูกตรวจแทนยังคงมี assignment_status="pending"
+    แต่ไม่ใช่รายการจอง จึงต้องจำแนกด้วยข้อมูลสาย parent/run โดยตรง
+    """
+    assignment_status = str(
+        row.get(PatrolReportConstants.COLUMN_ASSIGNMENT_STATUS) or ""
+    ).strip()
+
+    return (
+        assignment_status == PatrolReportConstants.STATUS_PENDING
+        and _is_takeover_assignment_row(row)
+        and _to_optional_datetime(
+            row.get(ASSIGNMENT_STARTED_AT_COLUMN)
+        )
+        is None
+        and _to_optional_datetime(
+            row.get(ASSIGNMENT_COMPLETED_AT_COLUMN)
+        )
+        is None
+    )
 
 
 def _get_patrol_status_sort_order(value: Any) -> int:
@@ -775,6 +819,321 @@ def _get_time_record_flags(
     return flags
 
 
+def _filter_planned_rows_by_rule_state(
+    db: Session,
+    rows: list[dict[str, Any]],
+    *,
+    report_start: date,
+    report_end: date,
+) -> list[dict[str, Any]]:
+    """
+    ทำให้รายการตามแผนใช้กติกา Schedule Rule Run ชุดเดียวกับหน้า Checkpoint
+
+    - EXACT_* ใช้ work_date ของ Assignment รากเป็นจุดเริ่มรอบ
+    - FLEXIBLE_* ใช้ assignment_start_date/assignment_end_date ของ Rule Run
+    - รองรับ in_progress และ Assignment ลูกตรวจแทน pending ที่ข้ามวัน
+    - ถ้ามีงานเปิดอยู่ในรอบ ให้ซ่อน pending ปกติของรอบเดียวกัน
+    - ถ้ารอบปิดแล้ว ให้ซ่อน pending ที่เหลือ แต่คง completed ในช่วงรายงาน
+
+    ฟังก์ชันนี้อ่าน parent/run state แบบ batch และไม่สร้าง Assignment ใหม่
+    """
+    rule_run_ids = {
+        rule_run_id
+        for row in rows
+        if (
+            rule_run_id := _to_optional_positive_int(
+                row.get(SCHEDULE_RULE_RUN_ID_COLUMN)
+            )
+        )
+        is not None
+    }
+
+    if not rule_run_ids:
+        return [
+            row
+            for row in rows
+            if (
+                (row_workday := _to_optional_date(
+                    row.get(PatrolReportConstants.COLUMN_WORKDAY)
+                ))
+                is not None
+                and report_start <= row_workday <= report_end
+            )
+        ]
+
+    rule_run_contexts = (
+        CheckpointAssignmentService._get_rule_run_contexts_by_ids(
+            db=db,
+            rule_run_ids=rule_run_ids,
+        )
+    )
+
+    candidate_assignment_ids = {
+        assignment_id
+        for row in rows
+        if _is_takeover_assignment_row(row)
+        and (
+            assignment_id := _to_optional_positive_int(
+                row.get(ASSIGNMENT_ID_COLUMN)
+            )
+        )
+        is not None
+    }
+    root_work_dates = (
+        CheckpointAssignmentService._get_root_assignment_work_dates(
+            db=db,
+            assignment_ids=candidate_assignment_ids,
+        )
+        if candidate_assignment_ids
+        else {}
+    )
+
+    state_sql = text(
+        """
+        SELECT
+            ca.schedule_rule_run_id,
+            ca.assignment_id,
+            ca.work_date,
+            ca.parent_assignment_id,
+            ca.recheck_reason,
+            ca.assignment_status,
+            ca.started_at,
+            ca.completed_at
+        FROM checkpoint_assignment AS ca
+        WHERE ca.schedule_rule_run_id IN :rule_run_ids
+          AND ca.work_date <= :report_end
+          AND COALESCE(ca.mark_flag, 0) = 0
+          AND (
+              ca.started_at IS NOT NULL
+              OR ca.completed_at IS NOT NULL
+              OR ca.assignment_status IN (
+                  'in_progress',
+                  'completed',
+                  'repaired'
+              )
+              OR (
+                  ca.assignment_status = 'pending'
+                  AND ca.parent_assignment_id IS NOT NULL
+                  AND NULLIF(TRIM(ca.recheck_reason), '') IS NULL
+              )
+          )
+        """
+    ).bindparams(
+        bindparam(
+            "rule_run_ids",
+            expanding=True,
+        )
+    )
+
+    state_rows = db.execute(
+        state_sql,
+        {
+            "rule_run_ids": sorted(rule_run_ids),
+            "report_end": report_end,
+        },
+    ).mappings().all()
+
+    state_child_assignment_ids = {
+        assignment_id
+        for state_row in state_rows
+        if (
+            _to_optional_positive_int(
+                state_row.get(PARENT_ASSIGNMENT_ID_COLUMN)
+            )
+            is not None
+            and _to_optional_text(
+                state_row.get(RECHECK_REASON_COLUMN)
+            )
+            is None
+            and (
+                assignment_id := _to_optional_positive_int(
+                    state_row.get(ASSIGNMENT_ID_COLUMN)
+                )
+            )
+            is not None
+        )
+    }
+    missing_root_assignment_ids = (
+        state_child_assignment_ids - set(root_work_dates)
+    )
+    if missing_root_assignment_ids:
+        root_work_dates.update(
+            CheckpointAssignmentService._get_root_assignment_work_dates(
+                db=db,
+                assignment_ids=missing_root_assignment_ids,
+            )
+        )
+
+    open_assignment_ids_by_period: dict[
+        tuple[int, date, date],
+        set[int],
+    ] = {}
+    completed_period_keys: set[tuple[int, date, date]] = set()
+
+    for state_row in state_rows:
+        rule_run_id = _to_optional_positive_int(
+            state_row.get(SCHEDULE_RULE_RUN_ID_COLUMN)
+        )
+        assignment_id = _to_optional_positive_int(
+            state_row.get(ASSIGNMENT_ID_COLUMN)
+        )
+        state_workday = _to_optional_date(state_row.get("work_date"))
+
+        if (
+            rule_run_id is None
+            or assignment_id is None
+            or state_workday is None
+        ):
+            continue
+
+        period_key = CheckpointAssignmentService._get_assignment_period_key(
+            schedule_rule_run_id=rule_run_id,
+            assignment_work_date=root_work_dates.get(
+                assignment_id,
+                state_workday,
+            ),
+            rule_run_context=rule_run_contexts.get(rule_run_id),
+        )
+
+        state_status = str(
+            state_row.get(PatrolReportConstants.COLUMN_ASSIGNMENT_STATUS)
+            or ""
+        ).strip()
+        state_started_at = _to_optional_datetime(
+            state_row.get("started_at")
+        )
+        state_completed_at = _to_optional_datetime(
+            state_row.get("completed_at")
+        )
+        is_takeover_state = (
+            _to_optional_positive_int(
+                state_row.get(PARENT_ASSIGNMENT_ID_COLUMN)
+            )
+            is not None
+            and _to_optional_text(
+                state_row.get(RECHECK_REASON_COLUMN)
+            )
+            is None
+        )
+        is_open = (
+            state_completed_at is None
+            and (
+                (
+                    state_status == PatrolReportConstants.STATUS_IN_PROGRESS
+                    and state_started_at is not None
+                )
+                or (
+                    state_status == PatrolReportConstants.STATUS_PENDING
+                    and state_started_at is None
+                    and is_takeover_state
+                )
+            )
+        )
+
+        if is_open:
+            open_assignment_ids_by_period.setdefault(
+                period_key,
+                set(),
+            ).add(assignment_id)
+
+        if (
+            state_completed_at is not None
+            or state_status in {
+                PatrolReportConstants.STATUS_COMPLETED,
+                "repaired",
+            }
+        ):
+            completed_period_keys.add(period_key)
+
+    visible_rows: list[dict[str, Any]] = []
+
+    for row in rows:
+        row_workday = _to_optional_date(
+            row.get(PatrolReportConstants.COLUMN_WORKDAY)
+        )
+
+        if row_workday is None or row_workday > report_end:
+            continue
+
+        assignment_id = _to_optional_positive_int(
+            row.get(ASSIGNMENT_ID_COLUMN)
+        )
+        rule_run_id = _to_optional_positive_int(
+            row.get(SCHEDULE_RULE_RUN_ID_COLUMN)
+        )
+        assignment_status = str(
+            row.get(PatrolReportConstants.COLUMN_ASSIGNMENT_STATUS) or ""
+        ).strip()
+        is_takeover_assignment = _is_takeover_assignment_row(row)
+
+        if row_workday < report_start:
+            if rule_run_id is None or assignment_id is None:
+                continue
+
+            rule_run_context = rule_run_contexts.get(rule_run_id)
+
+            # Legacy Run ที่หา Context ไม่พบ คงพฤติกรรมเดิมของหน้า Checkpoint
+            # เพื่อไม่ให้รายการงานค้างหายไปโดยไม่ตั้งใจ
+            if rule_run_context is not None:
+                requested_work_date = max(
+                    report_start,
+                    row_workday + timedelta(days=1),
+                )
+
+                if requested_work_date > report_end:
+                    continue
+
+                if not (
+                    CheckpointAssignmentService
+                    ._is_cross_day_open_within_period(
+                        period_anchor_work_date=root_work_dates.get(
+                            assignment_id,
+                            row_workday,
+                        ),
+                        source_work_date=row_workday,
+                        requested_work_date=requested_work_date,
+                        assignment_status=assignment_status,
+                        started_at=_to_optional_datetime(
+                            row.get(ASSIGNMENT_STARTED_AT_COLUMN)
+                        ),
+                        completed_at=_to_optional_datetime(
+                            row.get(ASSIGNMENT_COMPLETED_AT_COLUMN)
+                        ),
+                        is_takeover_assignment=is_takeover_assignment,
+                        rule_run_context=rule_run_context,
+                    )
+                ):
+                    continue
+
+        if rule_run_id is not None and assignment_id is not None:
+            period_key = (
+                CheckpointAssignmentService._get_assignment_period_key(
+                    schedule_rule_run_id=rule_run_id,
+                    assignment_work_date=root_work_dates.get(
+                        assignment_id,
+                        row_workday,
+                    ),
+                    rule_run_context=rule_run_contexts.get(rule_run_id),
+                )
+            )
+            open_assignment_ids = open_assignment_ids_by_period.get(
+                period_key,
+                set(),
+            )
+
+            # completed ในช่วงรายงานต้องคงไว้เป็นประวัติ
+            if assignment_status != PatrolReportConstants.STATUS_COMPLETED:
+                if open_assignment_ids:
+                    if assignment_id not in open_assignment_ids:
+                        continue
+                elif period_key in completed_period_keys:
+                    continue
+
+        visible_rows.append(row)
+
+    return visible_rows
+
+
 def _map_patrol_report_row(
     row_no: int,
     row: Mapping[str, Any],
@@ -794,6 +1153,11 @@ def _map_patrol_report_row(
     last_inspection_date = _to_optional_date(row.get("last_inspection_date"))
     patrol_status = _normalize_status(
         row.get(PatrolReportConstants.COLUMN_ASSIGNMENT_STATUS),
+    )
+    takeover_by = (
+        _to_optional_text(row.get(TAKEOVER_BY_COLUMN))
+        if _is_takeover_pending_row(row)
+        else None
     )
 
     report_day_number = _calculate_report_day_number(
@@ -826,6 +1190,7 @@ def _map_patrol_report_row(
         reservedAt=_to_optional_datetime(
             row.get(RESERVED_AT_COLUMN),
         ),
+        takeoverBy=takeover_by,
 
         departmentId=_to_optional_positive_int(
             row.get(PatrolReportConstants.COLUMN_DEPARTMENT_ID),
@@ -1240,16 +1605,19 @@ def get_patrol_report_filter_options(
         ) from exc
 
 
-def _attach_unplanned_time_record_images(
+def _attach_time_record_images(
     db: Session,
     rows: list[dict[str, Any]],
 ) -> None:
     """
-    โหลดรูปของงานนอกแผนแบบ batch หลังจาก query รายงานกรองรายการเสร็จแล้ว
+    โหลดรูป TimeRecord แบบ batch หลังจาก query รายงานกรองรายการเสร็จแล้ว
 
-    - Query หลักไม่อ่าน image columns จาก vw_checkin_unplanned
-    - ใช้ time_record_id กลับมาอ่าน time_record ด้วย Primary Key
-    - โหลดรูปเพียง 1 query ต่อชุดรายการ เพื่อหลีกเลี่ยง N+1
+    ลำดับการเลือก:
+    1. time_record_image (ระบบใหม่)
+    2. image alias ที่ query หลักส่งมา
+    3. time_record.images_checkin_1/2 และ images_checkout_1/2 (legacy fallback)
+
+    โหลดแบบ batch เพื่อหลีกเลี่ยง N+1 query
     """
     time_record_ids = sorted(
         {
@@ -1275,7 +1643,64 @@ def _attach_unplanned_time_record_images(
         placeholders.append(f":{key}")
         image_params[key] = time_record_id
 
-    image_sql = text(
+    placeholders_sql = ", ".join(placeholders)
+
+    # ============================================================
+    # รูประบบใหม่จาก time_record_image
+    # ============================================================
+    new_image_sql = text(
+        f"""
+        SELECT
+            tri.time_record_id AS {TIME_RECORD_ID_COLUMN},
+            tri.image_type,
+            tri.sequence_no,
+            tri.image_path
+        FROM time_record_image tri
+        WHERE tri.time_record_id IN ({placeholders_sql})
+          AND tri.image_type IN ('checkin', 'checkout')
+        ORDER BY
+            tri.time_record_id,
+            tri.image_type,
+            tri.sequence_no,
+            tri.time_record_image_id
+        """
+    )
+
+    new_image_rows = db.execute(
+        new_image_sql,
+        image_params,
+    ).mappings().all()
+
+    new_images_by_time_record_id: dict[int, dict[str, str]] = {}
+
+    for image_row in new_image_rows:
+        time_record_id = _to_optional_positive_int(
+            image_row.get(TIME_RECORD_ID_COLUMN),
+        )
+        image_type = _to_optional_text(image_row.get("image_type"))
+        image_path = _to_optional_text(image_row.get("image_path"))
+
+        if (
+            time_record_id is None
+            or image_type not in {"checkin", "checkout"}
+            or image_path is None
+        ):
+            continue
+
+        image_values = new_images_by_time_record_id.setdefault(
+            time_record_id,
+            {},
+        )
+
+        # Report Phase 1 ใช้รูปแรกของแต่ละประเภท
+        # Query เรียง sequence_no จากน้อยไปมากไว้แล้ว
+        if image_type not in image_values:
+            image_values[image_type] = image_path
+
+    # ============================================================
+    # รูประบบเก่าจาก time_record ใช้เป็น fallback
+    # ============================================================
+    legacy_image_sql = text(
         f"""
         SELECT
             tr.time_record_id AS {TIME_RECORD_ID_COLUMN},
@@ -1288,18 +1713,18 @@ def _attach_unplanned_time_record_images(
                 NULLIF(tr.images_checkout_2, '')
             ) AS {CHECKOUT_IMAGE_ALIAS}
         FROM time_record tr
-        WHERE tr.time_record_id IN ({', '.join(placeholders)})
+        WHERE tr.time_record_id IN ({placeholders_sql})
         """
     )
 
-    image_rows = db.execute(
-        image_sql,
+    legacy_image_rows = db.execute(
+        legacy_image_sql,
         image_params,
     ).mappings().all()
 
-    images_by_time_record_id: dict[int, tuple[Any, Any]] = {}
+    legacy_images_by_time_record_id: dict[int, tuple[Any, Any]] = {}
 
-    for image_row in image_rows:
+    for image_row in legacy_image_rows:
         time_record_id = _to_optional_positive_int(
             image_row.get(TIME_RECORD_ID_COLUMN),
         )
@@ -1307,11 +1732,14 @@ def _attach_unplanned_time_record_images(
         if time_record_id is None:
             continue
 
-        images_by_time_record_id[time_record_id] = (
+        legacy_images_by_time_record_id[time_record_id] = (
             image_row.get(CHECKIN_IMAGE_ALIAS),
             image_row.get(CHECKOUT_IMAGE_ALIAS),
         )
 
+    # ============================================================
+    # Attach รูปกลับเข้า report rows
+    # ============================================================
     for row in rows:
         time_record_id = _to_optional_positive_int(
             row.get(TIME_RECORD_ID_COLUMN),
@@ -1320,14 +1748,35 @@ def _attach_unplanned_time_record_images(
         if time_record_id is None:
             continue
 
-        image_values = images_by_time_record_id.get(time_record_id)
+        new_images = new_images_by_time_record_id.get(
+            time_record_id,
+            {},
+        )
+        legacy_images = legacy_images_by_time_record_id.get(
+            time_record_id,
+            (None, None),
+        )
 
-        if image_values is None:
-            continue
+        current_checkin_image = _to_optional_text(
+            row.get(CHECKIN_IMAGE_ALIAS),
+        )
+        current_checkout_image = _to_optional_text(
+            row.get(CHECKOUT_IMAGE_ALIAS),
+        )
 
-        row[CHECKIN_IMAGE_ALIAS] = image_values[0]
-        row[CHECKOUT_IMAGE_ALIAS] = image_values[1]
+        checkin_image = (
+            new_images.get("checkin")
+            or current_checkin_image
+            or _to_optional_text(legacy_images[0])
+        )
+        checkout_image = (
+            new_images.get("checkout")
+            or current_checkout_image
+            or _to_optional_text(legacy_images[1])
+        )
 
+        row[CHECKIN_IMAGE_ALIAS] = checkin_image
+        row[CHECKOUT_IMAGE_ALIAS] = checkout_image
 
 def _get_patrol_report_unplanned_rows(
     db: Session,
@@ -1340,7 +1789,7 @@ def _get_patrol_report_unplanned_rows(
     route_id: int | None = None,
     location_id: int | None = None,
     employee_code: str | None = None,
-    status_filter: PatrolStatus | None = None,
+    status_filter: PatrolReportStatusFilter | None = None,
     keyword: str | None = None,
 ) -> list[PatrolReportResponse]:
     view_column_names = _get_view_column_names(
@@ -1510,7 +1959,11 @@ def _get_patrol_report_unplanned_rows(
             f"AND v.{PatrolReportConstants.COLUMN_COMPLETED_AT} IS NULL",
         )
 
-    if status_filter == PatrolReportConstants.STATUS_PENDING:
+    if status_filter in {
+        PatrolReportConstants.STATUS_PENDING,
+        "pending_reserved",
+        "pending_takeover",
+    }:
         sql_parts.append("AND 1 = 0")
 
     if keyword and keyword.strip():
@@ -1600,7 +2053,7 @@ def _get_patrol_report_unplanned_rows(
         filtered_rows.append(row)
 
     # โหลดรูปเฉพาะรายการที่ผ่าน filter แล้ว
-    _attach_unplanned_time_record_images(
+    _attach_time_record_images(
         db,
         filtered_rows,
     )
@@ -1656,7 +2109,7 @@ def _get_patrol_report_planned_rows(
     route_id: int | None = None,
     location_id: int | None = None,
     employee_code: str | None = None,
-    status_filter: PatrolStatus | None = None,
+    status_filter: PatrolReportStatusFilter | None = None,
     keyword: str | None = None,
 ) -> list[PatrolReportResponse]:
     report_start = workday_start or start_date or workday
@@ -1739,6 +2192,94 @@ def _get_patrol_report_planned_rows(
         RESERVED_AT_COLUMN,
         alias=RESERVED_AT_COLUMN,
     )
+    time_record_id_select = _select_view_column(
+        view_column_names,
+        TIME_RECORD_ID_COLUMN,
+        alias=TIME_RECORD_ID_COLUMN,
+    )
+    assignment_id_select = _select_view_column(
+        view_column_names,
+        ASSIGNMENT_ID_COLUMN,
+        alias=ASSIGNMENT_ID_COLUMN,
+    )
+    parent_assignment_id_select = _select_view_column(
+        view_column_names,
+        PARENT_ASSIGNMENT_ID_COLUMN,
+        alias=PARENT_ASSIGNMENT_ID_COLUMN,
+    )
+    schedule_rule_run_id_select = _select_view_column(
+        view_column_names,
+        SCHEDULE_RULE_RUN_ID_COLUMN,
+        alias=SCHEDULE_RULE_RUN_ID_COLUMN,
+    )
+    recheck_reason_select = _select_view_column(
+        view_column_names,
+        RECHECK_REASON_COLUMN,
+        alias=RECHECK_REASON_COLUMN,
+    )
+    takeover_by_select = _select_view_column(
+        view_column_names,
+        TAKEOVER_BY_COLUMN,
+        alias=TAKEOVER_BY_COLUMN,
+    )
+    assignment_started_at_select = _select_view_column(
+        view_column_names,
+        ASSIGNMENT_STARTED_AT_COLUMN,
+        alias=ASSIGNMENT_STARTED_AT_COLUMN,
+    )
+    assignment_completed_at_select = _select_view_column(
+        view_column_names,
+        ASSIGNMENT_COMPLETED_AT_COLUMN,
+        alias=ASSIGNMENT_COMPLETED_AT_COLUMN,
+    )
+
+    cross_day_view_columns = {
+        ASSIGNMENT_ID_COLUMN,
+        PARENT_ASSIGNMENT_ID_COLUMN,
+        SCHEDULE_RULE_RUN_ID_COLUMN,
+        RECHECK_REASON_COLUMN,
+        ASSIGNMENT_STARTED_AT_COLUMN,
+        ASSIGNMENT_COMPLETED_AT_COLUMN,
+    }
+    supports_cross_day = cross_day_view_columns.issubset(
+        view_column_names
+    )
+
+    if supports_cross_day:
+        workday_condition = f"""
+        (
+            v.{PatrolReportConstants.COLUMN_WORKDAY}
+                BETWEEN :workday_start AND :workday_end
+            OR (
+                v.{PatrolReportConstants.COLUMN_WORKDAY} < :workday_start
+                AND v.{SCHEDULE_RULE_RUN_ID_COLUMN} IS NOT NULL
+                AND (
+                    (
+                        v.{PatrolReportConstants.COLUMN_ASSIGNMENT_STATUS}
+                            = '{PatrolReportConstants.STATUS_IN_PROGRESS}'
+                        AND v.{ASSIGNMENT_STARTED_AT_COLUMN} IS NOT NULL
+                        AND v.{ASSIGNMENT_COMPLETED_AT_COLUMN} IS NULL
+                    )
+                    OR (
+                        v.{PatrolReportConstants.COLUMN_ASSIGNMENT_STATUS}
+                            = '{PatrolReportConstants.STATUS_PENDING}'
+                        AND v.{PARENT_ASSIGNMENT_ID_COLUMN} IS NOT NULL
+                        AND NULLIF(
+                            TRIM(v.{RECHECK_REASON_COLUMN}),
+                            ''
+                        ) IS NULL
+                        AND v.{ASSIGNMENT_STARTED_AT_COLUMN} IS NULL
+                        AND v.{ASSIGNMENT_COMPLETED_AT_COLUMN} IS NULL
+                    )
+                )
+            )
+        )
+        """
+    else:
+        workday_condition = f"""
+        v.{PatrolReportConstants.COLUMN_WORKDAY}
+            BETWEEN :workday_start AND :workday_end
+        """
 
     sql_parts = [
         f"""
@@ -1754,6 +2295,14 @@ def _get_patrol_report_planned_rows(
             {completed_datetime_select},
             {reserved_by_select},
             {reserved_at_select},
+            {assignment_id_select},
+            {parent_assignment_id_select},
+            {schedule_rule_run_id_select},
+            {recheck_reason_select},
+            {takeover_by_select},
+            {assignment_started_at_select},
+            {assignment_completed_at_select},
+            {time_record_id_select},
             {checkin_image_select},
             {checkout_image_select},
             v.{PatrolReportConstants.COLUMN_EMPLOYEE_CODE},
@@ -1777,8 +2326,12 @@ def _get_patrol_report_planned_rows(
         LEFT JOIN employees em_operator
             ON em_operator.employee_code
                 = v.{PatrolReportConstants.COLUMN_EMPLOYEE_CODE}
-        WHERE v.{PatrolReportConstants.COLUMN_WORKDAY}
-            BETWEEN :workday_start AND :workday_end
+        WHERE {workday_condition}
+          AND v.{PatrolReportConstants.COLUMN_ASSIGNMENT_STATUS} IN (
+              '{PatrolReportConstants.STATUS_COMPLETED}',
+              '{PatrolReportConstants.STATUS_IN_PROGRESS}',
+              '{PatrolReportConstants.STATUS_PENDING}'
+          )
         """
     ]
 
@@ -1814,12 +2367,62 @@ def _get_patrol_report_planned_rows(
         params["location_id"] = location_id
 
     if employee_code and employee_code.strip():
-        sql_parts.append(
-            f"AND v.{PatrolReportConstants.COLUMN_EMPLOYEE_CODE} = :employee_code",
-        )
+        if TAKEOVER_BY_COLUMN in view_column_names:
+            sql_parts.append(
+                f"""
+                AND (
+                    v.{PatrolReportConstants.COLUMN_EMPLOYEE_CODE}
+                        = :employee_code
+                    OR (
+                        v.{PatrolReportConstants.COLUMN_ASSIGNMENT_STATUS}
+                            = '{PatrolReportConstants.STATUS_PENDING}'
+                        AND v.{TAKEOVER_BY_COLUMN} = :employee_code
+                    )
+                )
+                """
+            )
+        else:
+            sql_parts.append(
+                f"AND v.{PatrolReportConstants.COLUMN_EMPLOYEE_CODE} = :employee_code",
+            )
         params["employee_code"] = employee_code.strip()
 
-    if status_filter:
+    if status_filter == "pending_takeover":
+        if cross_day_view_columns.union(
+            {TAKEOVER_BY_COLUMN}
+        ).issubset(view_column_names):
+            sql_parts.append(
+                f"""
+                AND v.{PatrolReportConstants.COLUMN_ASSIGNMENT_STATUS}
+                    = '{PatrolReportConstants.STATUS_PENDING}'
+                AND v.{PARENT_ASSIGNMENT_ID_COLUMN} IS NOT NULL
+                AND v.{SCHEDULE_RULE_RUN_ID_COLUMN} IS NOT NULL
+                AND NULLIF(
+                    TRIM(v.{RECHECK_REASON_COLUMN}),
+                    ''
+                ) IS NULL
+                AND v.{ASSIGNMENT_STARTED_AT_COLUMN} IS NULL
+                AND v.{ASSIGNMENT_COMPLETED_AT_COLUMN} IS NULL
+                AND NULLIF(
+                    TRIM(v.{TAKEOVER_BY_COLUMN}),
+                    ''
+                ) IS NOT NULL
+                """
+            )
+        else:
+            sql_parts.append("AND 1 = 0")
+    elif status_filter == "pending_reserved":
+        sql_parts.append(
+            f"""
+            AND v.{PatrolReportConstants.COLUMN_ASSIGNMENT_STATUS}
+                = '{PatrolReportConstants.STATUS_PENDING}'
+            AND NULLIF(
+                TRIM(v.{RESERVED_BY_COLUMN}),
+                ''
+            ) IS NOT NULL
+            """
+        )
+    elif status_filter:
         sql_parts.append(
             f"AND v.{PatrolReportConstants.COLUMN_ASSIGNMENT_STATUS} = :status_filter",
         )
@@ -1880,6 +2483,20 @@ def _get_patrol_report_planned_rows(
             dict(row)
             for row in db.execute(statement, params).mappings().all()
         ]
+
+        rows = _filter_planned_rows_by_rule_state(
+            db=db,
+            rows=rows,
+            report_start=report_start,
+            report_end=report_end,
+        )
+
+        # time_record_image เป็นแหล่งรูปหลัก
+        # และ fallback ไป Base64 เดิมสำหรับข้อมูลเก่า
+        _attach_time_record_images(
+            db,
+            rows,
+        )
 
         time_record_flags = _get_time_record_flags(
             db=db,
@@ -1948,7 +2565,7 @@ def get_patrol_report_rows(
     route_id: int | None = None,
     location_id: int | None = None,
     employee_code: str | None = None,
-    status_filter: PatrolStatus | None = None,
+    status_filter: PatrolReportStatusFilter | None = None,
     keyword: str | None = None,
 ) -> list[PatrolReportResponse]:
     report_start = workday_start or start_date or workday

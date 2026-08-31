@@ -1,4 +1,4 @@
-// frontend/src/services/patrolReportExportApi.ts
+// src/services/patrolReportExportApi.ts
 
 import api, { API_BASE_URL } from "@/lib/api";
 
@@ -11,14 +11,18 @@ export type PatrolReportExportJobStatus =
   | "expired";
 
 export type PatrolReportExportType = "patrol_report";
+
 export type PatrolReportExportPlanMode = "planned" | "outside_plan";
+
 export type PatrolReportExportShiftType = "all" | "day" | "night";
+
 export type PatrolReportExportStatus =
   | "all"
   | "completed"
   | "completed_call"
   | "in_progress"
-  | "pending";
+  | "pending"
+  | "pending_takeover";
 
 export type PatrolReportExportReservationStatus =
   | "all"
@@ -28,11 +32,15 @@ export type PatrolReportExportReservationStatus =
 export type PatrolReportExportFilter = {
   workdayStart: string;
   workdayEnd: string;
+
   departmentId: number;
   divisionId: number;
+
   routeId?: number;
   locationId?: number;
+
   employeeCode?: string;
+
   planModes: PatrolReportExportPlanMode[];
   shiftType: PatrolReportExportShiftType;
   status: PatrolReportExportStatus;
@@ -60,9 +68,10 @@ export type PatrolReportExportCreatePayload = {
 export type PatrolReportExportJobResponse = {
   reportExportJobId: number;
   reportType: PatrolReportExportType;
-  filtersJson: Record<string, unknown>;
-  includeImages: boolean;
 
+  filtersJson: Record<string, unknown>;
+
+  includeImages: boolean;
   jobStatus: PatrolReportExportJobStatus;
 
   progressCurrent: number;
@@ -70,6 +79,7 @@ export type PatrolReportExportJobResponse = {
   progressPercent: number;
 
   downloadReady: boolean;
+
   fileRelativePath: string | null;
   downloadFilename: string | null;
   fileSizeBytes: number | null;
@@ -82,6 +92,7 @@ export type PatrolReportExportJobResponse = {
 
   requestedBy: string;
   updatedBy: string | null;
+
   markFlag: boolean;
 
   createdAt: string;
@@ -91,9 +102,10 @@ export type PatrolReportExportJobResponse = {
 type PatrolReportExportJobApiResponse = {
   report_export_job_id: number;
   report_type: PatrolReportExportType;
-  filters_json: Record<string, unknown>;
-  include_images: boolean;
 
+  filters_json: Record<string, unknown>;
+
+  include_images: boolean;
   job_status: PatrolReportExportJobStatus;
 
   progress_current: number;
@@ -101,6 +113,7 @@ type PatrolReportExportJobApiResponse = {
   progress_percent?: number;
 
   download_ready?: boolean;
+
   file_relative_path?: string | null;
   download_filename?: string | null;
   file_size_bytes?: number | null;
@@ -113,6 +126,7 @@ type PatrolReportExportJobApiResponse = {
 
   requested_by: string;
   updated_by?: string | null;
+
   mark_flag: boolean;
 
   created_at: string;
@@ -190,7 +204,6 @@ function mapJobResponse(
         : {},
 
     includeImages: Boolean(response.include_images),
-
     jobStatus: response.job_status,
 
     progressCurrent,
@@ -205,7 +218,6 @@ function mapJobResponse(
 
     fileRelativePath,
     downloadFilename,
-
     fileSizeBytes:
       response.file_size_bytes === null ||
       response.file_size_bytes === undefined
@@ -241,6 +253,7 @@ function toCreateRequestBody(payload: PatrolReportExportCreatePayload) {
 
       route_id: payload.filters.routeId ?? null,
       location_id: payload.filters.locationId ?? null,
+
       employee_code: payload.filters.employeeCode?.trim() || null,
 
       plan_modes: planModes,
@@ -370,7 +383,6 @@ export async function downloadPatrolReportExportFile(
     anchor.href = objectUrl;
     anchor.download = getDownloadFilename(response, fallbackFilename);
     anchor.style.display = "none";
-
     document.body.appendChild(anchor);
     anchor.click();
   } finally {

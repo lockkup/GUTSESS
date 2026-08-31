@@ -3,6 +3,14 @@
 import api from "@/lib/api";
 
 export type PatrolStatus = "completed" | "in_progress" | "pending";
+
+// ใช้สำหรับกรองรายงานเท่านั้น
+// pending_reserved / pending_takeover ไม่ใช่ assignment_status ในฐานข้อมูล
+export type PatrolReportStatusFilter =
+  | PatrolStatus
+  | "pending_reserved"
+  | "pending_takeover";
+
 export type ReportPlanMode = "planned" | "outside_plan";
 
 export type PatrolNotificationLevel =
@@ -130,6 +138,11 @@ export type PatrolReportRow = {
 
   reservedAt: string | null;
   reserved_at: string | null;
+
+  // ผู้ตรวจของ Assignment ลูกตรวจแทน
+  // สถานะจริงในฐานข้อมูลยังคงเป็น pending
+  takeoverBy: string | null;
+  takeover_by: string | null;
 };
 
 export type PatrolDepartmentOption = {
@@ -304,6 +317,9 @@ type PatrolReportApiRow = {
 
   reservedAt?: string | null;
   reserved_at?: string | null;
+
+  takeoverBy?: string | null;
+  takeover_by?: string | null;
 };
 
 type PatrolReportFilterOptionsApiResponse = {
@@ -340,7 +356,7 @@ export type GetPatrolReportParams = {
   locationId?: number;
   employeeCode?: string;
 
-  status?: "all" | PatrolStatus;
+  status?: "all" | PatrolReportStatusFilter;
   keyword?: string;
 };
 
@@ -543,6 +559,10 @@ function mapPatrolReportRow(
 
   const reservedAt = toNullableText(row.reservedAt ?? row.reserved_at);
 
+  const takeoverBy = toNullableText(
+    row.takeoverBy ?? row.takeover_by,
+  );
+
   return {
     id: toNumber(row.id, index + 1),
 
@@ -650,6 +670,9 @@ function mapPatrolReportRow(
 
     reservedAt,
     reserved_at: reservedAt,
+
+    takeoverBy,
+    takeover_by: takeoverBy,
   };
 }
 

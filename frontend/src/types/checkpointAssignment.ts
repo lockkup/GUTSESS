@@ -35,9 +35,20 @@ export type CheckpointDailyRow = {
   schedule_item_id: number;
 
   /**
-   * ใช้ให้ frontend รู้ว่างานนี้เป็นผลัดไหน
-   * ดึงจาก checkpoint_schedule_item.shift_id
-   * เพื่อไม่ต้อง hardcode day=1 / night=2 ที่ frontend
+   * ผลัดตามแผนที่ผูกอยู่กับ checkpoint_schedule_item
+   * ค่านี้ต้องคงเดิมแม้เปิดรายการ EXACT_* จากอีกผลัด
+   */
+  schedule_shift_id: number | null;
+
+  /**
+   * ผลัดที่ใช้เข้าตรวจจริงในคำขอ daily ปัจจุบัน
+   * สำหรับ EXACT_* อาจต่างจาก schedule_shift_id ได้
+   */
+  action_shift_id: number | null;
+
+  /**
+   * รองรับ Frontend รุ่นปัจจุบันระหว่างเปลี่ยนไปใช้ action_shift_id
+   * Backend ต้องส่งค่าเดียวกับ action_shift_id ใน field นี้
    */
   shift_id: number | null;
 

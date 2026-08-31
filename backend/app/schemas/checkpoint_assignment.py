@@ -1,5 +1,4 @@
-# app/schemas/checkpoint_assignment.py
-from __future__ import annotations
+
 
 from datetime import date, datetime
 from typing import Literal
@@ -69,7 +68,10 @@ class CheckpointAssignmentUpdate(BaseModel):
     @model_validator(mode="after")
     def validate_not_null_fields(self) -> "CheckpointAssignmentUpdate":
         for field_name in ("work_date", "schedule_item_id", "is_active"):
-            if field_name in self.model_fields_set and getattr(self, field_name) is None:
+            if (
+                field_name in self.model_fields_set
+                and getattr(self, field_name) is None
+            ):
                 raise ValueError(f"{field_name} cannot be null")
 
         return self
@@ -86,6 +88,20 @@ class CheckpointAssignmentAction(BaseModel):
         min_length=DBConstants.EMPLOYEE_CODE_LENGTH,
         max_length=DBConstants.EMPLOYEE_CODE_LENGTH,
     )
+
+
+class TakeoverCheckpointAssignmentRequest(CheckpointAssignmentAction):
+    """
+    คำขอเข้าตรวจแทน Assignment ที่ค้างจากวันก่อน
+
+    assignment_id ของงานเดิมรับจาก Path Parameter ส่วน Backend เป็นผู้กำหนด
+    Assignment ปลายทางเอง:
+
+    - FLEXIBLE_* ใช้ Assignment pending ของวันปัจจุบันที่มีอยู่แล้ว
+    - EXACT_* สร้าง Assignment pending ของวันปัจจุบันเมื่อยังไม่มี
+
+    Frontend ไม่สามารถระบุ Assignment ปลายทางเองได้
+    """
 
 
 class CheckpointAssignmentReservationAction(BaseModel):
@@ -167,6 +183,30 @@ class CheckpointAssignmentResponse(CheckpointAssignmentBase):
     updated_by: str | None = None
 
 
+class TakeoverCheckpointAssignmentResponse(BaseModel):
+    """
+    ผลการยืนยันเข้าตรวจแทน
+
+    previous_assignment คือ Assignment ต้นทางที่เปลี่ยนเป็น cancelled
+    ทันทีเมื่อยืนยันตรวจแทน
+
+    current_assignment คือ Assignment pending สำหรับผู้ตรวจแทน:
+    - FLEXIBLE_* ใช้ Assignment รายวันเดิมและผูก parent_assignment_id
+    - EXACT_* สร้าง Assignment ใหม่สำหรับวันปัจจุบัน
+
+    Assignment ตรวจแทนไม่ได้จองหรือล็อกด้วย reserved_by
+    """
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        extra="forbid",
+        str_strip_whitespace=True,
+    )
+
+    previous_assignment: CheckpointAssignmentResponse
+    current_assignment: CheckpointAssignmentResponse
+
+
 class CheckpointAssignmentDailyResponse(BaseModel):
     model_config = ConfigDict(
         from_attributes=True,
@@ -180,10 +220,17 @@ class CheckpointAssignmentDailyResponse(BaseModel):
 
     schedule_item_id: int
 
-    # ใช้ให้ frontend รู้ว่างานนี้เป็นผลัดไหน
-    # ดึงจาก checkpoint_schedule_item.shift_id
-    # เพื่อไม่ต้อง hardcode day=1 / night=2 ที่ frontend
-    shift_id: int | None = None
+    # ผลัดตามแผนที่ผูกอยู่กับ checkpoint_schedule_item
+    # ค่านี้ต้องคงเดิมแม้เปิดรายการ EXACT_* จากอีกผลัด
+    schedule_shift_id: int | None = Field(default=None, gt=0)
+
+    # ผลัดที่ใช้เข้าตรวจจริงในคำขอ daily ปัจจุบัน
+    # สำหรับ EXACT_* อาจต่างจาก schedule_shift_id ได้
+    action_shift_id: int | None = Field(default=None, gt=0)
+
+    # รองรับ Frontend รุ่นปัจจุบันระหว่างเปลี่ยนไปใช้ action_shift_id
+    # Backend ต้องส่งค่าเดียวกับ action_shift_id ใน field นี้
+    shift_id: int | None = Field(default=None, gt=0)
 
     # ใช้ให้ frontend รู้ว่างานนี้มี time_record ผูกอยู่หรือยัง
     time_record_id: int | None = None
@@ -212,6 +259,23 @@ class CheckpointAssignmentDailyResponse(BaseModel):
     # ส่งให้ Frontend แสดง CheckpointInProgressModal
     in_progress_employee_code: str | None = None
     in_progress_employee_name: str | None = None
+
+    # Backend เท่านั้นที่ตัดสินสิทธิ์จากผู้ใช้งาน วันตรวจ inspection_mode
+    # และขอบเขตของ schedule rule run; Frontend ใช้สำหรับแสดงปุ่มเท่านั้น
+    can_takeover: bool = False
+
+    # True เมื่อเป็น Assignment ที่ผูกกับงานต้นทางสำหรับตรวจแทน
+    # สถานะยังเป็น pending และยังไม่ได้เช็กอินเข้าตรวจ
+    is_takeover_pending: bool = False
+
+    # รหัสพนักงานที่กดยืนยันตรวจแทน
+    # อ่านจาก checkpoint_assignment.updated_by
+    # ไม่ใช้ reserved_by เพราะไม่ได้เป็นการจองหรือล็อกงาน
+    takeover_by: str | None = Field(
+        default=None,
+        min_length=DBConstants.EMPLOYEE_CODE_LENGTH,
+        max_length=DBConstants.EMPLOYEE_CODE_LENGTH,
+    )
 
     completed_at: datetime | None = None
     completed_by: str | None = None

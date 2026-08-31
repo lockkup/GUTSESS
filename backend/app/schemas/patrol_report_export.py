@@ -38,6 +38,7 @@ PatrolReportStatusFilter = Literal[
     "completed_call",
     "in_progress",
     "pending",
+    "pending_takeover",
 ]
 
 PatrolReportReservationStatus = Literal[

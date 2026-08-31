@@ -12,6 +12,16 @@ PatrolStatus: TypeAlias = Literal[
     "pending",
 ]
 
+# ใช้สำหรับกรองรายงานเท่านั้น
+# pending_reserved / pending_takeover ไม่ใช่ assignment_status ในฐานข้อมูล
+PatrolReportStatusFilter: TypeAlias = Literal[
+    "completed",
+    "in_progress",
+    "pending",
+    "pending_reserved",
+    "pending_takeover",
+]
+
 PatrolNotificationLevel: TypeAlias = Literal[
     "none",
     "yellow",
@@ -37,6 +47,11 @@ class PatrolReportResponse(BaseModel):
     # การจองไม่เปลี่ยน status ซึ่งยังคงเป็น pending
     reservedBy: str | None = None
     reservedAt: datetime | None = None
+
+    # ผู้ตรวจของ Assignment ลูกตรวจแทน
+    # มาจาก checkpoint_assignment.updated_by
+    # สถานะจริงในฐานข้อมูลยังคงเป็น pending
+    takeoverBy: str | None = None
 
     # ใช้สำหรับตัวกรองรายงาน
     departmentId: int | None = Field(default=None, ge=1)

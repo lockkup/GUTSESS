@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     DECIMAL,
@@ -17,10 +18,13 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.mysql import LONGTEXT
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.constants import DBConstants
 from app.core.orm import Base
+
+if TYPE_CHECKING:
+    from app.models.time_record_image import TimeRecordImage
 
 
 IMAGE_TEXT_TYPE = Text().with_variant(LONGTEXT(), "mysql")
@@ -116,6 +120,11 @@ class TimeRecord(Base):
         nullable=True,
     )
 
+    # ============================================================
+    # Legacy image fields
+    # เก็บไว้ชั่วคราวระหว่าง migrate Base64 → time_record_image
+    # ============================================================
+
     images_checkin_1: Mapped[str | None] = mapped_column(
         IMAGE_TEXT_TYPE,
         nullable=True,
@@ -180,4 +189,15 @@ class TimeRecord(Base):
         ForeignKey("employees.employee_code"),
         nullable=True,
         index=True,
+    )
+
+    # ============================================================
+    # Images
+    # ============================================================
+
+    images: Mapped[list["TimeRecordImage"]] = relationship(
+        "TimeRecordImage",
+        back_populates="time_record",
+        cascade="all, delete-orphan",
+        order_by="TimeRecordImage.sequence_no",
     )

@@ -206,7 +206,7 @@ CHECKPOINT_ASSIGNMENT_ALREADY_IN_PROGRESS_TEMPLATE: Final[str] = (
     "{employee_code} {employee_name}\n"
     "กำลังเข้าตรวจหน่วยงานนี้\n\n"
     "หากมีความจำเป็น ให้ไปใช้เมนูเข้าพื้นที่\n"
-    "\"นอกแผน\""
+    "\"ติดตาม / มอบหมาย\""
 )
 
 CHECKPOINT_ASSIGNMENT_ALREADY_RESERVED_TEMPLATE: Final[str] = (

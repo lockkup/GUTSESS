@@ -19,6 +19,8 @@ from app.schemas.checkpoint_assignment import (
     CheckpointAssignmentResponse,
     CheckpointAssignmentUpdate,
     CheckpointMapLocationResponse,
+    TakeoverCheckpointAssignmentRequest,
+    TakeoverCheckpointAssignmentResponse,
 )
 from app.schemas.checkpoint_location import (
     VerifyCheckpointLocationRequest,
@@ -238,6 +240,23 @@ def start_checkpoint_assignment(
     db: Session = Depends(get_db),
 ) -> CheckpointAssignmentResponse:
     return CheckpointAssignmentService.start_checkpoint_assignment(
+        db=db,
+        assignment_id=assignment_id,
+        updated_by=payload.updated_by,
+    )
+
+
+@router.post(
+    "/{assignment_id}/takeover",
+    response_model=TakeoverCheckpointAssignmentResponse,
+    status_code=status.HTTP_200_OK,
+)
+def takeover_checkpoint_assignment(
+    payload: TakeoverCheckpointAssignmentRequest,
+    assignment_id: int = Path(..., gt=0),
+    db: Session = Depends(get_db),
+) -> TakeoverCheckpointAssignmentResponse:
+    return CheckpointAssignmentService.takeover_checkpoint_assignment(
         db=db,
         assignment_id=assignment_id,
         updated_by=payload.updated_by,

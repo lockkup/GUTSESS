@@ -14,6 +14,7 @@ from .divisions import DivisionsService
 from .employees import EmployeesService
 from .face_profile import FaceProfileService
 from .face_profile_change import FaceProfileChangeService
+from .image_storage import ImageStorageError, ImageStorageService
 from .name_prefixs import NamePrefixService
 from .patrol_area import PatrolAreaService
 from .patrol_report_service import get_patrol_report_rows
@@ -42,6 +43,8 @@ __all__ = [
     "EmployeesService",
     "FaceProfileService",
     "FaceProfileChangeService",
+    "ImageStorageError",
+    "ImageStorageService",
     "NamePrefixService",
     "PatrolAreaService",
     "get_patrol_report_rows",

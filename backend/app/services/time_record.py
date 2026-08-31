@@ -41,12 +41,16 @@ from app.models.employees import Employees
 from app.models.route_site_location import RouteSiteLocation
 from app.models.site_location import SiteLocation
 from app.models.time_record import TimeRecord
+from app.models.time_record_image import TimeRecordImage
 from app.schemas.time_record import (
     TimeRecordCheckIn,
     TimeRecordCheckOut,
     TimeRecordListItemResponse,
 )
-
+from app.services.image_storage import (
+    ImageStorageError,
+    ImageStorageService,
+)
 
 
 class TimeRecordService:
@@ -732,16 +736,108 @@ class TimeRecordService:
         )
 
     @staticmethod
+    def _cleanup_saved_images(
+        image_paths: list[str],
+    ) -> None:
+        """
+        ลบไฟล์รูปที่บันทึกไปแล้วแบบ best effort
+
+        ใช้กรณี DB transaction ล้มเหลวหลังจากสร้างไฟล์บน disk แล้ว
+        เพื่อไม่ให้เกิด orphan files
+        """
+        if not image_paths:
+            return
+
+        try:
+            ImageStorageService.delete_images(image_paths)
+        except ImageStorageError:
+            # ไม่ให้ cleanup error กลบ error หลักของ transaction
+            pass
+
+    @staticmethod
+    def _save_time_record_images(
+        db: Session,
+        time_record: TimeRecord,
+        image_type: str,
+        image_values: list[str | None],
+        error_detail: str,
+    ) -> list[str]:
+        """
+        รับ Base64 จาก payload
+        -> บันทึกเป็นไฟล์ผ่าน ImageStorageService
+        -> เพิ่มข้อมูล path ลง time_record_image
+
+        ไม่เก็บ Base64 ลง time_record สำหรับข้อมูลใหม่
+        """
+        saved_image_paths: list[str] = []
+
+        try:
+            for sequence_no, image_base64 in enumerate(
+                image_values,
+                start=1,
+            ):
+                if not image_base64:
+                    continue
+
+                image_path = ImageStorageService.save_time_record_image(
+                    image_base64=image_base64,
+                    work_date=time_record.work_date,
+                    employee_code=time_record.employee_code,
+                    time_record_id=time_record.time_record_id,
+                    image_type=image_type,
+                    sequence_no=sequence_no,
+                )
+
+                saved_image_paths.append(image_path)
+
+                db.add(
+                    TimeRecordImage(
+                        time_record_id=time_record.time_record_id,
+                        image_type=image_type,
+                        sequence_no=sequence_no,
+                        image_path=image_path,
+                        created_by=time_record.employee_code,
+                    )
+                )
+
+            if saved_image_paths:
+                db.flush()
+
+        except ImageStorageError as exc:
+            db.rollback()
+            TimeRecordService._cleanup_saved_images(saved_image_paths)
+
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            ) from exc
+
+        except IntegrityError as exc:
+            db.rollback()
+            TimeRecordService._cleanup_saved_images(saved_image_paths)
+
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=error_detail,
+            ) from exc
+
+        return saved_image_paths
+
+    @staticmethod
     def _commit(
         db: Session,
         time_record: TimeRecord,
         error_detail: str,
+        saved_image_paths: list[str] | None = None,
     ) -> None:
         try:
             db.commit()
             db.refresh(time_record)
         except IntegrityError as exc:
             db.rollback()
+            TimeRecordService._cleanup_saved_images(
+                saved_image_paths or []
+            )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=error_detail,
@@ -823,6 +919,11 @@ class TimeRecordService:
                 detail=OPEN_TIME_RECORD_ALREADY_EXISTS_DETAIL,
             )
 
+        checkin_images = [
+            payload.images_checkin_1,
+            payload.images_checkin_2,
+        ]
+
         create_data = payload.model_dump(
             exclude={
                 "shift_id",
@@ -830,6 +931,10 @@ class TimeRecordService:
                 "current_latitude",
                 "current_longitude",
                 "gps_accuracy",
+                # Base64 ใช้สำหรับสร้างไฟล์เท่านั้น
+                # ไม่เก็บลง time_record สำหรับข้อมูลใหม่
+                "images_checkin_1",
+                "images_checkin_2",
             }
         )
 
@@ -848,6 +953,9 @@ class TimeRecordService:
 
         try:
             db.add(time_record)
+
+            # ต้อง flush ก่อน เพื่อให้ได้ time_record_id
+            # สำหรับสร้าง path ของรูปภาพ
             db.flush()
         except IntegrityError as exc:
             db.rollback()
@@ -855,6 +963,15 @@ class TimeRecordService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=INVALID_TIME_RECORD_REFERENCE_DETAIL,
             ) from exc
+
+        # Base64 -> file -> time_record_image
+        saved_image_paths = TimeRecordService._save_time_record_images(
+            db=db,
+            time_record=time_record,
+            image_type="checkin",
+            image_values=checkin_images,
+            error_detail=INVALID_TIME_RECORD_REFERENCE_DETAIL,
+        )
 
         if assignment is not None:
             assignment.time_record_id = time_record.time_record_id
@@ -869,6 +986,7 @@ class TimeRecordService:
             db=db,
             time_record=time_record,
             error_detail=INVALID_TIME_RECORD_REFERENCE_DETAIL,
+            saved_image_paths=saved_image_paths,
         )
 
         return time_record
@@ -1136,6 +1254,11 @@ class TimeRecordService:
                 detail=CHECKOUT_LOCATION_NOT_FOUND_DETAIL,
             )
 
+        checkout_images = [
+            payload.images_checkout_1,
+            payload.images_checkout_2,
+        ]
+
         update_data = payload.model_dump(
             exclude_unset=True,
             exclude={
@@ -1144,6 +1267,10 @@ class TimeRecordService:
                 "current_latitude",
                 "current_longitude",
                 "gps_accuracy",
+                # Base64 ใช้สำหรับสร้างไฟล์เท่านั้น
+                # ไม่เก็บลง time_record สำหรับข้อมูลใหม่
+                "images_checkout_1",
+                "images_checkout_2",
             },
         )
 
@@ -1160,6 +1287,15 @@ class TimeRecordService:
         for field, value in update_data.items():
             setattr(time_record, field, value)
 
+        # Base64 -> file -> time_record_image
+        saved_image_paths = TimeRecordService._save_time_record_images(
+            db=db,
+            time_record=time_record,
+            image_type="checkout",
+            image_values=checkout_images,
+            error_detail=INVALID_TIME_RECORD_UPDATE_DETAIL,
+        )
+
         if assignment is not None:
             checkout_at = TimeRecordService._parse_check_time(
                 value=payload.checkout,
@@ -1175,6 +1311,7 @@ class TimeRecordService:
             db=db,
             time_record=time_record,
             error_detail=INVALID_TIME_RECORD_UPDATE_DETAIL,
+            saved_image_paths=saved_image_paths,
         )
 
         return time_record

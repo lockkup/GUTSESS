@@ -15,6 +15,7 @@ import LoadingModal from "@/components/LoadingModal";
 import SuccessModal from "@/components/SuccessModal";
 import OutOfAreaModal from "@/components/OutOfAreaModal";
 import CheckpointInProgressModal from "@/components/CheckpointInProgressModal/CheckpointInProgressModal";
+import CheckpointTakeoverConfirmModal from "@/components/CheckpointTakeoverConfirmModal/CheckpointTakeoverConfirmModal";
 import CheckpointAreaConfirmModal from "@/components/CheckpointAreaConfirmModal";
 import CheckpointMapModal, {
   type CheckpointMapLocation,
@@ -35,6 +36,7 @@ import {
   getDailyCheckpointAssignments,
   getCheckpointMapLocation,
   reserveCheckpointAssignment,
+  takeoverCheckpointAssignment,
 } from "@/services/checkpointAssignmentService";
 import { createCheckpointAssignmentCall } from "@/services/checkpointAssignmentCallService";
 import { verifyCheckpointLocation } from "@/services/checkpointLocationService";
@@ -74,7 +76,7 @@ export type GoCheckInOutPayload = {
    * ส่งต่อไป App.tsx เพื่อบันทึกลง time_record.shift_id
    *
    * ไม่ fix ที่ frontend แล้ว
-   * ต้องใช้ shift_id จาก API /checkpoint-assignments/daily
+   * ต้องใช้ action_shift_id จาก API /checkpoint-assignments/daily
    */
   shiftId: number;
 
@@ -140,7 +142,13 @@ type RowStatus =
 type CheckRow = {
   assignmentId: number;
   unitName: string;
-  shiftId: number | null;
+
+  // ผลัดตามแผน ใช้สำหรับอ้างอิงเท่านั้น
+  scheduleShiftId: number | null;
+
+  // ผลัดที่ใช้บันทึกการเข้าตรวจจริง
+  actionShiftId: number | null;
+
   plan: string;
   assignmentStatus: CheckpointAssignmentStatus;
   status: RowStatus;
@@ -167,6 +175,22 @@ type CheckRow = {
   inProgressEmployeeName: string | null;
 
   /**
+   * Backend อนุญาตให้พนักงานคนอื่นรับช่วงงานค้างข้ามวันได้
+   */
+  canTakeover: boolean;
+
+  /**
+   * Assignment ที่ผูกกับงานต้นทางสำหรับตรวจแทน
+   * สถานะยังเป็น pending และยังไม่ได้เช็กอิน
+   */
+  isTakeoverPending: boolean;
+
+  /**
+   * รหัสพนักงานที่กดยืนยันตรวจแทน อ่านจาก updated_by
+   */
+  takeoverBy: string | null;
+
+  /**
    * ข้อมูลการจองของ Assignment
    * การจองไม่เปลี่ยน assignment_status
    */
@@ -176,7 +200,6 @@ type CheckRow = {
 };
 
 type CheckpointDailyRowWithExtra = CheckpointDailyRow & {
-  shift_id?: number | string | null;
   latest_call_status?: number | string | null;
   call_status?: number | string | null;
 
@@ -188,6 +211,10 @@ type CheckpointDailyRowWithExtra = CheckpointDailyRow & {
   in_progress_employee_name?: string | null;
   started_by?: string | null;
   started_by_name?: string | null;
+  can_takeover?: boolean | number | string | null;
+
+  is_takeover_pending?: boolean | number | string | null;
+  takeover_by?: string | null;
 
   reserved_by?: string | null;
   reserved_by_name?: string | null;
@@ -685,10 +712,22 @@ const mapAssignmentStatusToRowStatus = (
   return mapAssignmentStatusOnly(status);
 };
 
-const getRowShiftId = (item: CheckpointDailyRow): number | null => {
+const getRowScheduleShiftId = (
+  item: CheckpointDailyRow,
+): number | null => {
   const row = item as CheckpointDailyRowWithExtra;
 
-  return normalizeShiftId(row.shift_id);
+  return normalizeShiftId(row.schedule_shift_id ?? row.shift_id);
+};
+
+const getRowActionShiftId = (
+  item: CheckpointDailyRow,
+): number | null => {
+  const row = item as CheckpointDailyRowWithExtra;
+
+  return normalizeShiftId(
+    row.action_shift_id ?? row.shift_id ?? row.schedule_shift_id,
+  );
 };
 
 const mapDailyRowsToCheckRows = (rows: CheckpointDailyRow[]): CheckRow[] => {
@@ -701,7 +740,8 @@ const mapDailyRowsToCheckRows = (rows: CheckpointDailyRow[]): CheckRow[] => {
     return {
       assignmentId: item.assignment_id,
       unitName: item.unit_name,
-      shiftId: getRowShiftId(item),
+      scheduleShiftId: getRowScheduleShiftId(item),
+      actionShiftId: getRowActionShiftId(item),
       plan: `${item.plan_day} วัน`,
       assignmentStatus: item.assignment_status,
       requireCall: Boolean(item.require_call),
@@ -725,6 +765,13 @@ const mapDailyRowsToCheckRows = (rows: CheckpointDailyRow[]): CheckRow[] => {
 
       inProgressEmployeeCode: getInProgressEmployeeCode(row),
       inProgressEmployeeName: getInProgressEmployeeName(row),
+      canTakeover: normalizeBoolean(row.can_takeover, false),
+
+      isTakeoverPending: normalizeBoolean(
+        row.is_takeover_pending,
+        false,
+      ),
+      takeoverBy: normalizeNullableText(row.takeover_by),
 
       reservedBy: getReservedBy(row),
       reservedByName: getReservedByName(row),
@@ -863,6 +910,8 @@ export default function Checkpoint({
   const [isSavingReservation, setIsSavingReservation] = useState(false);
   const [isCancellingReservation, setIsCancellingReservation] =
     useState(false);
+  const [takeoverRow, setTakeoverRow] = useState<CheckRow | null>(null);
+  const [isTakingOver, setIsTakingOver] = useState(false);
   const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
 
   const [patrolAreaOptions, setPatrolAreaOptions] = useState<
@@ -878,7 +927,7 @@ export default function Checkpoint({
   const [isAreaConfirmModalOpen, setIsAreaConfirmModalOpen] = useState(false);
 
   const isReservationActionLoading =
-    isSavingReservation || isCancellingReservation;
+    isSavingReservation || isCancellingReservation || isTakingOver;
 
   const [isCheckingLocation, setIsCheckingLocation] = useState(false);
   const [outOfAreaOpen, setOutOfAreaOpen] = useState(false);
@@ -1052,9 +1101,24 @@ export default function Checkpoint({
     : "";
 
   const orderedCheckRows = useMemo(() => {
-    return [...checkRows].sort(
-      (a, b) => statusOrder[a.status] - statusOrder[b.status],
-    );
+    return [...checkRows].sort((a, b) => {
+      const statusDifference =
+        statusOrder[a.status] - statusOrder[b.status];
+
+      if (statusDifference !== 0) {
+        return statusDifference;
+      }
+
+      // รายการตรวจแทนให้อยู่ก่อน pending ปกติ
+      if (a.status === "pending" && b.status === "pending") {
+        return (
+          Number(b.isTakeoverPending) -
+          Number(a.isTakeoverPending)
+        );
+      }
+
+      return 0;
+    });
   }, [checkRows]);
 
   const fetchCheckpointAssignments = useCallback(async () => {
@@ -1460,7 +1524,7 @@ export default function Checkpoint({
         logDevError("[Checkpoint] LOCATION SETTING NOT FOUND", {
           assignmentId: row.assignmentId,
           unitName: row.unitName,
-          shiftId: row.shiftId,
+          shiftId: row.actionShiftId,
           row,
         });
 
@@ -1500,7 +1564,7 @@ export default function Checkpoint({
           message,
           assignmentId: row.assignmentId,
           unitName: row.unitName,
-          shiftId: row.shiftId,
+          shiftId: row.actionShiftId,
           currentLocation,
           currentAccuracy,
           roundedAccuracy,
@@ -1530,7 +1594,7 @@ export default function Checkpoint({
         logDevError("[Checkpoint] VERIFY LOCATION INVALID RESPONSE", {
           assignmentId: row.assignmentId,
           unitName: row.unitName,
-          shiftId: row.shiftId,
+          shiftId: row.actionShiftId,
           verifyPayload,
           verifyResult,
         });
@@ -1566,7 +1630,7 @@ export default function Checkpoint({
           message,
           assignmentId: row.assignmentId,
           unitName: row.unitName,
-          shiftId: row.shiftId,
+          shiftId: row.actionShiftId,
           currentLocation,
           geoSetting: activeSetting.geo,
           distanceMeter,
@@ -1591,6 +1655,7 @@ export default function Checkpoint({
 
         if (
           row.assignmentStatus === "pending" &&
+          !row.isTakeoverPending &&
           (isNotReserved || isReservedByCurrentEmployee)
         ) {
           setReservationRow(row);
@@ -1621,7 +1686,7 @@ export default function Checkpoint({
       logDevError("[Checkpoint] VERIFY LOCATION ERROR", {
         assignmentId: row.assignmentId,
         unitName: row.unitName,
-        shiftId: row.shiftId,
+        shiftId: row.actionShiftId,
         status,
         message,
         error,
@@ -1635,7 +1700,7 @@ export default function Checkpoint({
               "- -",
               "กำลังเข้าตรวจหน่วยงานนี้",
               "",
-              'หากมีความจำเป็น ให้ไปใช้เมนูเข้าพื้นที่ "นอกแผน"',
+              'หากมีความจำเป็น ให้ไปใช้เมนูเข้าพื้นที่ "ติดตาม / มอบหมาย"',
             ].join("\n"),
         );
         return null;
@@ -1858,6 +1923,133 @@ export default function Checkpoint({
     }
   };
 
+  const closeTakeoverConfirmModal = () => {
+    if (isTakingOver) {
+      return;
+    }
+
+    setTakeoverRow(null);
+  };
+
+  const handleConfirmTakeover = async () => {
+    if (!takeoverRow || isTakingOver) {
+      return;
+    }
+
+    const sourceRow = takeoverRow;
+    const normalizedEmpCode = empCode.trim();
+
+    if (!normalizedEmpCode) {
+      setTakeoverRow(null);
+      openCheckpointInProgressModal(
+        "ไม่พบรหัสพนักงาน กรุณาเข้าสู่ระบบใหม่",
+      );
+      return;
+    }
+
+    if (!sourceRow.actionShiftId) {
+      setTakeoverRow(null);
+      openCheckpointInProgressModal(
+        "ไม่พบข้อมูลผลัดของตารางงานสายตรวจ กรุณาติดต่อผู้ดูแลระบบ",
+      );
+      return;
+    }
+
+    try {
+      setIsTakingOver(true);
+
+      logDev("[Checkpoint] TAKEOVER REQUEST", {
+        previousAssignmentId: sourceRow.assignmentId,
+        employeeCode: normalizedEmpCode,
+        unitName: sourceRow.unitName,
+      });
+
+      const result = await takeoverCheckpointAssignment({
+        assignmentId: sourceRow.assignmentId,
+        updatedBy: normalizedEmpCode,
+      });
+
+      const currentAssignmentId = normalizePositiveId(
+        result.current_assignment.assignment_id,
+      );
+
+      if (!currentAssignmentId) {
+        throw new Error(
+          "Backend ไม่ได้ส่งรหัส Assignment ของวันปัจจุบันกลับมา",
+        );
+      }
+
+      const currentRow: CheckRow = {
+        ...sourceRow,
+        assignmentId: currentAssignmentId,
+        assignmentStatus: "pending",
+        status: "pending",
+        inProgressEmployeeCode: null,
+        inProgressEmployeeName: null,
+        canTakeover: false,
+
+        isTakeoverPending: true,
+        takeoverBy: normalizedEmpCode,
+
+        reservedBy: null,
+        reservedByName: null,
+        reservedAt: null,
+      };
+
+      setTakeoverRow(null);
+
+      const passedLocation = await checkLocationBeforeGoCheckInOut(currentRow);
+
+      if (!passedLocation) {
+        logDevError(
+          "[Checkpoint] TAKEOVER LOCATION NOT PASSED",
+          {
+            previousAssignmentId: sourceRow.assignmentId,
+            currentAssignmentId,
+            employeeCode: normalizedEmpCode,
+          },
+        );
+        await fetchCheckpointAssignments();
+        return;
+      }
+
+      logDev("[Checkpoint] TAKEOVER GO CHECKINOUT PAGE", {
+        previousAssignmentId: sourceRow.assignmentId,
+        currentAssignmentId,
+        employeeCode: normalizedEmpCode,
+        unitName: sourceRow.unitName,
+      });
+
+      onGoCheckInOut({
+        assignmentId: currentAssignmentId,
+        unitName: sourceRow.unitName,
+        patrolAreaValues,
+        shiftId: sourceRow.actionShiftId,
+        mode: "checkin",
+        passedLocation,
+      });
+    } catch (error: any) {
+      logDevError("[Checkpoint] TAKEOVER ERROR", {
+        previousAssignmentId: sourceRow.assignmentId,
+        employeeCode: normalizedEmpCode,
+        unitName: sourceRow.unitName,
+        error,
+      });
+
+      const detail = getRequestErrorDetail(error);
+
+      setTakeoverRow(null);
+      openCheckpointInProgressModal(
+        detail.message ||
+          `ไม่สามารถเข้าตรวจแทนหน่วยงาน ${sourceRow.unitName} ได้ กรุณาลองใหม่อีกครั้ง`,
+      );
+
+      await fetchCheckpointAssignments();
+    } finally {
+      setIsTakingOver(false);
+    }
+  };
+
   const handleGoCheckInOut = async (row: CheckRow) => {
     const normalizedEmpCode = empCode.trim();
 
@@ -1870,6 +2062,19 @@ export default function Checkpoint({
       row.inProgressEmployeeCode !== normalizedEmpCode;
 
     if (isInProgressByOtherEmployee) {
+      if (row.canTakeover) {
+        logDev("[Checkpoint] OPEN TAKEOVER CONFIRM MODAL", {
+          assignmentId: row.assignmentId,
+          unitName: row.unitName,
+          currentEmployeeCode: normalizedEmpCode,
+          holderEmployeeCode: row.inProgressEmployeeCode,
+          holderEmployeeName: row.inProgressEmployeeName,
+        });
+
+        setTakeoverRow(row);
+        return;
+      }
+
       const holderEmployeeCode = row.inProgressEmployeeCode ?? "-";
       const holderEmployeeName = row.inProgressEmployeeName ?? "-";
 
@@ -1878,7 +2083,7 @@ export default function Checkpoint({
         `${holderEmployeeCode} ${holderEmployeeName}`,
         "กำลังเข้าตรวจหน่วยงานนี้",
         "",
-        'หากมีความจำเป็น ให้ไปใช้เมนูเข้าพื้นที่ "นอกแผน"',
+        'หากมีความจำเป็น ให้ไปใช้เมนูเข้าพื้นที่ "ติดตาม / มอบหมาย"',
       ].join("\n");
 
       logDev("[Checkpoint] STOP: ASSIGNMENT IS HELD BY OTHER EMPLOYEE", {
@@ -1896,6 +2101,7 @@ export default function Checkpoint({
 
     const isReservedByOtherEmployee =
       row.assignmentStatus === "pending" &&
+      !row.isTakeoverPending &&
       Boolean(row.reservedBy) &&
       row.reservedBy !== normalizedEmpCode;
 
@@ -1917,7 +2123,7 @@ export default function Checkpoint({
     logDev("[Checkpoint] ACTION BUTTON CLICK", {
       assignmentId: row.assignmentId,
       unitName: row.unitName,
-      shiftId: row.shiftId,
+      shiftId: row.actionShiftId,
       rowStatus: row.status,
       assignmentStatus: row.assignmentStatus,
       canAction: row.canAction,
@@ -1957,7 +2163,7 @@ export default function Checkpoint({
       logDevError("[Checkpoint] ACTION DISABLED BY SHIFT WINDOW", {
         assignmentId: row.assignmentId,
         unitName: row.unitName,
-        shiftId: row.shiftId,
+        shiftId: row.actionShiftId,
         reason: row.actionDisabledReason,
         shiftStartTime: row.shiftStartTime,
         shiftEndTime: row.shiftEndTime,
@@ -1971,7 +2177,7 @@ export default function Checkpoint({
       return;
     }
 
-    if (!row.shiftId) {
+    if (!row.actionShiftId) {
       logDevError("[Checkpoint] SHIFT ID NOT FOUND", {
         assignmentId: row.assignmentId,
         unitName: row.unitName,
@@ -1989,7 +2195,7 @@ export default function Checkpoint({
     logDev("[Checkpoint] PASSED LOCATION RESULT", {
       assignmentId: row.assignmentId,
       unitName: row.unitName,
-      shiftId: row.shiftId,
+      shiftId: row.actionShiftId,
       mode,
       passedLocation,
     });
@@ -1998,7 +2204,7 @@ export default function Checkpoint({
       logDevError("[Checkpoint] STOP GO CHECKINOUT BECAUSE LOCATION NOT PASSED", {
         assignmentId: row.assignmentId,
         unitName: row.unitName,
-        shiftId: row.shiftId,
+        shiftId: row.actionShiftId,
         mode,
       });
 
@@ -2008,7 +2214,7 @@ export default function Checkpoint({
     logDev("[Checkpoint] GO CHECKINOUT PAGE", {
       assignmentId: row.assignmentId,
       unitName: row.unitName,
-      shiftId: row.shiftId,
+      shiftId: row.actionShiftId,
       mode,
       passedLocation,
     });
@@ -2017,7 +2223,7 @@ export default function Checkpoint({
       assignmentId: row.assignmentId,
       unitName: row.unitName,
       patrolAreaValues,
-      shiftId: row.shiftId,
+      shiftId: row.actionShiftId,
       mode,
       passedLocation,
     });
@@ -2355,8 +2561,13 @@ export default function Checkpoint({
                     const isProgress = row.status === "progress";
                     const normalizedEmpCode = empCode.trim();
 
+                    const isTakeoverPending =
+                      isPending && row.isTakeoverPending;
+
                     const isReserved =
-                      isPending && Boolean(row.reservedBy);
+                      isPending &&
+                      !isTakeoverPending &&
+                      Boolean(row.reservedBy);
 
                     const isReservedByCurrentEmployee =
                       isReserved && row.reservedBy === normalizedEmpCode;
@@ -2381,7 +2592,7 @@ export default function Checkpoint({
                           ? styles.statusDoneCall
                           : row.status === "progress"
                             ? styles.statusProgress
-                            : isReserved
+                            : isTakeoverPending || isReserved
                               ? styles.statusReserved
                               : styles.statusPending;
 
@@ -2473,22 +2684,26 @@ export default function Checkpoint({
                             }
                             disabled={isActionDisabled}
                             title={
-                              isReservedByCurrentEmployee
-                                ? "ท่านจองหน่วยงานนี้แล้ว"
-                                : isReservedByOtherEmployee
-                                  ? `จองโดย ${row.reservedBy ?? "-"} ${row.reservedByName ?? ""}`.trim()
-                                  : disabledReason
+                              isTakeoverPending
+                                ? `ผู้ตรวจแทน ${row.takeoverBy ?? "-"}`
+                                : isReservedByCurrentEmployee
+                                  ? "ท่านจองหน่วยงานนี้แล้ว"
+                                  : isReservedByOtherEmployee
+                                    ? `จองโดย ${row.reservedBy ?? "-"} ${row.reservedByName ?? ""}`.trim()
+                                    : disabledReason
                             }
                             aria-label={
-                              isReservedByCurrentEmployee
-                                ? `ท่านจองแล้ว ${statusText[row.status]} หน่วยงาน ${row.unitName}`
-                                : isReservedByOtherEmployee
-                                  ? `มีผู้จองแล้ว ${statusText[row.status]} หน่วยงาน ${row.unitName}`
-                                  : disabledReason
-                                    ? `${disabledReason} หน่วยงาน ${row.unitName}`
-                                    : canGoCheckInOut
-                                      ? `ไปหน้าลงเวลาเข้าออกงาน หน่วยงาน ${row.unitName}`
-                                      : `${statusText[row.status]} หน่วยงาน ${row.unitName}`
+                              isTakeoverPending
+                                ? `${statusText[row.status]} โดยผู้ตรวจ ${row.takeoverBy ?? "-"} หน่วยงาน ${row.unitName}`
+                                : isReservedByCurrentEmployee
+                                  ? `ท่านจองแล้ว ${statusText[row.status]} หน่วยงาน ${row.unitName}`
+                                  : isReservedByOtherEmployee
+                                    ? `มีผู้จองแล้ว ${statusText[row.status]} หน่วยงาน ${row.unitName}`
+                                    : disabledReason
+                                      ? `${disabledReason} หน่วยงาน ${row.unitName}`
+                                      : canGoCheckInOut
+                                        ? `ไปหน้าลงเวลาเข้าออกงาน หน่วยงาน ${row.unitName}`
+                                        : `${statusText[row.status]} หน่วยงาน ${row.unitName}`
                             }
                           >
                             <span className={styles.statusContent}>
@@ -2496,11 +2711,19 @@ export default function Checkpoint({
                                 {statusText[row.status]}
                               </span>
 
-                              {isReserved && row.reservedBy && (
+                              {isTakeoverPending && (
                                 <span className={styles.reservedByText}>
-                                  โดยผู้จอง: {row.reservedBy}
+                                  โดยผู้ตรวจ: {row.takeoverBy ?? "-"}
                                 </span>
                               )}
+
+                              {!isTakeoverPending &&
+                                isReserved &&
+                                row.reservedBy && (
+                                  <span className={styles.reservedByText}>
+                                    โดยผู้จอง: {row.reservedBy}
+                                  </span>
+                                )}
                             </span>
                           </button>
                         </div>
@@ -2564,6 +2787,8 @@ export default function Checkpoint({
             ? "กำลังโหลดค่าตรวจสอบตำแหน่ง..."
             : isCheckingLocation
               ? "กำลังตรวจสอบตำแหน่ง..."
+              : isTakingOver
+                ? "กำลังเตรียมเข้าตรวจแทน..."
               : isSavingReservation
                 ? "กำลังจองเข้าตรวจ..."
                 : isCancellingReservation
@@ -2594,6 +2819,16 @@ export default function Checkpoint({
         message={checkpointInProgressMessage}
         onClose={closeCheckpointInProgressModal}
         closeOnBackdrop={false}
+      />
+
+      <CheckpointTakeoverConfirmModal
+        open={Boolean(takeoverRow)}
+        unitName={takeoverRow?.unitName ?? ""}
+        holderEmployeeCode={takeoverRow?.inProgressEmployeeCode ?? null}
+        holderEmployeeName={takeoverRow?.inProgressEmployeeName ?? null}
+        loading={isTakingOver}
+        onCancel={closeTakeoverConfirmModal}
+        onConfirm={() => void handleConfirmTakeover()}
       />
 
       <SuccessModal

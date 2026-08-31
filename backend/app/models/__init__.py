@@ -26,6 +26,7 @@ from .shift_change import ShiftChange
 from .site_location import SiteLocation
 from .site_location_change import SiteLocationChange
 from .time_record import TimeRecord
+from .time_record_image import TimeRecordImage
 
 __all__ = [
     "AuditLog",
@@ -54,4 +55,5 @@ __all__ = [
     "SiteLocation",
     "SiteLocationChange",
     "TimeRecord",
+    "TimeRecordImage",
 ]

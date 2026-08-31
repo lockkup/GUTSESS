@@ -59,6 +59,41 @@ class CheckpointAssignment(Base):
         index=True,
     )
 
+    # ============================================================
+    # Schedule Rule Engine
+    # ============================================================
+    # คอลัมน์ชุดนี้ถูกสร้างและจัดการโดยระบบ Schedule Rule ของทีม
+    # ESS ใช้สำหรับอ่านที่มาของ Assignment และระบุรอบตรวจ
+
+    schedule_rule_set_id: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+
+    schedule_rule_id: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+
+    # ใช้ระบุรอบตรวจที่ Assignment ถูกสร้างขึ้นมา
+    # Assignment หลายวันในรอบเดียวกันสามารถมี schedule_rule_run_id เดียวกัน
+    schedule_rule_run_id: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+
+    # Run ที่ Rule Engine ใช้สำหรับปิด Assignment
+    # ESS ใช้อ่านข้อมูลเท่านั้น
+    schedule_rule_closed_run_id: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+
+    schedule_rule_source: Mapped[str | None] = mapped_column(
+        String(30),
+        nullable=True,
+    )
+
     # ใช้เชื่อมงานสายตรวจกับหลักฐานการลงเวลาใน time_record
     # งานที่ยังไม่ได้เช็คอิน หรือเป็นงานที่ไม่ได้ผูก time_record จะเป็น NULL
     time_record_id: Mapped[int | None] = mapped_column(
@@ -108,6 +143,7 @@ class CheckpointAssignment(Base):
             "pending",
             "in_progress",
             "completed",
+            "cancelled",
             "repaired",
             name="checkpoint_assignment_status_enum",
             native_enum=False,

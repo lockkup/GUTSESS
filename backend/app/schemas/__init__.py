@@ -156,6 +156,11 @@ from app.schemas.time_record import (
     TimeRecordListItemResponse,
     TimeRecordResponse,
 )
+from app.schemas.time_record_image import (
+    TimeRecordImageBase,
+    TimeRecordImageCreate,
+    TimeRecordImageResponse,
+)
 
 # ============================================================
 # Auth schemas ของระบบ Login ทีม
@@ -283,6 +288,9 @@ __all__ = [
     "TimeRecordCheckOut",
     "TimeRecordListItemResponse",
     "TimeRecordResponse",
+    "TimeRecordImageBase",
+    "TimeRecordImageCreate",
+    "TimeRecordImageResponse",
     "EmployeeLogin",
     "EmployeeRegister",
     "AuthEmployeeResponse",

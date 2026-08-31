@@ -21,6 +21,7 @@ import {
   getPatrolReportFilterOptions,
   type PatrolReportFilterOptions,
   type PatrolReportRow,
+  type PatrolReportStatusFilter,
   type PatrolStatus,
 } from "@/services/patrolReportApi";
 
@@ -45,7 +46,10 @@ type ReportPlanModeSelection = Record<ReportPlanMode, boolean>;
 type PatrolNotificationLevel = "none" | "green" | "yellow" | "orange" | "red";
 
 type ReportDisplayStatus = PatrolStatus | "completed_call";
-type StatusFilterValue = "all" | ReportDisplayStatus | "pending_reserved";
+type StatusFilterValue =
+  | "all"
+  | "completed_call"
+  | PatrolReportStatusFilter;
 type DatePickerField = "start" | "end";
 
 type PatrolReportPageProps = {
@@ -184,6 +188,13 @@ type PatrolReportDisplayRow = PatrolReportRow & {
 
   reservedAt?: string | null;
   reserved_at?: string | null;
+
+  /**
+   * ผู้ตรวจของ Assignment ลูกตรวจแทน
+   * สถานะจริงในฐานข้อมูลยังคงเป็น pending
+   */
+  takeoverBy?: string | null;
+  takeover_by?: string | null;
 };
 
 type CalendarCell = {
@@ -601,12 +612,31 @@ const DEFAULT_EMPLOYEE_CODE_TEXT = "";
 
 const HIDE_CONTRACT_COLUMNS = true;
 
-function getReportStatusSortOrder(status: ReportDisplayStatus) {
-  if (status === "completed_call") {
+function getReportStatusSortOrder(
+  row: PatrolReportDisplayRow,
+  status: ReportDisplayStatus,
+) {
+  if (status === "completed" || status === "completed_call") {
+    return 1;
+  }
+
+  if (status === "in_progress") {
     return 2;
   }
 
-  return 1;
+  if (status === "pending" && getTakeoverBy(row) !== null) {
+    return 3;
+  }
+
+  if (status === "pending" && getReservedBy(row) !== null) {
+    return 4;
+  }
+
+  if (status === "pending") {
+    return 5;
+  }
+
+  return 99;
 }
 
 function getStatusLabel(status: ReportDisplayStatus) {
@@ -630,6 +660,10 @@ function getStatusClass(
 ) {
   if (row.reportPlanMode === "outside_plan" && status === "completed") {
     return styles.statusFinished;
+  }
+
+  if (status === "pending" && getTakeoverBy(row) !== null) {
+    return styles.statusTakeover;
   }
 
   switch (status) {
@@ -682,6 +716,10 @@ function getReportStatusLabel(
   row: PatrolReportDisplayRow,
   status: ReportDisplayStatus,
 ) {
+  if (status === "pending" && getTakeoverBy(row) !== null) {
+    return "รอดำเนินการเข้าตรวจ";
+  }
+
   if (status === "pending" && getReservedBy(row) !== null) {
     return "จองแล้ว";
   }
@@ -810,6 +848,18 @@ function getReservedBy(row: PatrolReportDisplayRow): string | null {
   return text || null;
 }
 
+function getTakeoverBy(row: PatrolReportDisplayRow): string | null {
+  const value = row.takeoverBy ?? row.takeover_by ?? null;
+
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const text = String(value).trim();
+
+  return text || null;
+}
+
 function matchesStatusFilter(
   row: PatrolReportDisplayRow,
   statusFilter: StatusFilterValue,
@@ -820,13 +870,26 @@ function matchesStatusFilter(
 
   const displayStatus = getDisplayStatus(row);
   const reservedBy = getReservedBy(row);
+  const takeoverBy = getTakeoverBy(row);
+
+  if (statusFilter === "pending_takeover") {
+    return displayStatus === "pending" && takeoverBy !== null;
+  }
 
   if (statusFilter === "pending_reserved") {
-    return displayStatus === "pending" && reservedBy !== null;
+    return (
+      displayStatus === "pending" &&
+      takeoverBy === null &&
+      reservedBy !== null
+    );
   }
 
   if (statusFilter === "pending") {
-    return displayStatus === "pending" && reservedBy === null;
+    return (
+      displayStatus === "pending" &&
+      takeoverBy === null &&
+      reservedBy === null
+    );
   }
 
   return displayStatus === statusFilter;
@@ -1125,10 +1188,12 @@ function EmptyReportState({
 function StatusIcon({
   status,
   isReservedPending,
+  isTakeoverPending,
   reportPlanMode,
 }: {
   status: ReportDisplayStatus;
   isReservedPending: boolean;
+  isTakeoverPending: boolean;
   reportPlanMode: ReportPlanMode;
 }) {
   if (status === "completed_call") {
@@ -1155,6 +1220,14 @@ function StatusIcon({
   if (status === "in_progress") {
     return (
       <span className={`${styles.statusIcon} ${styles.iconInProgress}`}>
+        <UserRoundPen size={17} strokeWidth={2.8} />
+      </span>
+    );
+  }
+
+  if (status === "pending" && isTakeoverPending) {
+    return (
+      <span className={`${styles.statusIcon} ${styles.iconTakeover}`}>
         <UserRoundPen size={17} strokeWidth={2.8} />
       </span>
     );
@@ -1537,6 +1610,16 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
         originalIndex,
       }))
       .sort((a, b) => {
+        const aStatus = getDisplayStatus(a.row);
+        const bStatus = getDisplayStatus(b.row);
+
+        const aOrder = getReportStatusSortOrder(a.row, aStatus);
+        const bOrder = getReportStatusSortOrder(b.row, bStatus);
+
+        if (aOrder !== bOrder) {
+          return aOrder - bOrder;
+        }
+
         const aCheckInDateTime = getCheckInDateTime(a.row);
         const bCheckInDateTime = getCheckInDateTime(b.row);
 
@@ -1551,16 +1634,6 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
           return -1;
         } else if (bCheckInDateTime) {
           return 1;
-        }
-
-        const aStatus = getDisplayStatus(a.row);
-        const bStatus = getDisplayStatus(b.row);
-
-        const aOrder = getReportStatusSortOrder(aStatus);
-        const bOrder = getReportStatusSortOrder(bStatus);
-
-        if (aOrder !== bOrder) {
-          return aOrder - bOrder;
         }
 
         return a.originalIndex - b.originalIndex;
@@ -1976,6 +2049,12 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
           planModes: selectedPlanModes,
           shiftType: shiftValue,
           status: statusValue === "pending_reserved" ? "pending" : statusValue,
+          reservationStatus:
+            statusValue === "pending_reserved"
+              ? "reserved"
+              : statusValue === "pending"
+                ? "unreserved"
+                : "all",
           keyword: searchText.trim(),
         },
         includeImages: true,
@@ -2225,6 +2304,9 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
               </option>
               <option value="completed_call">ตรวจแล้ว(โทร)</option>
               <option value="in_progress">อยู่ระหว่างการเข้าตรวจ</option>
+              <option value="pending_takeover">
+                รอดำเนินการเข้าตรวจ(โดยผู้ตรวจ)
+              </option>
               <option value="pending_reserved">
                 รอดำเนินการเข้าตรวจ (มีผู้จองแล้ว)
               </option>
@@ -2404,8 +2486,13 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                     filteredRows.map((row, index) => {
                       const status = getDisplayStatus(row);
                       const reservedBy = getReservedBy(row);
+                      const takeoverBy = getTakeoverBy(row);
+                      const isTakeoverPending =
+                        status === "pending" && takeoverBy !== null;
                       const isReservedPending =
-                        status === "pending" && reservedBy !== null;
+                        status === "pending" &&
+                        takeoverBy === null &&
+                        reservedBy !== null;
                       const checkInImageUrl = getCheckInImageUrl(row);
                       const checkOutImageUrl = getCheckOutImageUrl(row);
                       const contractText = getContractCodeText(
@@ -2437,7 +2524,14 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                                 isReservedPending ? styles.statusReserved : ""
                               }`}
                             >
-                              {isReservedPending && reservedBy ? (
+                              {isTakeoverPending && takeoverBy ? (
+                                <span className={styles.statusTextGroup}>
+                                  <span>รอดำเนินการเข้าตรวจ</span>
+                                  <span className={styles.takeoverByText}>
+                                    โดยผู้ตรวจ: {takeoverBy}
+                                  </span>
+                                </span>
+                              ) : isReservedPending && reservedBy ? (
                                 <span className={styles.statusTextGroup}>
                                   <span>
                                     {getReportStatusLabel(row, status)}
@@ -2563,8 +2657,13 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                 const isExpanded = expandedId === mobileRowKey;
                 const status = getDisplayStatus(row);
                 const reservedBy = getReservedBy(row);
+                const takeoverBy = getTakeoverBy(row);
+                const isTakeoverPending =
+                  status === "pending" && takeoverBy !== null;
                 const isReservedPending =
-                  status === "pending" && reservedBy !== null;
+                  status === "pending" &&
+                  takeoverBy === null &&
+                  reservedBy !== null;
                 const checkInImageUrl = getCheckInImageUrl(row);
                 const checkOutImageUrl = getCheckOutImageUrl(row);
                 const contractText = getContractCodeText(row.contractCode);
@@ -2589,6 +2688,7 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                       <StatusIcon
                         status={status}
                         isReservedPending={isReservedPending}
+                        isTakeoverPending={isTakeoverPending}
                         reportPlanMode={row.reportPlanMode}
                       />
 
@@ -2619,7 +2719,14 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                             : ""
                         }`}
                       >
-                        {isReservedPending && reservedBy ? (
+                        {isTakeoverPending && takeoverBy ? (
+                          <span className={styles.statusTextGroup}>
+                            <span>รอดำเนินการเข้าตรวจ</span>
+                            <span className={styles.takeoverByText}>
+                              โดยผู้ตรวจ: {takeoverBy}
+                            </span>
+                          </span>
+                        ) : isReservedPending && reservedBy ? (
                           <span className={styles.statusTextGroup}>
                             <span>{getReportStatusLabel(row, status)}</span>
                             <span className={styles.reservedByText}>
@@ -2662,9 +2769,11 @@ export default function PatrolReportPage({ onBack }: PatrolReportPageProps) {
                           <span>สถานะ</span>
                           <strong>
                             {getReportStatusLabel(row, status)}
-                            {isReservedPending && reservedBy
-                              ? ` โดยผู้จอง: ${reservedBy}`
-                              : ""}
+                            {isTakeoverPending && takeoverBy
+                              ? ` โดยผู้ตรวจ: ${takeoverBy}`
+                              : isReservedPending && reservedBy
+                                ? ` โดยผู้จอง: ${reservedBy}`
+                                : ""}
                           </strong>
                         </div>
 

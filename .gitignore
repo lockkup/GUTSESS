@@ -22,18 +22,23 @@ backend/*.db
 backend/*.sqlite
 backend/*.sqlite3
 
+# Face / legacy uploaded files
 backend/uploads/*
 !backend/uploads/.gitkeep
+
+# Time record uploaded files
+uploads/*
+!uploads/.gitkeep
 
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
 *.log
-node_modules
+node_modules/
 
 # GUTSESS local secrets / generated files
 frontend/.env.production
 caddy/Caddyfile.backup-*
 caddy/Caddyfile.backup*
-backend/exports/patrol_reports/ 
+backend/exports/patrol_reports/

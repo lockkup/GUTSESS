@@ -805,6 +805,19 @@
   white-space: normal;
 }
 
+/* สถานะ pending ของ Assignment ลูกตรวจแทน */
+.statusTakeover {
+  min-height: 48px;
+  padding: 6px 12px;
+
+  color: #000000;
+  background: #fef3c7;
+  border: 1px solid rgba(245, 158, 11, 0.55);
+  border-radius: 12px;
+
+  white-space: normal;
+}
+
 /* จัดข้อความสถานะเป็น 2 บรรทัด */
 .statusTextGroup {
   min-width: 0;
@@ -817,6 +830,14 @@
 
   line-height: 1.15;
   text-align: center;
+}
+
+/* รหัสพนักงานผู้ตรวจ */
+.takeoverByText {
+  color: #854d0e;
+  font-size: var(--patrol-status-size);
+  font-weight: 700;
+  line-height: 1.15;
 }
 
 /* =========================
@@ -1128,6 +1149,13 @@
 .iconReserved {
   color: #000000;
   background: #ffeb3b;
+}
+
+/* ไอคอนสำหรับ Assignment ลูกตรวจแทน */
+.iconTakeover {
+  color: #ffffff;
+  background: #f59e0b;
+  border: none;
 }
 
 .mobileMain {
@@ -1857,7 +1885,8 @@
     padding-right: 8px;
   }
 
-  .mobileStatusBadge .reservedByText {
+  .mobileStatusBadge .reservedByText,
+  .mobileStatusBadge .takeoverByText {
     font-size: var(--patrol-status-size);
     font-weight: 600;
   }

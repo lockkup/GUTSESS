@@ -42,7 +42,10 @@ from app.schemas.patrol_report_export import (
     PatrolReportExportFilter,
     PatrolReportPlanMode,
 )
-from app.services.patrol_report_service import get_patrol_report_rows
+from app.services.patrol_report import (
+    _filter_planned_rows_by_rule_state,
+    get_patrol_report_rows,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -432,9 +435,35 @@ class PatrolReportPdfService:
             sql,
         )
 
-        db_rows = db.execute(text(sql), params).mappings().all()
+        db_rows = [
+            dict(row)
+            for row in db.execute(text(sql), params).mappings().all()
+        ]
+
+        cross_day_columns = {
+            "assignment_id",
+            "parent_assignment_id",
+            "schedule_rule_run_id",
+            "recheck_reason",
+            "assignment_started_at",
+            "assignment_completed_at",
+        }
+
+        if cross_day_columns.issubset(available_columns):
+            db_rows = _filter_planned_rows_by_rule_state(
+                db=db,
+                rows=db_rows,
+                report_start=filters.workday_start,
+                report_end=filters.workday_end,
+            )
 
         logger.info("Patrol PDF result count=%s", len(db_rows))
+
+        if include_images:
+            PatrolReportPdfService._attach_time_record_images(
+                db=db,
+                rows=db_rows,
+            )
 
         return [
             PatrolReportPdfService._map_pdf_row(
@@ -445,6 +474,141 @@ class PatrolReportPdfService:
             )
             for index, row in enumerate(db_rows, start=1)
         ]
+
+    @staticmethod
+    def _attach_time_record_images(
+        *,
+        db: Session,
+        rows: list[dict[str, Any]],
+    ) -> None:
+        """
+        โหลดรูป TimeRecord ระบบใหม่จาก time_record_image แบบ batch
+        สำหรับ PDF ตามแผน
+
+        ลำดับการเลือก:
+        1. time_record_image.image_path (ระบบใหม่)
+        2. รูปจาก view / Base64 เดิม (fallback โดยไม่เขียนทับ)
+
+        ใช้รูป sequence_no แรกของแต่ละ image_type ใน Phase 1
+        และไม่ทำ N+1 query
+        """
+        image_table_columns = PatrolReportPdfService._get_view_columns(
+            db=db,
+            view_name="time_record_image",
+        )
+        required_image_columns = {
+            "time_record_id",
+            "image_type",
+            "sequence_no",
+            "image_path",
+        }
+
+        # รองรับช่วง migration: ถ้ายังไม่มีตารางใหม่ใน environment นี้
+        # ให้ PDF ใช้รูปจาก view / Base64 เดิมต่อไปโดยไม่ล้มทั้ง Job
+        if not required_image_columns.issubset(image_table_columns):
+            return
+
+        time_record_ids = sorted(
+            {
+                time_record_id
+                for row in rows
+                if (
+                    time_record_id := PatrolReportPdfService._to_positive_int(
+                        row.get("time_record_id")
+                    )
+                )
+                is not None
+            }
+        )
+
+        if not time_record_ids:
+            return
+
+        params: dict[str, Any] = {}
+        placeholders: list[str] = []
+
+        for index, time_record_id in enumerate(time_record_ids):
+            key = f"time_record_id_{index}"
+            placeholders.append(f":{key}")
+            params[key] = time_record_id
+
+        image_sql = text(
+            f"""
+            SELECT
+                tri.time_record_id,
+                tri.image_type,
+                tri.sequence_no,
+                tri.image_path
+            FROM time_record_image tri
+            WHERE tri.time_record_id IN ({', '.join(placeholders)})
+              AND tri.image_type IN ('checkin', 'checkout')
+            ORDER BY
+                tri.time_record_id ASC,
+                tri.image_type ASC,
+                tri.sequence_no ASC,
+                tri.time_record_image_id ASC
+            """
+        )
+
+        image_rows = db.execute(
+            image_sql,
+            params,
+        ).mappings().all()
+
+        images_by_time_record_id: dict[int, dict[str, str]] = {}
+
+        for image_row in image_rows:
+            time_record_id = PatrolReportPdfService._to_positive_int(
+                image_row.get("time_record_id")
+            )
+            image_type = PatrolReportPdfService._text(
+                image_row.get("image_type"),
+                "",
+            )
+            image_path = PatrolReportPdfService._text(
+                image_row.get("image_path"),
+                "",
+            )
+
+            if (
+                time_record_id is None
+                or image_type not in {"checkin", "checkout"}
+                or not image_path
+            ):
+                continue
+
+            image_values = images_by_time_record_id.setdefault(
+                time_record_id,
+                {},
+            )
+
+            # SQL เรียง sequence_no จากน้อยไปมากแล้ว
+            # จึงเก็บเฉพาะรูปแรกของแต่ละประเภทสำหรับ PDF Phase 1
+            image_values.setdefault(image_type, image_path)
+
+        for row in rows:
+            time_record_id = PatrolReportPdfService._to_positive_int(
+                row.get("time_record_id")
+            )
+
+            if time_record_id is None:
+                continue
+
+            image_values = images_by_time_record_id.get(time_record_id)
+
+            if not image_values:
+                continue
+
+            checkin_path = image_values.get("checkin")
+            checkout_path = image_values.get("checkout")
+
+            # ใช้ path ใหม่เป็นลำดับแรก
+            # ถ้าไม่มี จึงปล่อยค่าเดิมจาก view / Base64 ให้เป็น fallback
+            if checkin_path:
+                row["checkin_image_url"] = checkin_path
+
+            if checkout_path:
+                row["checkout_image_url"] = checkout_path
 
     @staticmethod
     def _fetch_outside_plan_rows(
@@ -463,7 +627,13 @@ class PatrolReportPdfService:
         )
         status_filter = (
             selected_status
-            if selected_status in {"completed", "in_progress", "pending"}
+            if selected_status in {
+                "completed",
+                "in_progress",
+                "pending",
+                "pending_reserved",
+                "pending_takeover",
+            }
             else None
         )
 
@@ -530,6 +700,18 @@ class PatrolReportPdfService:
             )
             for index, row in enumerate(report_rows, start=1)
         ]
+
+    @staticmethod
+    def _to_positive_int(value: Any) -> int | None:
+        if value is None:
+            return None
+
+        try:
+            parsed_value = int(value)
+        except (TypeError, ValueError):
+            return None
+
+        return parsed_value if parsed_value > 0 else None
 
     @staticmethod
     def _resolve_shift_id(
@@ -698,6 +880,7 @@ class PatrolReportPdfService:
             ),
             "assignment_status": assignment_status,
             "reserved_by": value("reservedBy", "reserved_by"),
+            "takeover_by": value("takeoverBy", "takeover_by"),
             "workday": (
                 value("workday", "workDate", "work_date")
                 or check_in_datetime
@@ -802,6 +985,18 @@ class PatrolReportPdfService:
         def has_column(name: str) -> bool:
             return name.lower() in available_columns
 
+        cross_day_columns = {
+            "assignment_id",
+            "parent_assignment_id",
+            "schedule_rule_run_id",
+            "recheck_reason",
+            "assignment_started_at",
+            "assignment_completed_at",
+        }
+        supports_cross_day = cross_day_columns.issubset(
+            available_columns,
+        )
+
         def add_equals(
             *,
             column_name: str,
@@ -847,13 +1042,45 @@ class PatrolReportPdfService:
                 f"view {PatrolReportPdfService.VIEW_NAME} ไม่มีคอลัมน์ workday"
             )
 
-        if start_date:
-            where_parts.append("`workday` >= :workday_start")
+        if start_date and end_date and supports_cross_day:
+            where_parts.append(
+                """
+                (
+                    `workday` BETWEEN :workday_start AND :workday_end
+                    OR (
+                        `workday` < :workday_start
+                        AND `schedule_rule_run_id` IS NOT NULL
+                        AND (
+                            (
+                                `assignment_status` = 'in_progress'
+                                AND `assignment_started_at` IS NOT NULL
+                                AND `assignment_completed_at` IS NULL
+                            )
+                            OR (
+                                `assignment_status` = 'pending'
+                                AND `parent_assignment_id` IS NOT NULL
+                                AND NULLIF(
+                                    TRIM(`recheck_reason`),
+                                    ''
+                                ) IS NULL
+                                AND `assignment_started_at` IS NULL
+                                AND `assignment_completed_at` IS NULL
+                            )
+                        )
+                    )
+                )
+                """.strip()
+            )
             params["workday_start"] = start_date
-
-        if end_date:
-            where_parts.append("`workday` <= :workday_end")
             params["workday_end"] = end_date
+        else:
+            if start_date:
+                where_parts.append("`workday` >= :workday_start")
+                params["workday_start"] = start_date
+
+            if end_date:
+                where_parts.append("`workday` <= :workday_end")
+                params["workday_end"] = end_date
 
         add_equals(
             column_name="department_id",
@@ -875,11 +1102,34 @@ class PatrolReportPdfService:
             param_name="location_id",
             value=get_filter("location_id") or get_filter("locationId"),
         )
-        add_equals(
-            column_name="employee_code",
-            param_name="employee_code",
-            value=get_filter("employee_code") or get_filter("employeeCode"),
+        employee_code = (
+            get_filter("employee_code")
+            or get_filter("employeeCode")
         )
+        if employee_code is not None and str(employee_code).strip():
+            if (
+                has_column("employee_code")
+                and has_column("assignment_status")
+                and has_column("takeover_by")
+            ):
+                where_parts.append(
+                    """
+                    (
+                        `employee_code` = :employee_code
+                        OR (
+                            `assignment_status` = 'pending'
+                            AND `takeover_by` = :employee_code
+                        )
+                    )
+                    """.strip()
+                )
+                params["employee_code"] = str(employee_code).strip()
+            else:
+                add_equals(
+                    column_name="employee_code",
+                    param_name="employee_code",
+                    value=employee_code,
+                )
 
         shift_type = (
             get_filter("shift_type")
@@ -917,6 +1167,56 @@ class PatrolReportPdfService:
                     )
 
                 where_parts.append("`call_status` IS NOT NULL")
+            elif selected_status == "pending_takeover":
+                required_takeover_columns = {
+                    "assignment_status",
+                    "parent_assignment_id",
+                    "schedule_rule_run_id",
+                    "recheck_reason",
+                    "takeover_by",
+                    "assignment_started_at",
+                    "assignment_completed_at",
+                }
+
+                if not required_takeover_columns.issubset(
+                    available_columns,
+                ):
+                    raise PatrolReportPdfBuildError(
+                        f"view {PatrolReportPdfService.VIEW_NAME} "
+                        "ไม่มีคอลัมน์สำหรับกรองสถานะผู้ตรวจ"
+                    )
+
+                where_parts.append(
+                    """
+                    `assignment_status` = 'pending'
+                    AND `parent_assignment_id` IS NOT NULL
+                    AND `schedule_rule_run_id` IS NOT NULL
+                    AND NULLIF(TRIM(`recheck_reason`), '') IS NULL
+                    AND `assignment_started_at` IS NULL
+                    AND `assignment_completed_at` IS NULL
+                    AND NULLIF(TRIM(`takeover_by`), '') IS NOT NULL
+                    """.strip()
+                )
+            elif selected_status == "pending_reserved":
+                required_reserved_columns = {
+                    "assignment_status",
+                    "reserved_by",
+                }
+
+                if not required_reserved_columns.issubset(
+                    available_columns,
+                ):
+                    raise PatrolReportPdfBuildError(
+                        f"view {PatrolReportPdfService.VIEW_NAME} "
+                        "ไม่มีคอลัมน์สำหรับกรองสถานะผู้จอง"
+                    )
+
+                where_parts.append(
+                    """
+                    `assignment_status` = 'pending'
+                    AND NULLIF(TRIM(`reserved_by`), '') IS NOT NULL
+                    """.strip()
+                )
             else:
                 if not has_column("assignment_status"):
                     raise PatrolReportPdfBuildError(
@@ -1064,6 +1364,13 @@ class PatrolReportPdfService:
             "status",
             "call_status",
             "reserved_by",
+            "assignment_id",
+            "parent_assignment_id",
+            "schedule_rule_run_id",
+            "recheck_reason",
+            "takeover_by",
+            "assignment_started_at",
+            "assignment_completed_at",
             "employee_code",
             "first_name",
             "last_name",
@@ -1074,6 +1381,7 @@ class PatrolReportPdfService:
             "call_note",
         )
         image_columns = (
+            "time_record_id",
             "images_checkin_1",
             "images_checkin_2",
             "images_checkin_3",
@@ -1243,9 +1551,42 @@ class PatrolReportPdfService:
             row.get("reserved_by"),
             "",
         )
+        takeover_by = PatrolReportPdfService._text(
+            row.get("takeover_by"),
+            "",
+        )
+        recheck_reason = PatrolReportPdfService._text(
+            row.get("recheck_reason"),
+            "",
+        )
+        is_takeover_pending = (
+            assignment_status == "pending"
+            and PatrolReportPdfService._to_positive_int(
+                row.get("parent_assignment_id")
+            )
+            is not None
+            and PatrolReportPdfService._to_positive_int(
+                row.get("schedule_rule_run_id")
+            )
+            is not None
+            and not recheck_reason
+            and PatrolReportPdfService._parse_datetime(
+                row.get("assignment_started_at")
+            )
+            is None
+            and PatrolReportPdfService._parse_datetime(
+                row.get("assignment_completed_at")
+            )
+            is None
+        )
 
         if call_status is not None and str(call_status).strip():
             display_status = "ตรวจแล้ว(โทร)"
+        elif is_takeover_pending and takeover_by:
+            display_status = (
+                "รอดำเนินการเข้าตรวจ\n"
+                f"โดยผู้ตรวจ: {takeover_by}"
+            )
         elif assignment_status == "pending" and reserved_by:
             display_status = (
                 "รอดำเนินการเข้าตรวจ\n"
@@ -1341,11 +1682,12 @@ class PatrolReportPdfService:
                 PatrolReportPdfService._first_image_value(
                     row,
                     (
+                        # path จาก time_record_image มาก่อน Base64 เดิม
+                        "checkin_image_url",
+                        "check_in_image_url",
                         "images_checkin_1",
                         "images_checkin_2",
                         "images_checkin_3",
-                        "check_in_image_url",
-                        "checkin_image_url",
                         "check_in_picture",
                         "checkin_picture",
                         "first_in_picture",
@@ -1358,11 +1700,12 @@ class PatrolReportPdfService:
                 PatrolReportPdfService._first_image_value(
                     row,
                     (
+                        # path จาก time_record_image มาก่อน Base64 เดิม
+                        "checkout_image_url",
+                        "check_out_image_url",
                         "images_checkout_1",
                         "images_checkout_2",
                         "images_checkout_3",
-                        "check_out_image_url",
-                        "checkout_image_url",
                         "check_out_picture",
                         "checkout_picture",
                         "last_out_picture",
@@ -1854,6 +2197,12 @@ class PatrolReportPdfService:
         if normalized_status == "ตรวจแล้ว(โทร)":
             return styles["status_completed_call"]
 
+        if (
+            normalized_status.startswith("รอดำเนินการเข้าตรวจ")
+            and "โดยผู้ตรวจ:" in normalized_status
+        ):
+            return styles["status_pending_takeover"]
+
         return styles["cell_center"]
 
     @staticmethod
@@ -2196,14 +2545,16 @@ class PatrolReportPdfService:
     def _resolve_local_upload_path(value: str) -> Path | None:
         """
         รองรับ path ที่เก็บใน DB เช่น:
-        - uploads/checkin/a.jpg
-        - /uploads/checkin/a.jpg
-        - http://localhost:8000/uploads/checkin/a.jpg
+        - uploads/time_record/.../001.jpg
+        - /uploads/time_record/.../001.jpg
+        - http://localhost:8000/uploads/time_record/.../001.jpg
 
-        ห้ามให้ path ออกนอก backend/uploads.
+        ตำแหน่งหลักของ Time Record ปัจจุบัน:
+        <project_root>/uploads
+
+        ยังคงรองรับ backend/uploads เป็น fallback สำหรับ path เก่า
+        โดยห้าม resolve path ออกนอก upload roots ที่กำหนด
         """
-
-        uploads_root = Path(__file__).resolve().parents[2] / "uploads"
         normalized = value.replace("\\", "/")
 
         uploads_marker = "/uploads/"
@@ -2216,14 +2567,34 @@ class PatrolReportPdfService:
         else:
             return None
 
-        candidate = (uploads_root / normalized.lstrip("/")).resolve()
+        relative_path = normalized.lstrip("/")
 
-        try:
-            candidate.relative_to(uploads_root.resolve())
-        except ValueError:
-            return None
+        project_root = Path(__file__).resolve().parents[3]
+        primary_uploads_root = (project_root / "uploads").resolve()
+        legacy_uploads_root = (
+            Path(__file__).resolve().parents[2] / "uploads"
+        ).resolve()
 
-        return candidate
+        safe_candidates: list[Path] = []
+
+        for uploads_root in (
+            primary_uploads_root,
+            legacy_uploads_root,
+        ):
+            candidate = (uploads_root / relative_path).resolve()
+
+            try:
+                candidate.relative_to(uploads_root)
+            except ValueError:
+                continue
+
+            safe_candidates.append(candidate)
+
+            if candidate.is_file():
+                return candidate
+
+        # คืน path หลักแม้ไฟล์ยังไม่อยู่ เพื่อให้ caller ตรวจ is_file() ต่อเอง
+        return safe_candidates[0] if safe_candidates else None
 
     @staticmethod
     def _first_image_value(
@@ -3018,6 +3389,19 @@ class PatrolReportPdfService:
                 textColor=colors.HexColor("#7E22CE"),
                 backColor=colors.HexColor("#F3E8FF"),
                 borderColor=colors.HexColor("#D8B4FE"),
+                borderWidth=0.5,
+                borderPadding=2,
+            ),
+            "status_pending_takeover": ParagraphStyle(
+                "PatrolReportStatusPendingTakeover",
+                parent=base_styles["Normal"],
+                fontName=PatrolReportPdfService.FONT_BOLD_NAME,
+                fontSize=PatrolReportPdfService.FONT_SIZE_TABLE_CELL,
+                leading=PatrolReportPdfService.FONT_LEADING_TABLE_CELL,
+                alignment=TA_CENTER,
+                textColor=colors.HexColor("#854D0E"),
+                backColor=colors.HexColor("#FEF3C7"),
+                borderColor=colors.HexColor("#F59E0B"),
                 borderWidth=0.5,
                 borderPadding=2,
             ),

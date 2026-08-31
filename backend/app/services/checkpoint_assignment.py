@@ -6,12 +6,14 @@ from typing import Any, ClassVar, Final, Literal
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
-from sqlalchemy import and_, exists, func, or_, select, text
+from sqlalchemy import and_, bindparam, exists, func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, aliased
 
 from app.core.constants import DBConstants
 from app.core.error_messages import (
+    CHECKPOINT_ASSIGNMENT_ALREADY_IN_PROGRESS_TEMPLATE,
+    CHECKPOINT_ASSIGNMENT_NOT_AVAILABLE_DETAIL,
     CHECKPOINT_ASSIGNMENT_NOT_EDITABLE_DETAIL,
     CHECKPOINT_ASSIGNMENT_NOT_FOUND_DETAIL,
     CHECKPOINT_ASSIGNMENT_RECHECK_ALREADY_EXISTS_DETAIL,
@@ -39,6 +41,7 @@ from app.schemas.checkpoint_assignment import (
     CheckpointAssignmentReservationAction,
     CheckpointAssignmentUpdate,
     CheckpointMapLocationResponse,
+    TakeoverCheckpointAssignmentResponse,
 )
 from app.schemas.checkpoint_location import (
     VerifyCheckpointLocationRequest,
@@ -49,6 +52,33 @@ from app.schemas.checkpoint_location import (
 _PARENT_ASSIGNMENT_ROOT_KEY: Final[int] = 0
 _ACTIVE_UNIQUE_KEY: Final[int] = 0
 _BANGKOK_TIMEZONE: Final[str] = "Asia/Bangkok"
+
+_NO_CROSS_DAY_INSPECTION_MODES: Final[frozenset[str]] = frozenset(
+    {
+        "WEEKLY",
+        "SPLIT_MONTH",
+    }
+)
+
+_EXACT_INSPECTION_DAYS: Final[dict[str, int]] = {
+    "EXACT_7": 7,
+    "EXACT_15": 15,
+}
+
+_EXACT_INSPECTION_MODES: Final[frozenset[str]] = frozenset(
+    {
+        *_EXACT_INSPECTION_DAYS,
+        "EXACT_MONTHLY",
+    }
+)
+
+_WINDOW_INSPECTION_MODES: Final[frozenset[str]] = frozenset(
+    {
+        "FLEXIBLE_7",
+        "FLEXIBLE_15",
+        "FLEXIBLE_MONTHLY",
+    }
+)
 
 ShiftType = Literal["day", "night"]
 
@@ -68,9 +98,12 @@ _CLOSED_STATUSES: Final[frozenset[str]] = frozenset(
 )
 
 _ALLOWED_STATUS_TRANSITIONS: Final[dict[str, set[str]]] = {
-    "pending": {"in_progress"},
-    "in_progress": {"completed"},
+    # Assignment ตรวจแทนที่ค้าง pending จากวันก่อนต้องยกเลิกได้
+    # เมื่อสร้าง Assignment ลูกของวันปัจจุบันขึ้นมารับช่วงต่อ
+    "pending": {"in_progress", "cancelled"},
+    "in_progress": {"completed", "cancelled"},
     "completed": {"repaired"},
+    "cancelled": set(),
     "repaired": set(),
 }
 
@@ -88,6 +121,18 @@ class CheckpointAssignmentService:
         return parent_assignment_id or _PARENT_ASSIGNMENT_ROOT_KEY
 
     @staticmethod
+    def _is_takeover_assignment(
+        checkpoint_assignment: CheckpointAssignment,
+    ) -> bool:
+        return (
+            checkpoint_assignment.parent_assignment_id is not None
+            and not str(
+                checkpoint_assignment.recheck_reason or ""
+            ).strip()
+            and checkpoint_assignment.schedule_rule_run_id is not None
+        )
+
+    @staticmethod
     def _as_bool(value: Any) -> bool:
         if isinstance(value, bool):
             return value
@@ -99,6 +144,118 @@ class CheckpointAssignmentService:
             return value.strip().lower() in {"1", "true", "t", "yes", "y"}
 
         return bool(value)
+
+    @staticmethod
+    def _as_date(value: Any) -> date | None:
+        if isinstance(value, datetime):
+            return value.date()
+
+        if isinstance(value, date):
+            return value
+
+        if value is None:
+            return None
+
+        try:
+            return date.fromisoformat(str(value).strip().split(" ", 1)[0])
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _get_root_assignment_work_dates(
+        db: Session,
+        assignment_ids: set[int],
+    ) -> dict[int, date]:
+        clean_assignment_ids = {
+            int(assignment_id)
+            for assignment_id in assignment_ids
+        }
+
+        if not clean_assignment_ids:
+            return {}
+
+        root_work_dates: dict[int, date] = {}
+        fallback_work_dates: dict[int, date] = {}
+        current_ids_by_assignment = {
+            assignment_id: assignment_id
+            for assignment_id in clean_assignment_ids
+        }
+        visited_ids_by_assignment = {
+            assignment_id: set()
+            for assignment_id in clean_assignment_ids
+        }
+
+        while current_ids_by_assignment:
+            current_ids = set(current_ids_by_assignment.values())
+            rows = db.execute(
+                select(
+                    CheckpointAssignment.assignment_id.label(
+                        "assignment_id"
+                    ),
+                    CheckpointAssignment.parent_assignment_id.label(
+                        "parent_assignment_id"
+                    ),
+                    CheckpointAssignment.work_date.label("work_date"),
+                ).where(
+                    CheckpointAssignment.assignment_id.in_(current_ids)
+                )
+            ).mappings().all()
+            rows_by_id = {
+                int(row["assignment_id"]): row
+                for row in rows
+            }
+
+            next_ids_by_assignment: dict[int, int] = {}
+
+            for assignment_id, current_id in (
+                current_ids_by_assignment.items()
+            ):
+                visited_ids = visited_ids_by_assignment[assignment_id]
+
+                if current_id in visited_ids:
+                    continue
+
+                visited_ids.add(current_id)
+                row = rows_by_id.get(current_id)
+
+                if row is None:
+                    continue
+
+                row_work_date = (
+                    CheckpointAssignmentService._as_date(row["work_date"])
+                )
+                if row_work_date is not None:
+                    fallback_work_dates.setdefault(
+                        assignment_id,
+                        row_work_date,
+                    )
+
+                parent_assignment_id_raw = row["parent_assignment_id"]
+                if parent_assignment_id_raw is None:
+                    if row_work_date is not None:
+                        root_work_dates[assignment_id] = row_work_date
+                    continue
+
+                next_ids_by_assignment[assignment_id] = int(
+                    parent_assignment_id_raw
+                )
+
+            current_ids_by_assignment = next_ids_by_assignment
+
+        for assignment_id, fallback_work_date in (
+            fallback_work_dates.items()
+        ):
+            root_work_dates.setdefault(
+                assignment_id,
+                fallback_work_date,
+            )
+
+        return root_work_dates
+
+    @staticmethod
+    def _last_day_of_month(value: date) -> date:
+        next_month = (value.replace(day=28) + timedelta(days=4)).replace(day=1)
+        return next_month - timedelta(days=1)
 
     @staticmethod
     def _normalize_time(value: Any) -> time | None:
@@ -166,12 +323,6 @@ class CheckpointAssignmentService:
 
             return f"ผลัด{clean_shift_name}"
 
-        if shift_id == 1:
-            return "ผลัดกลางวัน"
-
-        if shift_id == 2:
-            return "ผลัดกลางคืน"
-
         return "ผลัดนี้"
 
     @staticmethod
@@ -220,6 +371,121 @@ class CheckpointAssignmentService:
             "end_time": end_time,
             "crosses_midnight": crosses_midnight,
         }
+
+    @staticmethod
+    def _get_active_shift_window_infos(
+        db: Session,
+    ) -> list[dict[str, Any]]:
+        stmt = text(
+            """
+            SELECT
+                shift_id,
+                shift_name_th,
+                start_time,
+                end_time,
+                crosses_midnight
+            FROM shifts
+            WHERE COALESCE(mark_flag, 0) = 0
+              AND COALESCE(is_active, 1) = 1
+            ORDER BY shift_id ASC
+            """
+        )
+
+        rows = db.execute(stmt).mappings().all()
+        shift_infos: list[dict[str, Any]] = []
+
+        for row in rows:
+            start_time = CheckpointAssignmentService._normalize_time(
+                row["start_time"]
+            )
+            end_time = CheckpointAssignmentService._normalize_time(
+                row["end_time"]
+            )
+
+            if start_time is None or end_time is None:
+                continue
+
+            shift_infos.append(
+                {
+                    "shift_id": int(row["shift_id"]),
+                    "shift_name_th": row["shift_name_th"],
+                    "start_time": start_time,
+                    "end_time": end_time,
+                    "crosses_midnight": (
+                        CheckpointAssignmentService._as_bool(
+                            row["crosses_midnight"]
+                        )
+                    ),
+                }
+            )
+
+        return shift_infos
+
+    @staticmethod
+    def _get_shift_window_info_by_type(
+        db: Session,
+        shift_type: ShiftType,
+    ) -> dict[str, Any] | None:
+        shift_infos = (
+            CheckpointAssignmentService._get_active_shift_window_infos(
+                db=db,
+            )
+        )
+
+        for shift_info in shift_infos:
+            crosses_midnight = bool(shift_info["crosses_midnight"])
+            start_time = shift_info["start_time"]
+            end_time = shift_info["end_time"]
+            is_night_shift = crosses_midnight or end_time <= start_time
+
+            if shift_type == "night" and is_night_shift:
+                return shift_info
+
+            if shift_type == "day" and not is_night_shift:
+                return shift_info
+
+        return None
+
+    @staticmethod
+    def _get_current_shift_window_info(
+        db: Session,
+        now: datetime,
+    ) -> dict[str, Any] | None:
+        shift_infos = (
+            CheckpointAssignmentService._get_active_shift_window_infos(
+                db=db,
+            )
+        )
+        matching_shifts: list[tuple[datetime, dict[str, Any]]] = []
+
+        for shift_info in shift_infos:
+            for candidate_work_date in (
+                now.date(),
+                now.date() - timedelta(days=1),
+            ):
+                start_datetime, end_datetime = (
+                    CheckpointAssignmentService
+                    ._build_shift_datetime_window(
+                        work_date=candidate_work_date,
+                        start_time=shift_info["start_time"],
+                        end_time=shift_info["end_time"],
+                        crosses_midnight=bool(
+                            shift_info["crosses_midnight"]
+                        ),
+                    )
+                )
+
+                if start_datetime <= now <= end_datetime:
+                    matching_shifts.append(
+                        (start_datetime, shift_info)
+                    )
+
+        if not matching_shifts:
+            return None
+
+        # หากช่วงเวลาของผลัดซ้อนกัน ให้ผลัดที่เริ่มล่าสุดเป็นผลัดปัจจุบัน
+        matching_shifts.sort(key=lambda item: item[0], reverse=True)
+        return matching_shifts[0][1]
 
     @staticmethod
     def _build_shift_datetime_window(
@@ -400,6 +666,45 @@ class CheckpointAssignmentService:
 
         now = CheckpointAssignmentService._now_bangkok_naive()
 
+        # EXACT_* เป็นงานตามรอบตรวจ ไม่ได้จำกัดว่าต้องดำเนินการเฉพาะ
+        # ผลัดเดิมของ schedule_item เท่านั้น จึงอนุญาตให้เริ่มตรวจใน
+        # ผลัดปัจจุบันได้ทั้งกลางวันและกลางคืน โดยยังคงใช้ Assignment เดิม
+        # และให้กติกา Rule Run เป็นผู้ตรวจสอบว่ารอบยังเปิดอยู่หรือไม่
+        schedule_rule_run_id = checkpoint_assignment.schedule_rule_run_id
+
+        if schedule_rule_run_id is not None:
+            rule_run_context = (
+                CheckpointAssignmentService
+                ._get_rule_run_contexts_by_ids(
+                    db=db,
+                    rule_run_ids={int(schedule_rule_run_id)},
+                )
+                .get(int(schedule_rule_run_id))
+            )
+            inspection_mode = str(
+                (rule_run_context or {}).get("inspection_mode") or ""
+            ).strip().upper()
+
+            if inspection_mode in _EXACT_INSPECTION_MODES:
+                current_shift_info = (
+                    CheckpointAssignmentService
+                    ._get_current_shift_window_info(
+                        db=db,
+                        now=now,
+                    )
+                )
+
+                if current_shift_info is not None:
+                    return
+
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        "ไม่พบผลัดที่เปิดให้ดำเนินการ"
+                        "ในเวลาปัจจุบัน"
+                    ),
+                )
+
         action_state = CheckpointAssignmentService._build_action_state_for_shift(
             db=db,
             work_date=checkpoint_assignment.work_date,
@@ -539,6 +844,238 @@ class CheckpointAssignmentService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=error_detail,
             )
+
+    @staticmethod
+    def _get_rule_run_contexts_by_ids(
+        db: Session,
+        rule_run_ids: set[int],
+    ) -> dict[int, dict[str, Any]]:
+        if not rule_run_ids:
+            return {}
+
+        stmt = text(
+            """
+            SELECT
+                rule_run.rule_run_id,
+                rule_run.assignment_start_date,
+                rule_run.assignment_end_date,
+                rule_set.inspection_mode
+            FROM checkpoint_schedule_rule_run AS rule_run
+            LEFT JOIN checkpoint_schedule_rule_set AS rule_set
+              ON rule_set.rule_set_id = rule_run.rule_set_id
+            WHERE rule_run.rule_run_id IN :rule_run_ids
+            """
+        ).bindparams(
+            bindparam(
+                "rule_run_ids",
+                expanding=True,
+            )
+        )
+
+        rows = db.execute(
+            stmt,
+            {
+                "rule_run_ids": sorted(rule_run_ids),
+            },
+        ).mappings().all()
+
+        contexts: dict[int, dict[str, Any]] = {}
+
+        for row in rows:
+            contexts[int(row["rule_run_id"])] = {
+                "inspection_mode": str(
+                    row["inspection_mode"] or ""
+                ).strip().upper(),
+                "assignment_start_date": (
+                    CheckpointAssignmentService._as_date(
+                        row["assignment_start_date"]
+                    )
+                ),
+                "assignment_end_date": (
+                    CheckpointAssignmentService._as_date(
+                        row["assignment_end_date"]
+                    )
+                ),
+            }
+
+        return contexts
+
+    @staticmethod
+    def _get_cross_day_inspection_period(
+        assignment_work_date: date,
+        rule_run_context: dict[str, Any] | None,
+    ) -> tuple[date, date] | None:
+        if rule_run_context is None:
+            return None
+
+        inspection_mode = str(
+            rule_run_context.get("inspection_mode") or ""
+        ).strip().upper()
+
+        if inspection_mode in _NO_CROSS_DAY_INSPECTION_MODES:
+            return None
+
+        exact_days = _EXACT_INSPECTION_DAYS.get(inspection_mode)
+        if exact_days is not None:
+            period_start = assignment_work_date
+            period_end = min(
+                period_start + timedelta(days=exact_days - 1),
+                CheckpointAssignmentService._last_day_of_month(period_start),
+            )
+            return period_start, period_end
+
+        if inspection_mode == "EXACT_MONTHLY":
+            period_start = assignment_work_date
+            period_end = CheckpointAssignmentService._last_day_of_month(
+                period_start
+            )
+            return period_start, period_end
+
+        if inspection_mode in _WINDOW_INSPECTION_MODES:
+            period_start = rule_run_context.get("assignment_start_date")
+            period_end = rule_run_context.get("assignment_end_date")
+
+            if not isinstance(period_start, date):
+                period_start = assignment_work_date
+
+            if not isinstance(period_end, date):
+                return None
+
+            return period_start, period_end
+
+        # inspection_mode อื่นที่อนุญาตให้ข้ามวัน ใช้ช่วงจาก Rule Run
+        # โดยไม่อ้าง rule_type
+        period_start = rule_run_context.get("assignment_start_date")
+        period_end = rule_run_context.get("assignment_end_date")
+
+        if not isinstance(period_start, date):
+            period_start = assignment_work_date
+
+        if not isinstance(period_end, date):
+            return None
+
+        return period_start, period_end
+
+    @staticmethod
+    def _get_assignment_period_key(
+        schedule_rule_run_id: int,
+        assignment_work_date: date,
+        rule_run_context: dict[str, Any] | None,
+    ) -> tuple[int, date, date]:
+        inspection_period = (
+            CheckpointAssignmentService._get_cross_day_inspection_period(
+                assignment_work_date=assignment_work_date,
+                rule_run_context=rule_run_context,
+            )
+        )
+
+        if inspection_period is None:
+            period_start = assignment_work_date
+            period_end = assignment_work_date
+        else:
+            period_start, period_end = inspection_period
+
+        return schedule_rule_run_id, period_start, period_end
+
+    @staticmethod
+    def _is_cross_day_open_within_period(
+        period_anchor_work_date: date,
+        source_work_date: date,
+        requested_work_date: date,
+        assignment_status: str | None,
+        started_at: datetime | None,
+        completed_at: datetime | None,
+        is_takeover_assignment: bool,
+        rule_run_context: dict[str, Any] | None,
+    ) -> bool:
+        """
+        ตรวจว่างานล่าสุดในสายตรวจแทนยังค้างอยู่ในรอบหรือไม่
+
+        รองรับทั้ง:
+        - in_progress: เช็กอินแล้วแต่ยังไม่เช็กเอาต์
+        - pending: งานลูกตรวจแทนจากวันก่อนที่ยังไม่เช็กอิน
+
+        period_anchor_work_date คือวันที่ของ Assignment ราก เช่น 20
+        source_work_date คือวันที่ของรายการล่าสุด เช่น 24
+        """
+
+        if completed_at is not None:
+            return False
+
+        if assignment_status == "in_progress":
+            if started_at is None:
+                return False
+        elif assignment_status == "pending":
+            if not is_takeover_assignment or started_at is not None:
+                return False
+        else:
+            return False
+
+        # ตรวจแทนซ้ำได้ตั้งแต่วันถัดไปของรายการล่าสุดเท่านั้น
+        if source_work_date >= requested_work_date:
+            return False
+
+        inspection_period = (
+            CheckpointAssignmentService._get_cross_day_inspection_period(
+                assignment_work_date=period_anchor_work_date,
+                rule_run_context=rule_run_context,
+            )
+        )
+
+        if inspection_period is None:
+            return False
+
+        period_start, period_end = inspection_period
+        return period_start <= requested_work_date <= period_end
+
+    @staticmethod
+    def _is_cross_day_takeover_allowed(
+        period_anchor_work_date: date,
+        source_work_date: date,
+        requested_work_date: date,
+        assignment_status: str | None,
+        started_at: datetime | None,
+        completed_at: datetime | None,
+        started_by: str | None,
+        employee_code: str | None,
+        is_takeover_assignment: bool,
+        rule_run_context: dict[str, Any] | None,
+    ) -> bool:
+        clean_employee_code = (employee_code or "").strip()
+
+        if not clean_employee_code:
+            return False
+
+        is_open_within_period = (
+            CheckpointAssignmentService
+            ._is_cross_day_open_within_period(
+                period_anchor_work_date=period_anchor_work_date,
+                source_work_date=source_work_date,
+                requested_work_date=requested_work_date,
+                assignment_status=assignment_status,
+                started_at=started_at,
+                completed_at=completed_at,
+                is_takeover_assignment=is_takeover_assignment,
+                rule_run_context=rule_run_context,
+            )
+        )
+
+        if not is_open_within_period:
+            return False
+
+        # pending ตรวจแทนยังไม่มีผู้เช็กอิน จึงให้พนักงานคนเดิมหรือคนอื่น
+        # กดรับช่วงในวันถัดไปได้ โดยไม่ถือเป็นการจอง
+        if assignment_status == "pending":
+            return is_takeover_assignment
+
+        clean_started_by = (started_by or "").strip()
+
+        if not clean_started_by:
+            return False
+
+        # ผู้ที่กำลังถือ in_progress อยู่สามารถเช็กเอาต์รายการเดิมได้
+        # ไม่จำเป็นต้องสร้างงานตรวจแทนของตนเอง
+        return clean_started_by != clean_employee_code
 
     @staticmethod
     def _ensure_employee_exists(
@@ -681,6 +1218,190 @@ class CheckpointAssignmentService:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=INACTIVE_CHECKPOINT_ASSIGNMENT_DETAIL,
+            )
+
+    @staticmethod
+    def _raise_assignment_in_progress_conflict(
+        db: Session,
+        employee_code: str | None,
+    ) -> None:
+        clean_employee_code = (employee_code or "").strip()
+
+        employee_name = "-"
+        if clean_employee_code:
+            employee = db.scalar(
+                select(Employees).where(
+                    Employees.employee_code == clean_employee_code
+                )
+            )
+
+            if employee is not None:
+                employee_name = " ".join(
+                    part
+                    for part in [
+                        str(getattr(employee, "first_name", "") or "").strip(),
+                        str(getattr(employee, "last_name", "") or "").strip(),
+                    ]
+                    if part
+                ).strip() or "-"
+
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=CHECKPOINT_ASSIGNMENT_ALREADY_IN_PROGRESS_TEMPLATE.format(
+                employee_code=clean_employee_code or "-",
+                employee_name=employee_name,
+            ),
+        )
+
+    @staticmethod
+    def _ensure_rule_run_pending_action_available(
+        db: Session,
+        checkpoint_assignment: CheckpointAssignment,
+        ignored_assignment_ids: set[int] | None = None,
+        period_anchor_work_date: date | None = None,
+    ) -> None:
+        schedule_rule_run_id = checkpoint_assignment.schedule_rule_run_id
+
+        # Legacy Assignment ไม่มี Rule Run: คงพฤติกรรมเดิม
+        if schedule_rule_run_id is None:
+            return
+
+        rule_run_context = (
+            CheckpointAssignmentService
+            ._get_rule_run_contexts_by_ids(
+                db=db,
+                rule_run_ids={int(schedule_rule_run_id)},
+            )
+            .get(int(schedule_rule_run_id))
+        )
+        resolved_period_anchor_work_date = period_anchor_work_date
+
+        if (
+            resolved_period_anchor_work_date is None
+            and checkpoint_assignment.assignment_id is not None
+            and CheckpointAssignmentService._is_takeover_assignment(
+                checkpoint_assignment
+            )
+        ):
+            root_work_dates = (
+                CheckpointAssignmentService
+                ._get_root_assignment_work_dates(
+                    db=db,
+                    assignment_ids={
+                        int(checkpoint_assignment.assignment_id)
+                    },
+                )
+            )
+            resolved_period_anchor_work_date = root_work_dates.get(
+                int(checkpoint_assignment.assignment_id)
+            )
+
+        if resolved_period_anchor_work_date is None:
+            resolved_period_anchor_work_date = (
+                checkpoint_assignment.work_date
+            )
+
+        inspection_period = (
+            CheckpointAssignmentService._get_cross_day_inspection_period(
+                assignment_work_date=resolved_period_anchor_work_date,
+                rule_run_context=rule_run_context,
+            )
+        )
+
+        # WEEKLY/SPLIT_MONTH หรือข้อมูลรอบไม่สมบูรณ์ ให้ล็อกเฉพาะวันงาน
+        if inspection_period is None:
+            period_start = resolved_period_anchor_work_date
+            period_end = resolved_period_anchor_work_date
+        else:
+            period_start, period_end = inspection_period
+
+        excluded_assignment_ids = {
+            int(assignment_id)
+            for assignment_id in (ignored_assignment_ids or set())
+        }
+
+        if checkpoint_assignment.assignment_id is not None:
+            excluded_assignment_ids.add(
+                int(checkpoint_assignment.assignment_id)
+            )
+
+        period_conditions = [
+            CheckpointAssignment.schedule_rule_run_id
+            == schedule_rule_run_id,
+            CheckpointAssignment.work_date.between(
+                period_start,
+                period_end,
+            ),
+            CheckpointAssignment.mark_flag.is_(False),
+        ]
+
+        if excluded_assignment_ids:
+            period_conditions.append(
+                CheckpointAssignment.assignment_id.notin_(
+                    excluded_assignment_ids
+                )
+            )
+
+        in_progress_stmt = (
+            select(
+                CheckpointAssignment.assignment_id,
+                CheckpointAssignment.started_by,
+            )
+            .where(
+                *period_conditions,
+                CheckpointAssignment.started_at.is_not(None),
+                CheckpointAssignment.completed_at.is_(None),
+                CheckpointAssignment.assignment_status == "in_progress",
+            )
+            .order_by(
+                CheckpointAssignment.started_at.asc(),
+                CheckpointAssignment.assignment_id.asc(),
+            )
+            .limit(1)
+        )
+
+        in_progress_row = db.execute(in_progress_stmt).mappings().first()
+
+        if in_progress_row is not None:
+            CheckpointAssignmentService._raise_assignment_in_progress_conflict(
+                db=db,
+                employee_code=in_progress_row["started_by"],
+            )
+
+        closed_stmt = select(
+            exists().where(
+                *period_conditions,
+                or_(
+                    CheckpointAssignment.completed_at.is_not(None),
+                    CheckpointAssignment.assignment_status.in_(
+                        ("completed", "repaired")
+                    ),
+                ),
+            )
+        )
+
+        if db.scalar(closed_stmt):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=CHECKPOINT_ASSIGNMENT_NOT_AVAILABLE_DETAIL,
+            )
+
+    @staticmethod
+    def _ensure_assignment_checkout_owner(
+        db: Session,
+        checkpoint_assignment: CheckpointAssignment,
+        employee_code: str,
+    ) -> None:
+        if checkpoint_assignment.assignment_status != "in_progress":
+            return
+
+        started_by = (checkpoint_assignment.started_by or "").strip()
+        clean_employee_code = employee_code.strip()
+
+        if started_by and started_by != clean_employee_code:
+            CheckpointAssignmentService._raise_assignment_in_progress_conflict(
+                db=db,
+                employee_code=started_by,
             )
 
     @staticmethod
@@ -927,6 +1648,7 @@ class CheckpointAssignmentService:
                 CheckpointAssignment.assignment_id == assignment_id,
                 CheckpointAssignment.mark_flag.is_(False),
             )
+            .execution_options(populate_existing=True)
             .with_for_update()
         )
 
@@ -1004,6 +1726,26 @@ class CheckpointAssignmentService:
         include_deleted: bool = False,
     ) -> list[CheckpointAssignmentDailyResponse]:
         now = CheckpointAssignmentService._now_bangkok_naive()
+        target_shift_info = (
+            CheckpointAssignmentService._get_shift_window_info_by_type(
+                db=db,
+                shift_type=shift_type,
+            )
+            if shift_type is not None
+            else None
+        )
+
+        if shift_type is not None and target_shift_info is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="ไม่พบข้อมูลผลัดที่เลือกหรือผลัดถูกปิดใช้งาน",
+            )
+
+        target_shift_id = (
+            int(target_shift_info["shift_id"])
+            if target_shift_info is not None
+            else None
+        )
 
         # Alias สำหรับดึงข้อมูลพนักงานที่กำลังถือ Assignment อยู่
         # (กรณี assignment_status = "in_progress")
@@ -1030,6 +1772,16 @@ class CheckpointAssignmentService:
                 CheckpointAssignment.assignment_id.label("assignment_id"),
                 CheckpointAssignment.work_date.label("work_date"),
                 CheckpointAssignment.schedule_item_id.label("schedule_item_id"),
+                CheckpointAssignment.schedule_rule_run_id.label(
+                    "schedule_rule_run_id"
+                ),
+                CheckpointAssignment.parent_assignment_id.label(
+                    "parent_assignment_id"
+                ),
+                CheckpointAssignment.recheck_reason.label(
+                    "recheck_reason"
+                ),
+                CheckpointAssignment.updated_by.label("takeover_by"),
                 CheckpointScheduleItem.shift_id.label("shift_id"),
                 CheckpointAssignment.time_record_id.label("time_record_id"),
                 CheckpointAssignment.assignment_status.label("assignment_status"),
@@ -1098,9 +1850,30 @@ class CheckpointAssignmentService:
                     CheckpointAssignment.work_date == work_date,
                     and_(
                         CheckpointAssignment.work_date < work_date,
-                        CheckpointAssignment.assignment_status.in_(
-                            tuple(_OVERDUE_STATUSES)
+                        CheckpointAssignment.schedule_rule_run_id.is_not(None),
+                        CheckpointAssignment.assignment_status == "in_progress",
+                        CheckpointAssignment.started_at.is_not(None),
+                        CheckpointAssignment.completed_at.is_(None),
+                    ),
+                    # Assignment ลูกตรวจแทนที่ยังไม่เช็กอินต้องแสดงข้ามวัน
+                    # จนกว่าจะ completed หรือพ้นรอบตรวจ
+                    and_(
+                        CheckpointAssignment.work_date < work_date,
+                        CheckpointAssignment.schedule_rule_run_id.is_not(None),
+                        CheckpointAssignment.parent_assignment_id.is_not(None),
+                        or_(
+                            CheckpointAssignment.recheck_reason.is_(None),
+                            func.trim(
+                                CheckpointAssignment.recheck_reason
+                            ) == "",
                         ),
+                        CheckpointAssignment.assignment_status == "pending",
+                        CheckpointAssignment.started_at.is_(None),
+                        CheckpointAssignment.completed_at.is_(None),
+                    ),
+                    and_(
+                        CheckpointAssignment.work_date < work_date,
+                        CheckpointAssignment.assignment_status == "pending",
                         CheckpointAssignment.due_datetime.is_not(None),
                         CheckpointAssignment.due_datetime >= now,
                     ),
@@ -1217,11 +1990,21 @@ class CheckpointAssignmentService:
             if employee_division_id is None and employee_routes_id is None:
                 return []
 
-        if shift_type is not None:
-            target_shift_id = 1 if shift_type == "day" else 2
-
+        if target_shift_id is not None:
+            # ดึงงาน Rule Engine ที่ยังเปิดอยู่จากทั้งสองผลัดมาก่อน
+            # เพื่อให้สามารถจำแนก EXACT_* และเปิดให้แสดงข้ามผลัดได้
+            # จากนั้นจึงกรอง inspection_mode ที่ไม่เกี่ยวข้องด้านล่าง
             stmt = stmt.where(
-                CheckpointScheduleItem.shift_id == target_shift_id
+                or_(
+                    CheckpointScheduleItem.shift_id == target_shift_id,
+                    and_(
+                        CheckpointAssignment.schedule_rule_run_id.is_not(None),
+                        CheckpointAssignment.assignment_status.in_(
+                            ("pending", "in_progress")
+                        ),
+                        CheckpointAssignment.completed_at.is_(None),
+                    ),
+                )
             )
 
         stmt = stmt.order_by(
@@ -1232,10 +2015,488 @@ class CheckpointAssignmentService:
 
         rows = db.execute(stmt).mappings().all()
 
+        # Context ที่โหลดไว้สามารถนำกลับไปใช้กับการกรองข้ามวันและ
+        # Schedule Rule Run state ด้านล่างได้ เพื่อลดการอ่านฐานข้อมูลซ้ำ
+        rule_run_contexts: dict[int, dict[str, Any]] = {}
+
+        if target_shift_id is not None:
+            cross_shift_rule_run_ids = {
+                int(row["schedule_rule_run_id"])
+                for row in rows
+                if row.get("schedule_rule_run_id") is not None
+                and row.get("shift_id") != target_shift_id
+            }
+
+            if cross_shift_rule_run_ids:
+                rule_run_contexts.update(
+                    CheckpointAssignmentService
+                    ._get_rule_run_contexts_by_ids(
+                        db=db,
+                        rule_run_ids=cross_shift_rule_run_ids,
+                    )
+                )
+
+            shift_filtered_rows = []
+
+            for row in rows:
+                row_shift_id_raw = row.get("shift_id")
+                row_shift_id = (
+                    int(row_shift_id_raw)
+                    if row_shift_id_raw is not None
+                    else None
+                )
+
+                if row_shift_id == target_shift_id:
+                    shift_filtered_rows.append(row)
+                    continue
+
+                # คงพฤติกรรมเดิมสำหรับงาน Rule Engine ที่เริ่มตรวจแล้ว
+                # เพื่อให้ผู้ถือ Assignment สามารถเช็กเอาต์ต่อได้
+                is_open_in_progress = (
+                    row.get("schedule_rule_run_id") is not None
+                    and row.get("assignment_status") == "in_progress"
+                    and row.get("started_at") is not None
+                    and row.get("completed_at") is None
+                )
+
+                if is_open_in_progress:
+                    shift_filtered_rows.append(row)
+                    continue
+
+                rule_run_id_raw = row.get("schedule_rule_run_id")
+
+                if rule_run_id_raw is None:
+                    continue
+
+                rule_run_context = rule_run_contexts.get(
+                    int(rule_run_id_raw)
+                )
+                inspection_mode = str(
+                    (rule_run_context or {}).get("inspection_mode") or ""
+                ).strip().upper()
+                is_exact_pending = (
+                    inspection_mode in _EXACT_INSPECTION_MODES
+                    and row.get("assignment_status") == "pending"
+                    and row.get("started_at") is None
+                    and row.get("completed_at") is None
+                )
+
+                if is_exact_pending:
+                    shift_filtered_rows.append(row)
+
+            rows = shift_filtered_rows
+
+        period_anchor_work_dates_by_assignment = (
+            CheckpointAssignmentService._get_root_assignment_work_dates(
+                db=db,
+                assignment_ids={
+                    int(row["assignment_id"])
+                    for row in rows
+                    if row["assignment_id"] is not None
+                    and row.get("parent_assignment_id") is not None
+                    and row.get("schedule_rule_run_id") is not None
+                    and not str(
+                        row.get("recheck_reason") or ""
+                    ).strip()
+                },
+            )
+        )
+
+        # กรอง Assignment ที่ค้างจากวันก่อน:
+        # - WEEKLY/SPLIT_MONTH ไม่แสดงข้ามวัน
+        # - EXACT_* ใช้รอบจาก work_date ตามจำนวนวันของ inspection_mode
+        # - FLEXIBLE_* ใช้ assignment_start_date/assignment_end_date ของ run
+        # - รองรับทั้ง in_progress และลูกตรวจแทน pending
+        # - เมื่อพ้นรอบแล้วไม่แสดงงานค้างจากรอบเดิม
+        rule_run_ids_for_cross_day = {
+            int(row["schedule_rule_run_id"])
+            for row in rows
+            if row.get("schedule_rule_run_id") is not None
+            and row["work_date"] < work_date
+            and (
+                row["assignment_status"] == "in_progress"
+                or (
+                    row["assignment_status"] == "pending"
+                    and row.get("parent_assignment_id") is not None
+                    and not str(
+                        row.get("recheck_reason") or ""
+                    ).strip()
+                )
+            )
+        }
+
+        missing_cross_day_rule_run_ids = (
+            rule_run_ids_for_cross_day - set(rule_run_contexts)
+        )
+        if missing_cross_day_rule_run_ids:
+            rule_run_contexts.update(
+                CheckpointAssignmentService
+                ._get_rule_run_contexts_by_ids(
+                    db=db,
+                    rule_run_ids=missing_cross_day_rule_run_ids,
+                )
+            )
+
+        filtered_rows = []
+
+        for row in rows:
+            row_assignment_id = int(row["assignment_id"])
+            is_takeover_assignment_row = (
+                row.get("parent_assignment_id") is not None
+                and row.get("schedule_rule_run_id") is not None
+                and not str(
+                    row.get("recheck_reason") or ""
+                ).strip()
+            )
+            is_cross_day_open_candidate = (
+                row["work_date"] < work_date
+                and row.get("schedule_rule_run_id") is not None
+                and (
+                    row["assignment_status"] == "in_progress"
+                    or (
+                        row["assignment_status"] == "pending"
+                        and is_takeover_assignment_row
+                    )
+                )
+            )
+
+            if not is_cross_day_open_candidate:
+                filtered_rows.append(row)
+                continue
+
+            rule_run_id_raw = row.get("schedule_rule_run_id")
+
+            # Legacy Assignment หรือข้อมูล run หาไม่พบ: คงพฤติกรรมเดิมไว้
+            # เพื่อไม่ให้รายการที่เคยใช้งานหายจากหน้าจอโดยไม่ตั้งใจ
+            if rule_run_id_raw is None:
+                filtered_rows.append(row)
+                continue
+
+            rule_run_context = rule_run_contexts.get(int(rule_run_id_raw))
+
+            if rule_run_context is None:
+                filtered_rows.append(row)
+                continue
+
+            if (
+                CheckpointAssignmentService
+                ._is_cross_day_open_within_period(
+                    period_anchor_work_date=(
+                        period_anchor_work_dates_by_assignment.get(
+                            row_assignment_id,
+                            row["work_date"],
+                        )
+                    ),
+                    source_work_date=row["work_date"],
+                    requested_work_date=work_date,
+                    assignment_status=row["assignment_status"],
+                    started_at=row.get("started_at"),
+                    completed_at=row.get("completed_at"),
+                    is_takeover_assignment=(
+                        is_takeover_assignment_row
+                    ),
+                    rule_run_context=rule_run_context,
+                )
+            ):
+                filtered_rows.append(row)
+
+        rows = filtered_rows
+
+        # Assignment pending ของวันปัจจุบันอาจถูกซ่อนจากรายการ เพราะมีงานเก่า
+        # ค้างอยู่ จึงค้นหาจากฐานข้อมูลโดยตรงเพื่อใช้ตรวจแทน
+        clean_employee_code = (employee_code or "").strip()
+        takeover_target_location_shift_keys: set[
+            tuple[int, int | None]
+        ] = set()
+
+        if clean_employee_code:
+            takeover_target_stmt = select(
+                CheckpointScheduleItem.route_site_location_id.label(
+                    "route_site_location_id"
+                ),
+                CheckpointScheduleItem.shift_id.label("shift_id"),
+            ).join(
+                CheckpointAssignment,
+                CheckpointAssignment.schedule_item_id
+                == CheckpointScheduleItem.schedule_item_id,
+            ).where(
+                CheckpointAssignment.work_date == work_date,
+                CheckpointAssignment.assignment_status == "pending",
+                CheckpointAssignment.started_at.is_(None),
+                CheckpointAssignment.completed_at.is_(None),
+                CheckpointAssignment.parent_assignment_id.is_(None),
+                CheckpointAssignment.is_active.is_(True),
+                CheckpointAssignment.mark_flag.is_(False),
+                or_(
+                    CheckpointAssignment.reserved_by.is_(None),
+                    CheckpointAssignment.reserved_by == clean_employee_code,
+                ),
+            )
+
+            takeover_target_location_shift_keys = {
+                (
+                    int(target_row["route_site_location_id"]),
+                    (
+                        int(target_row["shift_id"])
+                        if target_row["shift_id"] is not None
+                        else None
+                    ),
+                )
+                for target_row in db.execute(
+                    takeover_target_stmt
+                ).mappings().all()
+                if target_row["route_site_location_id"] is not None
+            }
+
+        # ============================================================
+        # Schedule Rule Run state
+        # ============================================================
+        # Hybrid visibility:
+        # - ยังไม่เริ่ม  -> แสดง pending ของวันที่เปิดดูตามปกติ
+        # - งานค้าง     -> แสดง Assignment ล่าสุดและซ่อน pending ในรอบเดียวกัน
+        # - completed   -> ปิดเฉพาะรอบนั้น ซ่อน pending และแสดงประวัติ completed
+        #
+        # Legacy Assignment ที่ schedule_rule_run_id เป็น NULL
+        # จะไม่เข้า logic นี้และยังคงพฤติกรรมเดิม
+        rule_run_ids = {
+            int(row["schedule_rule_run_id"])
+            for row in rows
+            if row.get("schedule_rule_run_id") is not None
+        }
+
+        missing_context_rule_run_ids = (
+            rule_run_ids - set(rule_run_contexts)
+        )
+        if missing_context_rule_run_ids:
+            rule_run_contexts.update(
+                CheckpointAssignmentService
+                ._get_rule_run_contexts_by_ids(
+                    db=db,
+                    rule_run_ids=missing_context_rule_run_ids,
+                )
+            )
+
+        open_assignment_ids_by_period: dict[
+            tuple[int, date, date],
+            set[int],
+        ] = {}
+        completed_period_keys: set[tuple[int, date, date]] = set()
+
+        if rule_run_ids:
+            rule_state_stmt = (
+                select(
+                    CheckpointAssignment.schedule_rule_run_id.label(
+                        "schedule_rule_run_id"
+                    ),
+                    CheckpointAssignment.assignment_id.label(
+                        "assignment_id"
+                    ),
+                    CheckpointAssignment.work_date.label("work_date"),
+                    CheckpointAssignment.parent_assignment_id.label(
+                        "parent_assignment_id"
+                    ),
+                    CheckpointAssignment.recheck_reason.label(
+                        "recheck_reason"
+                    ),
+                    CheckpointAssignment.assignment_status.label(
+                        "assignment_status"
+                    ),
+                    CheckpointAssignment.started_at.label("started_at"),
+                    CheckpointAssignment.completed_at.label("completed_at"),
+                )
+                .where(
+                    CheckpointAssignment.schedule_rule_run_id.in_(rule_run_ids),
+                    CheckpointAssignment.mark_flag.is_(False),
+                    or_(
+                        CheckpointAssignment.started_at.is_not(None),
+                        CheckpointAssignment.completed_at.is_not(None),
+                        CheckpointAssignment.assignment_status.in_(
+                            ("in_progress", "completed", "repaired")
+                        ),
+                        and_(
+                            CheckpointAssignment.assignment_status
+                            == "pending",
+                            CheckpointAssignment.parent_assignment_id.is_not(
+                                None
+                            ),
+                            or_(
+                                CheckpointAssignment.recheck_reason.is_(None),
+                                func.trim(
+                                    CheckpointAssignment.recheck_reason
+                                ) == "",
+                            ),
+                        ),
+                    ),
+                )
+            )
+
+            rule_state_rows = db.execute(rule_state_stmt).mappings().all()
+
+            state_assignment_ids = {
+                int(state_row["assignment_id"])
+                for state_row in rule_state_rows
+                if state_row["assignment_id"] is not None
+                and state_row.get("parent_assignment_id") is not None
+                and not str(
+                    state_row.get("recheck_reason") or ""
+                ).strip()
+            }
+            missing_period_anchor_assignment_ids = (
+                state_assignment_ids
+                - set(period_anchor_work_dates_by_assignment)
+            )
+            if missing_period_anchor_assignment_ids:
+                period_anchor_work_dates_by_assignment.update(
+                    CheckpointAssignmentService
+                    ._get_root_assignment_work_dates(
+                        db=db,
+                        assignment_ids=(
+                            missing_period_anchor_assignment_ids
+                        ),
+                    )
+                )
+
+            for state_row in rule_state_rows:
+                run_id_raw = state_row["schedule_rule_run_id"]
+                assignment_id_raw = state_row["assignment_id"]
+
+                if run_id_raw is None or assignment_id_raw is None:
+                    continue
+
+                run_id = int(run_id_raw)
+                state_assignment_id = int(assignment_id_raw)
+                state_status = str(state_row["assignment_status"] or "")
+                state_period_key = (
+                    CheckpointAssignmentService
+                    ._get_assignment_period_key(
+                        schedule_rule_run_id=run_id,
+                        assignment_work_date=(
+                            period_anchor_work_dates_by_assignment.get(
+                                state_assignment_id,
+                                state_row["work_date"],
+                            )
+                        ),
+                        rule_run_context=rule_run_contexts.get(run_id),
+                    )
+                )
+
+                is_takeover_state = (
+                    state_row.get("parent_assignment_id") is not None
+                    and not str(
+                        state_row.get("recheck_reason") or ""
+                    ).strip()
+                )
+                is_open = (
+                    state_row["completed_at"] is None
+                    and (
+                        (
+                            state_status == "in_progress"
+                            and state_row["started_at"] is not None
+                        )
+                        or (
+                            state_status == "pending"
+                            and state_row["started_at"] is None
+                            and is_takeover_state
+                        )
+                    )
+                )
+
+                if is_open:
+                    open_assignment_ids_by_period.setdefault(
+                        state_period_key,
+                        set(),
+                    ).add(state_assignment_id)
+
+                if (
+                    state_row["completed_at"] is not None
+                    or state_status in {"completed", "repaired"}
+                ):
+                    completed_period_keys.add(state_period_key)
+
+        takeover_pending_parent_assignment_ids = {
+            int(row["parent_assignment_id"])
+            for row in rows
+            if row.get("parent_assignment_id") is not None
+            and row.get("schedule_rule_run_id") is not None
+            and row["assignment_status"] == "pending"
+            and not str(row.get("recheck_reason") or "").strip()
+            and row["work_date"] == work_date
+        }
+
         result: list[CheckpointAssignmentDailyResponse] = []
 
         for row in rows:
             data = dict(row)
+            is_takeover_assignment_row = (
+                data.get("parent_assignment_id") is not None
+                and data.get("schedule_rule_run_id") is not None
+                and not str(data.get("recheck_reason") or "").strip()
+            )
+            is_takeover_pending_row = (
+                is_takeover_assignment_row
+                and data.get("assignment_status") == "pending"
+            )
+
+            # ========================================================
+            # Schedule Rule Run visibility
+            # ========================================================
+            schedule_rule_run_id_raw = data.get("schedule_rule_run_id")
+            schedule_rule_run_id = (
+                int(schedule_rule_run_id_raw)
+                if schedule_rule_run_id_raw is not None
+                else None
+            )
+
+            if schedule_rule_run_id is not None:
+                assignment_id = int(data["assignment_id"])
+                row_status = str(data.get("assignment_status") or "")
+                row_period_key = (
+                    CheckpointAssignmentService
+                    ._get_assignment_period_key(
+                        schedule_rule_run_id=schedule_rule_run_id,
+                        assignment_work_date=(
+                            period_anchor_work_dates_by_assignment.get(
+                                assignment_id,
+                                data["work_date"],
+                            )
+                        ),
+                        rule_run_context=rule_run_contexts.get(
+                            schedule_rule_run_id
+                        ),
+                    )
+                )
+                open_assignment_ids = (
+                    open_assignment_ids_by_period.get(
+                        row_period_key,
+                        set(),
+                    )
+                )
+
+                # แสดง Assignment ลูก pending แทนรายการก่อนหน้า
+                # ที่ถูกยกเลิกตอนยืนยันตรวจแทน
+                if (
+                    assignment_id
+                    in takeover_pending_parent_assignment_ids
+                ):
+                    continue
+
+                # completed ของวันที่เปิดดูต้องคงไว้เป็นประวัติ "ตรวจแล้ว"
+                # แม้ในรอบเดียวกันจะมี Assignment ที่กำลังตรวจอยู่
+                if row_status == "completed":
+                    pass
+
+                # ถ้ามีงานค้าง ให้แสดงเฉพาะรายการล่าสุดที่เป็น
+                # in_progress หรือลูกตรวจแทน pending
+                elif open_assignment_ids:
+                    if (
+                        assignment_id not in open_assignment_ids
+                        and not is_takeover_pending_row
+                    ):
+                        continue
+
+                # ถ้าไม่มีงานค้างและ run ถูกปิดแล้ว ให้ซ่อน pending ที่เหลือ
+                elif row_period_key in completed_period_keys:
+                    continue
 
             assignment_status_raw = data.get("assignment_status")
             assignment_status = (
@@ -1252,7 +2513,39 @@ class CheckpointAssignmentService:
             )
 
             shift_id_raw = data.get("shift_id")
-            shift_id = int(shift_id_raw) if shift_id_raw is not None else None
+            schedule_shift_id = (
+                int(shift_id_raw)
+                if shift_id_raw is not None
+                else None
+            )
+
+            rule_run_context = (
+                rule_run_contexts.get(schedule_rule_run_id)
+                if schedule_rule_run_id is not None
+                else None
+            )
+            inspection_mode = str(
+                (rule_run_context or {}).get("inspection_mode") or ""
+            ).strip().upper()
+
+            # เมื่อเปิด EXACT_* จากอีกผลัด ให้ใช้ผลัดที่ผู้ใช้กำลังเลือก
+            # เป็นผลัดปฏิบัติงานสำหรับ can_action และ shift_id ที่ส่งไป
+            # บันทึก time_record โดยไม่แก้ shift_id ของ schedule_item ใน DB
+            is_exact_cross_shift = (
+                target_shift_id is not None
+                and inspection_mode in _EXACT_INSPECTION_MODES
+                and schedule_shift_id != target_shift_id
+                and assignment_status in {"pending", "in_progress"}
+                and data.get("completed_at") is None
+            )
+            action_shift_id = (
+                target_shift_id
+                if is_exact_cross_shift
+                else schedule_shift_id
+            )
+
+            if is_exact_cross_shift:
+                data["shift_id"] = action_shift_id
 
             is_overdue = CheckpointAssignmentService._is_overdue(
                 assignment_status=assignment_status,
@@ -1263,7 +2556,7 @@ class CheckpointAssignmentService:
             action_state = CheckpointAssignmentService._build_action_state_for_shift(
                 db=db,
                 work_date=data["work_date"],
-                shift_id=shift_id,
+                shift_id=action_shift_id,
                 assignment_status=assignment_status,
                 is_active=bool(data.get("is_active")),
                 now=now,
@@ -1309,6 +2602,78 @@ class CheckpointAssignmentService:
                 data["in_progress_employee_code"] = None
                 data["in_progress_employee_name"] = None
 
+            takeover_location_shift_key = (
+                int(data["route_site_location_id"]),
+                action_shift_id,
+            )
+
+            has_existing_takeover_target = (
+                takeover_location_shift_key
+                in takeover_target_location_shift_keys
+            )
+            can_create_exact_takeover_target = (
+                inspection_mode in _EXACT_INSPECTION_MODES
+            )
+
+            can_takeover = (
+                schedule_rule_run_id is not None
+                and (
+                    has_existing_takeover_target
+                    or can_create_exact_takeover_target
+                )
+                and CheckpointAssignmentService
+                ._is_cross_day_takeover_allowed(
+                    period_anchor_work_date=(
+                        period_anchor_work_dates_by_assignment.get(
+                            int(data["assignment_id"]),
+                            data["work_date"],
+                        )
+                    ),
+                    source_work_date=data["work_date"],
+                    requested_work_date=work_date,
+                    assignment_status=assignment_status,
+                    started_at=data.get("started_at"),
+                    completed_at=data.get("completed_at"),
+                    started_by=data.get("started_by"),
+                    employee_code=clean_employee_code,
+                    is_takeover_assignment=(
+                        is_takeover_assignment_row
+                    ),
+                    rule_run_context=rule_run_context,
+                )
+            )
+
+            if can_takeover:
+                takeover_action_state = (
+                    CheckpointAssignmentService
+                    ._build_action_state_for_shift(
+                        db=db,
+                        work_date=work_date,
+                        shift_id=action_shift_id,
+                        assignment_status="pending",
+                        is_active=True,
+                        now=now,
+                    )
+                )
+                can_takeover = bool(takeover_action_state["can_action"])
+
+                # pending ตรวจแทนจากวันก่อนต้องเปิดปุ่มของวันปัจจุบัน
+                # เพื่อให้ Frontend เรียกตรวจแทนซ้ำและสร้างลูกของวันนี้
+                if (
+                    can_takeover
+                    and is_takeover_pending_row
+                    and data["work_date"] < work_date
+                ):
+                    action_state = takeover_action_state
+
+            data["can_takeover"] = can_takeover
+            data["is_takeover_pending"] = is_takeover_pending_row
+            data["takeover_by"] = (
+                str(data.get("takeover_by") or "").strip() or None
+                if is_takeover_pending_row
+                else None
+            )
+
             reserved_by = str(data.get("reserved_by") or "").strip() or None
             reserved_by_name = " ".join(
                 part
@@ -1328,6 +2693,14 @@ class CheckpointAssignmentService:
             data.pop("in_progress_employee_last_name", None)
             data.pop("reserved_employee_first_name", None)
             data.pop("reserved_employee_last_name", None)
+
+            # ใช้เฉพาะภายใน Backend สำหรับจำแนก Assignment ตรวจแทน
+            data.pop("parent_assignment_id", None)
+            data.pop("recheck_reason", None)
+
+            # ใช้เฉพาะภายใน Backend สำหรับกรองรอบตรวจ
+            # ไม่ส่งออกไปยัง Frontend
+            data.pop("schedule_rule_run_id", None)
 
             data.update(action_state)
 
@@ -1592,6 +2965,11 @@ class CheckpointAssignmentService:
                 detail="รายการนี้ไม่อยู่ในสถานะที่สามารถจองได้",
             )
 
+        CheckpointAssignmentService._ensure_rule_run_pending_action_available(
+            db=db,
+            checkpoint_assignment=checkpoint_assignment,
+        )
+
         # พนักงานคนเดิมกดจองซ้ำ ให้ถือว่ายังจองสำเร็จอยู่
         if checkpoint_assignment.reserved_by == employee_code:
             return checkpoint_assignment
@@ -1695,6 +3073,29 @@ class CheckpointAssignmentService:
             employee_code=updated_by,
         )
 
+        # อ่านก่อนโดยยังไม่ล็อก เพื่อให้ Assignment ตรวจแทนล็อก Parent
+        # ก่อน Child เสมอ ลดโอกาสเกิด deadlock กับ Takeover endpoint
+        checkpoint_assignment_preview = (
+            CheckpointAssignmentService.get_checkpoint_assignment(
+                db=db,
+                assignment_id=assignment_id,
+            )
+        )
+
+        takeover_parent_assignment: CheckpointAssignment | None = None
+        if CheckpointAssignmentService._is_takeover_assignment(
+            checkpoint_assignment_preview
+        ):
+            takeover_parent_assignment = (
+                CheckpointAssignmentService
+                ._get_checkpoint_assignment_for_update(
+                    db=db,
+                    assignment_id=int(
+                        checkpoint_assignment_preview.parent_assignment_id
+                    ),
+                )
+            )
+
         checkpoint_assignment = (
             CheckpointAssignmentService._get_checkpoint_assignment_for_update(
                 db=db,
@@ -1706,13 +3107,62 @@ class CheckpointAssignmentService:
             checkpoint_assignment=checkpoint_assignment,
         )
 
+        ignored_assignment_ids: set[int] | None = None
+
+        if takeover_parent_assignment is not None:
+            is_same_takeover_parent = (
+                CheckpointAssignmentService._is_takeover_assignment(
+                    checkpoint_assignment
+                )
+                and checkpoint_assignment.parent_assignment_id
+                == takeover_parent_assignment.assignment_id
+            )
+
+            if (
+                not is_same_takeover_parent
+                or not takeover_parent_assignment.is_active
+                or takeover_parent_assignment.assignment_status
+                != "cancelled"
+                or takeover_parent_assignment.completed_at is not None
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "code": "CHECKPOINT_TAKEOVER_NOT_AVAILABLE",
+                        "message": (
+                            "รายการต้นทางไม่ได้ถูกยกเลิก"
+                            "จากการยืนยันตรวจแทน"
+                        ),
+                    },
+                )
+
+            if (
+                checkpoint_assignment.schedule_rule_run_id
+                != takeover_parent_assignment.schedule_rule_run_id
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=INVALID_REFERENCE_DETAIL,
+                )
+
+            ignored_assignment_ids = {
+                int(takeover_parent_assignment.assignment_id)
+            }
+
+        CheckpointAssignmentService._ensure_rule_run_pending_action_available(
+            db=db,
+            checkpoint_assignment=checkpoint_assignment,
+            ignored_assignment_ids=ignored_assignment_ids,
+        )
+
         CheckpointAssignmentService._ensure_start_in_shift_window(
             db=db,
             checkpoint_assignment=checkpoint_assignment,
         )
 
         if (
-            checkpoint_assignment.reserved_by is not None
+            takeover_parent_assignment is None
+            and checkpoint_assignment.reserved_by is not None
             and checkpoint_assignment.reserved_by != updated_by
         ):
             reserved_employee = db.scalar(
@@ -1764,9 +3214,431 @@ class CheckpointAssignmentService:
         checkpoint_assignment.reserved_by = None
         checkpoint_assignment.reserved_at = None
 
+        # Parent ของงานตรวจแทนถูกยกเลิกตั้งแต่กดยืนยันตรวจแทนแล้ว
+        # ตอนเริ่มตรวจจึงเปลี่ยนเฉพาะ Child pending -> in_progress
+
         return CheckpointAssignmentService._commit_and_refresh(
             db=db,
             checkpoint_assignment=checkpoint_assignment,
+        )
+
+    @staticmethod
+    def takeover_checkpoint_assignment(
+        db: Session,
+        assignment_id: int,
+        updated_by: str,
+    ) -> TakeoverCheckpointAssignmentResponse:
+        clean_updated_by = updated_by.strip()
+
+        CheckpointAssignmentService._ensure_employee_exists(
+            db=db,
+            employee_code=clean_updated_by,
+        )
+
+        previous_assignment = (
+            CheckpointAssignmentService._get_checkpoint_assignment_for_update(
+                db=db,
+                assignment_id=assignment_id,
+            )
+        )
+
+        CheckpointAssignmentService._ensure_active_for_start(
+            checkpoint_assignment=previous_assignment,
+        )
+
+        is_open_in_progress = (
+            previous_assignment.assignment_status == "in_progress"
+            and previous_assignment.started_at is not None
+            and previous_assignment.completed_at is None
+        )
+        is_open_takeover_pending = (
+            CheckpointAssignmentService._is_takeover_assignment(
+                previous_assignment
+            )
+            and previous_assignment.assignment_status == "pending"
+            and previous_assignment.started_at is None
+            and previous_assignment.completed_at is None
+        )
+
+        if not (is_open_in_progress or is_open_takeover_pending):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "CHECKPOINT_TAKEOVER_NOT_AVAILABLE",
+                    "message": (
+                        "รายการนี้ไม่มีงานค้างในรอบตรวจ"
+                        "ที่สามารถรับช่วงได้"
+                    ),
+                },
+            )
+
+        if is_open_in_progress:
+            previous_started_by = (
+                previous_assignment.started_by or ""
+            ).strip()
+
+            if not previous_started_by:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "code": "CHECKPOINT_TAKEOVER_NOT_AVAILABLE",
+                        "message": "ไม่พบพนักงานผู้เริ่มเข้าตรวจรายการเดิม",
+                    },
+                )
+
+            if previous_started_by == clean_updated_by:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "code": "CHECKPOINT_TAKEOVER_NOT_REQUIRED",
+                        "message": (
+                            "พนักงานผู้เริ่มตรวจเดิมสามารถกดออกตรวจได้"
+                            "โดยไม่ต้องรับช่วง"
+                        ),
+                    },
+                )
+
+        schedule_rule_run_id = previous_assignment.schedule_rule_run_id
+
+        if schedule_rule_run_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "CHECKPOINT_TAKEOVER_NOT_AVAILABLE",
+                    "message": "รายการนี้ไม่มีข้อมูลรอบตรวจสำหรับเข้าตรวจแทน",
+                },
+            )
+
+        now = CheckpointAssignmentService._now_bangkok_naive()
+        current_work_date = now.date()
+        rule_run_context = (
+            CheckpointAssignmentService
+            ._get_rule_run_contexts_by_ids(
+                db=db,
+                rule_run_ids={int(schedule_rule_run_id)},
+            )
+            .get(int(schedule_rule_run_id))
+        )
+
+        previous_period_anchor_work_date = (
+            CheckpointAssignmentService
+            ._get_root_assignment_work_dates(
+                db=db,
+                assignment_ids={int(previous_assignment.assignment_id)},
+            )
+            .get(
+                int(previous_assignment.assignment_id),
+                previous_assignment.work_date,
+            )
+        )
+
+        if not CheckpointAssignmentService._is_cross_day_takeover_allowed(
+            period_anchor_work_date=previous_period_anchor_work_date,
+            source_work_date=previous_assignment.work_date,
+            requested_work_date=current_work_date,
+            assignment_status=previous_assignment.assignment_status,
+            started_at=previous_assignment.started_at,
+            completed_at=previous_assignment.completed_at,
+            started_by=previous_assignment.started_by,
+            employee_code=clean_updated_by,
+            is_takeover_assignment=(
+                CheckpointAssignmentService._is_takeover_assignment(
+                    previous_assignment
+                )
+            ),
+            rule_run_context=rule_run_context,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "CHECKPOINT_TAKEOVER_NOT_ALLOWED",
+                    "message": (
+                        "อนุญาตให้เข้าตรวจแทนเฉพาะงานค้างข้ามวันที่ยังอยู่ในรอบตรวจ"
+                    ),
+                },
+            )
+
+        previous_schedule_item_row = db.execute(
+            select(
+                CheckpointScheduleItem.route_site_location_id.label(
+                    "route_site_location_id"
+                ),
+                CheckpointScheduleItem.shift_id.label("shift_id"),
+            ).where(
+                CheckpointScheduleItem.schedule_item_id
+                == previous_assignment.schedule_item_id
+            )
+        ).mappings().one_or_none()
+
+        if previous_schedule_item_row is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=INVALID_REFERENCE_DETAIL,
+            )
+
+        previous_route_site_location_id = int(
+            previous_schedule_item_row["route_site_location_id"]
+        )
+        previous_shift_id_raw = previous_schedule_item_row["shift_id"]
+
+        # ค้นหาเฉพาะ Assignment ที่ผูกไว้สำหรับตรวจแทนต้นทางนี้
+        # Assignment pending ปกติของวันปัจจุบันต้องคงสถานะเดิมไว้
+        current_assignment_stmt = (
+            select(CheckpointAssignment)
+            .join(
+                CheckpointScheduleItem,
+                CheckpointAssignment.schedule_item_id
+                == CheckpointScheduleItem.schedule_item_id,
+            )
+            .where(
+                CheckpointScheduleItem.route_site_location_id
+                == previous_route_site_location_id,
+                CheckpointAssignment.work_date == current_work_date,
+                CheckpointAssignment.schedule_rule_run_id
+                == schedule_rule_run_id,
+                CheckpointAssignment.parent_assignment_id
+                == previous_assignment.assignment_id,
+                CheckpointAssignment.recheck_reason.is_(None),
+                CheckpointAssignment.assignment_status == "pending",
+                CheckpointAssignment.started_at.is_(None),
+                CheckpointAssignment.completed_at.is_(None),
+                CheckpointAssignment.is_active.is_(True),
+                CheckpointAssignment.mark_flag.is_(False),
+            )
+            .order_by(
+                (
+                    CheckpointAssignment.schedule_item_id
+                    == previous_assignment.schedule_item_id
+                ).desc(),
+                CheckpointAssignment.assignment_id.asc(),
+            )
+            .limit(1)
+            .with_for_update()
+        )
+
+        if previous_shift_id_raw is None:
+            current_assignment_stmt = current_assignment_stmt.where(
+                CheckpointScheduleItem.shift_id.is_(None)
+            )
+        else:
+            current_assignment_stmt = current_assignment_stmt.where(
+                CheckpointScheduleItem.shift_id == int(previous_shift_id_raw)
+            )
+
+        current_assignment = db.scalar(current_assignment_stmt)
+
+        created_takeover_assignment = False
+
+        if current_assignment is None:
+            inspection_mode = str(
+                (rule_run_context or {}).get("inspection_mode") or ""
+            ).strip().upper()
+
+            assignment_template = previous_assignment
+            current_schedule_item_id = (
+                previous_assignment.schedule_item_id
+            )
+            current_due_datetime = None
+
+            if inspection_mode in _EXACT_INSPECTION_MODES:
+                if previous_assignment.due_datetime is not None:
+                    current_due_datetime = datetime.combine(
+                        current_work_date,
+                        previous_assignment.due_datetime.time(),
+                    )
+            elif inspection_mode in _WINDOW_INSPECTION_MODES:
+                # FLEXIBLE มี Assignment pending ของวันปัจจุบันอยู่แล้ว
+                # จึงใช้รายการเดิมและผูกกับงานต้นทาง ห้ามสร้างรายการใหม่
+                pending_template_stmt = (
+                    select(CheckpointAssignment)
+                    .join(
+                        CheckpointScheduleItem,
+                        CheckpointAssignment.schedule_item_id
+                        == CheckpointScheduleItem.schedule_item_id,
+                    )
+                    .where(
+                        CheckpointScheduleItem.route_site_location_id
+                        == previous_route_site_location_id,
+                        CheckpointAssignment.work_date
+                        == current_work_date,
+                        CheckpointAssignment.schedule_rule_run_id
+                        == schedule_rule_run_id,
+                        CheckpointAssignment.parent_assignment_id.is_(None),
+                        CheckpointAssignment.assignment_status == "pending",
+                        CheckpointAssignment.started_at.is_(None),
+                        CheckpointAssignment.completed_at.is_(None),
+                        CheckpointAssignment.is_active.is_(True),
+                        CheckpointAssignment.mark_flag.is_(False),
+                        or_(
+                            CheckpointAssignment.reserved_by.is_(None),
+                            CheckpointAssignment.reserved_by
+                            == clean_updated_by,
+                        ),
+                    )
+                    .order_by(
+                        (
+                            CheckpointAssignment.schedule_item_id
+                            == previous_assignment.schedule_item_id
+                        ).desc(),
+                        CheckpointAssignment.assignment_id.asc(),
+                    )
+                    .limit(1)
+                    .with_for_update()
+                )
+
+                if previous_shift_id_raw is None:
+                    pending_template_stmt = (
+                        pending_template_stmt.where(
+                            CheckpointScheduleItem.shift_id.is_(None)
+                        )
+                    )
+                else:
+                    pending_template_stmt = (
+                        pending_template_stmt.where(
+                            CheckpointScheduleItem.shift_id
+                            == int(previous_shift_id_raw)
+                        )
+                    )
+
+                pending_template = db.scalar(pending_template_stmt)
+
+                if pending_template is None:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail={
+                            "code": "CHECKPOINT_TAKEOVER_TARGET_NOT_FOUND",
+                            "message": (
+                                "ไม่พบรายการรอดำเนินการที่ระบบสร้างไว้"
+                                "สำหรับวันปัจจุบัน"
+                            ),
+                        },
+                    )
+
+                current_assignment = pending_template
+                current_assignment.parent_assignment_id = (
+                    previous_assignment.assignment_id
+                )
+                current_assignment.parent_assignment_key = (
+                    previous_assignment.assignment_id
+                )
+                current_assignment.recheck_depth = (
+                    previous_assignment.recheck_depth + 1
+                )
+                current_assignment.recheck_reason = None
+                current_assignment.reserved_by = None
+                current_assignment.reserved_at = None
+                current_assignment.updated_by = clean_updated_by
+
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "code": "CHECKPOINT_TAKEOVER_NOT_ALLOWED",
+                        "message": (
+                            "รูปแบบรอบตรวจนี้ไม่รองรับ"
+                            "การตรวจแทนข้ามวัน"
+                        ),
+                    },
+                )
+
+            if inspection_mode in _EXACT_INSPECTION_MODES:
+                CheckpointAssignmentService._ensure_not_duplicate(
+                    db=db,
+                    work_date=current_work_date,
+                    schedule_item_id=current_schedule_item_id,
+                    parent_assignment_id=(
+                        previous_assignment.assignment_id
+                    ),
+                    duplicate_detail=(
+                        DUPLICATE_CHECKPOINT_ASSIGNMENT_DETAIL
+                    ),
+                )
+
+                # EXACT ไม่มี Assignment ของวันปัจจุบัน จึงสร้าง
+                # Assignment ลูกสำหรับผู้ตรวจแทน
+                current_assignment = CheckpointAssignment(
+                    work_date=current_work_date,
+                    schedule_item_id=current_schedule_item_id,
+                    parent_assignment_id=(
+                        previous_assignment.assignment_id
+                    ),
+                    parent_assignment_key=(
+                        previous_assignment.assignment_id
+                    ),
+                    active_unique_key=_ACTIVE_UNIQUE_KEY,
+                    recheck_depth=(
+                        previous_assignment.recheck_depth + 1
+                    ),
+                    due_datetime=current_due_datetime,
+                    assignment_status="pending",
+                    is_active=True,
+                    mark_flag=False,
+                    created_by=clean_updated_by,
+                    updated_by=clean_updated_by,
+                    schedule_rule_set_id=(
+                        assignment_template.schedule_rule_set_id
+                    ),
+                    schedule_rule_id=(
+                        assignment_template.schedule_rule_id
+                    ),
+                    schedule_rule_run_id=schedule_rule_run_id,
+                    schedule_rule_closed_run_id=(
+                        assignment_template.schedule_rule_closed_run_id
+                    ),
+                    schedule_rule_source=(
+                        assignment_template.schedule_rule_source
+                    ),
+                )
+                created_takeover_assignment = True
+
+        CheckpointAssignmentService._ensure_active_for_start(
+            checkpoint_assignment=current_assignment,
+        )
+        CheckpointAssignmentService._ensure_start_in_shift_window(
+            db=db,
+            checkpoint_assignment=current_assignment,
+        )
+        CheckpointAssignmentService._ensure_rule_run_pending_action_available(
+            db=db,
+            checkpoint_assignment=current_assignment,
+            ignored_assignment_ids={previous_assignment.assignment_id},
+            period_anchor_work_date=(
+                previous_period_anchor_work_date
+            ),
+        )
+
+        # Assignment ตรวจแทนเป็น pending สำหรับเข้า Flow GPS/Face Verify
+        # ไม่ใช่การจองและไม่ล็อกผู้ตรวจคนอื่น
+        current_assignment.reserved_by = None
+        current_assignment.reserved_at = None
+        current_assignment.updated_by = clean_updated_by
+
+        if created_takeover_assignment:
+            db.add(current_assignment)
+
+        # ยืนยันตรวจแทนถือเป็นการส่งมอบงานทันที รายการล่าสุดในสาย
+        # (in_progress หรือ pending จากวันก่อน) จึงถูกยกเลิกใน Transaction
+        # เดียวกับการจัดเตรียม Assignment pending ของวันปัจจุบัน
+        CheckpointAssignmentService._transition_status(
+            checkpoint_assignment=previous_assignment,
+            next_status="cancelled",
+            updated_by=clean_updated_by,
+        )
+        previous_assignment.reserved_by = None
+        previous_assignment.reserved_at = None
+
+        CheckpointAssignmentService._commit(
+            db=db,
+            duplicate_detail=DUPLICATE_CHECKPOINT_ASSIGNMENT_DETAIL,
+        )
+        db.refresh(previous_assignment)
+        db.refresh(current_assignment)
+
+        return TakeoverCheckpointAssignmentResponse.model_validate(
+            {
+                "previous_assignment": previous_assignment,
+                "current_assignment": current_assignment,
+            }
         )
 
     @staticmethod
@@ -1780,9 +3652,17 @@ class CheckpointAssignmentService:
             employee_code=updated_by,
         )
 
-        checkpoint_assignment = CheckpointAssignmentService.get_checkpoint_assignment(
+        checkpoint_assignment = (
+            CheckpointAssignmentService._get_checkpoint_assignment_for_update(
+                db=db,
+                assignment_id=assignment_id,
+            )
+        )
+
+        CheckpointAssignmentService._ensure_assignment_checkout_owner(
             db=db,
-            assignment_id=assignment_id,
+            checkpoint_assignment=checkpoint_assignment,
+            employee_code=updated_by,
         )
 
         CheckpointAssignmentService._transition_status(
