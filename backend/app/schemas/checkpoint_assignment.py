@@ -1,5 +1,3 @@
-
-
 from datetime import date, datetime
 from typing import Literal
 
@@ -351,12 +349,100 @@ class CheckpointAreaOptionResponse(BaseModel):
     is_home: bool = False
 
 
+class CheckpointMapLocationUpdateRequest(BaseModel):
+    """
+    คำขอแก้ไขพิกัดหน่วยงานจากตำแหน่ง GPS ปัจจุบันของผู้ใช้งาน
+
+    assignment_id รับจาก Path Parameter
+
+    Backend ต้องตรวจ Assignment และ route_location_update_setting ซ้ำก่อนบันทึก
+    โดยการแก้พิกัดนี้ไม่ใช้ verify-location เทียบกับพิกัดเดิมใน site_location
+    เพราะใช้สำหรับกรณีพิกัดเดิมไม่ถูกต้อง
+
+    radius_meter เป็น optional:
+    - None = ไม่ขอเปลี่ยนระยะรัศมี
+    - มีค่า = Service ต้องตรวจว่าค่าต่างจากเดิมหรือไม่
+      และหากต่าง ต้องตรวจ allow_radius_update ก่อนบันทึก
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        str_strip_whitespace=True,
+        allow_inf_nan=False,
+    )
+
+    employee_code: str = Field(
+        ...,
+        min_length=DBConstants.EMPLOYEE_CODE_LENGTH,
+        max_length=DBConstants.EMPLOYEE_CODE_LENGTH,
+    )
+
+    # ใช้สำหรับตรวจความสอดคล้องกับหน่วยงานที่ได้จาก Assignment
+    # Backend ต้องไม่ใช้สอง field นี้แทนการหา site_location จาก Assignment
+    contract_code: str = Field(
+        ...,
+        min_length=1,
+        max_length=DBConstants.CONTRACT_CODE_LENGTH,
+    )
+
+    location_name: str = Field(
+        ...,
+        min_length=1,
+        max_length=DBConstants.LOCATION_NAME_LENGTH,
+    )
+
+    location_id: int = Field(..., gt=0)
+
+    department_id: int = Field(..., gt=0)
+
+    division_id: int = Field(..., gt=0)
+
+    route_id: int = Field(..., gt=0)
+
+    latitude: float = Field(
+        ...,
+        ge=-90,
+        le=90,
+    )
+
+    longitude: float = Field(
+        ...,
+        ge=-180,
+        le=180,
+    )
+
+    # ความคลาดเคลื่อนที่ Browser Geolocation คืนมา ณ ตอนกดบันทึก
+    accuracy_meter: float = Field(
+        ...,
+        ge=0,
+    )
+
+    # ไม่ส่งค่า = แก้เฉพาะ latitude / longitude
+    radius_meter: int | None = Field(
+        default=None,
+        gt=0,
+    )
+
+
 class CheckpointMapLocationResponse(BaseModel):
     model_config = ConfigDict(
         from_attributes=True,
         extra="forbid",
         str_strip_whitespace=True,
     )
+
+    # บริบทของหน่วยงานในแถว Assignment ที่ผู้ใช้คลิก
+    # Service ต้องตรวจสิทธิ์และหาค่าเหล่านี้จากข้อมูลจริงก่อนส่งกลับ
+    # รองรับ None สำหรับการเปิดแผนที่แบบเดิมที่ไม่ได้ส่งบริบท Assignment
+    assignment_id: int | None = Field(default=None, gt=0)
+
+    location_id: int | None = Field(default=None, gt=0)
+
+    department_id: int | None = Field(default=None, gt=0)
+
+    division_id: int | None = Field(default=None, gt=0)
+
+    route_id: int | None = Field(default=None, gt=0)
 
     contract_code: str
 

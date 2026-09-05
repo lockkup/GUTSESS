@@ -73,9 +73,33 @@ export type TakeoverCheckpointAssignmentResponse = {
   current_assignment: CheckpointReservationActionResponse;
 };
 
-type RawCheckpointMapLocationResponse = CheckpointMapLocationResponse & {
-  locationDetail?: string | null;
-};
+/**
+ * ไม่ส่งทั้งสองค่า = เปิดแผนที่แบบเดิม
+ * ส่งทั้งสองค่า = ให้ Backend ตรวจพนักงานและ assignment เพื่อคืน scope
+ */
+export type GetCheckpointMapLocationWithContextParams =
+  GetCheckpointMapLocationParams & {
+    assignmentId?: number | null;
+    employeeCode?: string | null;
+  };
+
+/**
+ * รหัสเหล่านี้ต้องได้จาก Backend เท่านั้น
+ * API รุ่นเดิมอาจยังไม่คืนค่า จึงเป็น optional เพื่อให้เปิดแผนที่เดิมได้
+ */
+export type CheckpointMapLocationWithContextResponse =
+  CheckpointMapLocationResponse & {
+    assignment_id?: number | string | null;
+    location_id?: number | string | null;
+    department_id?: number | string | null;
+    division_id?: number | string | null;
+    route_id?: number | string | null;
+  };
+
+type RawCheckpointMapLocationResponse =
+  CheckpointMapLocationWithContextResponse & {
+    locationDetail?: string | null;
+  };
 
 export function getDailyCheckpointAssignments({
   workDate,
@@ -245,7 +269,9 @@ export function takeoverCheckpointAssignment({
 export async function getCheckpointMapLocation({
   contractCode,
   locationName,
-}: GetCheckpointMapLocationParams): Promise<CheckpointMapLocationResponse> {
+  assignmentId,
+  employeeCode,
+}: GetCheckpointMapLocationWithContextParams): Promise<CheckpointMapLocationWithContextResponse> {
   const normalizedContractCode = contractCode.trim();
   const normalizedLocationName = locationName.trim();
 
@@ -253,17 +279,48 @@ export async function getCheckpointMapLocation({
     return Promise.reject(new Error("กรุณาระบุรหัสสัญญาและชื่อหน่วยงาน"));
   }
 
+  const hasAssignmentId = assignmentId !== null && assignmentId !== undefined;
+  const hasEmployeeCode = employeeCode !== null && employeeCode !== undefined;
+
+  if (hasAssignmentId !== hasEmployeeCode) {
+    return Promise.reject(
+      new Error("กรุณาระบุ assignmentId และ employeeCode ให้ครบทั้งสองค่า"),
+    );
+  }
+
+  const normalizedEmployeeCode =
+    typeof employeeCode === "string" ? employeeCode.trim() : "";
+
+  if (hasAssignmentId) {
+    if (!Number.isSafeInteger(assignmentId) || Number(assignmentId) <= 0) {
+      return Promise.reject(new Error("assignmentId ไม่ถูกต้อง"));
+    }
+
+    if (!normalizedEmployeeCode) {
+      return Promise.reject(
+        new Error("ไม่พบรหัสพนักงานสำหรับตรวจสิทธิ์แก้ไขพิกัด"),
+      );
+    }
+  }
+
   const result = await api.get<RawCheckpointMapLocationResponse>(
     "/checkpoint-assignments/map-location",
     {
       contract_code: normalizedContractCode,
       location_name: normalizedLocationName,
+      ...(hasAssignmentId
+        ? {
+            assignment_id: assignmentId,
+            employee_code: normalizedEmployeeCode,
+          }
+        : {}),
     },
   );
 
   console.log("[checkpointAssignmentService] MAP LOCATION RESPONSE", result);
 
   return {
+    // ส่งต่อ scope ตามที่ Backend คืนมา ไม่เติมรหัสจากค่าที่ Frontend ส่งไป
     ...result,
     location_detail: result.location_detail ?? result.locationDetail ?? null,
   };

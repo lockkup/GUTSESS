@@ -19,6 +19,7 @@ from .positions import Position
 from .report_export_job import ReportExportJob
 from .roles import Role
 from .route import Route
+from .route_location_update_setting import RouteLocationUpdateSetting
 from .route_site_location import RouteSiteLocation
 from .route_site_location_change import RouteSiteLocationChange
 from .shift import Shift
@@ -48,6 +49,7 @@ __all__ = [
     "ReportExportJob",
     "Role",
     "Route",
+    "RouteLocationUpdateSetting",
     "RouteSiteLocation",
     "RouteSiteLocationChange",
     "Shift",

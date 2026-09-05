@@ -116,6 +116,13 @@ from app.schemas.route import (
     RouteBase,
     RouteResponse,
 )
+from app.schemas.route_location_update_setting import (
+    RouteLocationUpdateSettingAction,
+    RouteLocationUpdateSettingBase,
+    RouteLocationUpdateSettingCreate,
+    RouteLocationUpdateSettingResponse,
+    RouteLocationUpdateSettingUpdate,
+)
 from app.schemas.route_site_location import (
     RouteSiteLocationBase,
     RouteSiteLocationCreate,
@@ -262,6 +269,11 @@ __all__ = [
     "RoleResponse",
     "RouteBase",
     "RouteResponse",
+    "RouteLocationUpdateSettingBase",
+    "RouteLocationUpdateSettingCreate",
+    "RouteLocationUpdateSettingUpdate",
+    "RouteLocationUpdateSettingAction",
+    "RouteLocationUpdateSettingResponse",
     "RouteSiteLocationBase",
     "RouteSiteLocationCreate",
     "RouteSiteLocationUpdate",

@@ -1,4 +1,4 @@
-/* src/components/PatrolAreaInfoModal.module.css */
+/* src/components/PatrolAreaInfoModal/PatrolAreaInfoModal.module.css */
 
 .overlay {
   position: fixed;
@@ -18,7 +18,9 @@
   position: relative;
 
   width: min(430px, 96vw);
+  min-width: 0;
   max-height: min(94dvh, 780px);
+
   overflow-y: auto;
 
   padding: 18px 14px 14px;
@@ -26,11 +28,13 @@
 
   background: #ffffff;
   border-radius: 18px;
+
   box-shadow: 0 20px 70px rgba(0, 0, 0, 0.35);
 
   font-family: "Sarabun", "Prompt", sans-serif;
 
   animation: modalPop 0.16s ease-out;
+
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }
@@ -61,10 +65,12 @@
 
   width: 34px;
   height: 34px;
+
   padding: 0;
 
   color: #024b76;
   background: #eef6fb;
+
   border: 0;
   border-radius: 999px;
 
@@ -72,7 +78,8 @@
 
   transition:
     background 0.15s ease,
-    transform 0.15s ease;
+    transform 0.15s ease,
+    opacity 0.15s ease;
 }
 
 .closeIconButton:hover {
@@ -81,6 +88,11 @@
 
 .closeIconButton:active {
   transform: scale(0.94);
+}
+
+.closeIconButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 /* =========================
@@ -117,6 +129,42 @@
   font-size: 14px;
   font-weight: 500;
   line-height: 1.5;
+
+  text-align: left;
+}
+
+/* =========================
+   ข้อความอนุญาตแก้ไขพิกัด
+========================= */
+
+.updateDescription {
+  margin: 12px 0 8px;
+
+  color: #ed171f;
+
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.65;
+
+  text-align: left;
+}
+
+.updatePeriod {
+  max-width: 100%;
+
+  margin: 0 0 12px;
+  padding-bottom: 4px;
+
+  overflow-x: auto;
+
+  color: #ed171f;
+
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.6;
+
+  text-align: left;
+  white-space: nowrap;
 }
 
 /* =========================
@@ -125,11 +173,14 @@
 
 .infoBox {
   width: 100%;
+
   margin-bottom: 12px;
   padding: 12px;
+
   box-sizing: border-box;
 
   background: #f1f7fb;
+
   border: 1px solid #d7e7f1;
   border-radius: 12px;
 }
@@ -168,17 +219,211 @@
 }
 
 /* =========================
+   ส่วนแก้ไขระยะรัศมี
+========================= */
+
+.updateControls {
+  display: grid;
+  gap: 14px;
+
+  min-width: 0;
+
+  margin: 14px 0 16px;
+}
+
+.radiusRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  gap: 12px;
+
+  min-width: 0;
+}
+
+.radiusLabel {
+  flex: 0 0 auto;
+
+  color: #ed171f;
+
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.4;
+
+  white-space: nowrap;
+}
+
+/* =========================
+   Dropdown ระยะรัศมี
+========================= */
+
+.radiusSelect {
+  box-sizing: border-box;
+
+  flex: 0 1 156px;
+
+  width: 156px;
+  min-width: 0;
+  min-height: 40px;
+
+  padding: 8px 40px 8px 12px;
+
+  color: #303640;
+  background-color: #ffffff;
+
+  border: 1px solid #79a8ed;
+  border-radius: 10px;
+
+  appearance: none;
+  -webkit-appearance: none;
+
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23024b76' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 18px 18px;
+
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.25;
+
+  outline: none;
+
+  cursor: pointer;
+}
+
+.radiusSelect:focus {
+  border-color: #1762ae;
+
+  box-shadow:
+    0 0 0 3px rgba(23, 98, 174, 0.12);
+}
+
+.radiusSelect:focus-visible {
+  outline: 3px solid #1762ae;
+  outline-offset: 3px;
+}
+
+.radiusSelect:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* =========================
+   ปุ่มกดแก้ไขพิกัด
+========================= */
+
+.updateButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  gap: 14px;
+
+  width: 100%;
+  min-width: 0;
+  min-height: 62px;
+
+  padding: 8px 16px;
+
+  box-sizing: border-box;
+
+  color: #ffffff;
+  background: #ed171f;
+
+  border: 0;
+  border-radius: 11px;
+
+  font-family: inherit;
+
+  text-align: center;
+
+  cursor: pointer;
+
+  transition:
+    background 0.15s ease,
+    transform 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.updateButton:hover:not(:disabled) {
+  background: #d4141b;
+}
+
+.updateButton:active:not(:disabled) {
+  transform: scale(0.985);
+}
+
+.updateButton:focus-visible {
+  outline: 3px solid #1762ae;
+  outline-offset: 3px;
+}
+
+.updateButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.updateButtonIcon {
+  flex: 0 0 auto;
+
+  width: 28px;
+  height: 28px;
+
+  stroke-width: 2.5;
+}
+
+.updateButtonText {
+  display: flex;
+  flex-direction: column;
+
+  gap: 1px;
+
+  min-width: 0;
+
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.updateButtonHint {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+
+  white-space: nowrap;
+}
+
+.updateError {
+  margin: 8px 0 12px;
+
+  color: #c5161d;
+
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.6;
+
+  text-align: left;
+
+  overflow-wrap: anywhere;
+}
+
+/* =========================
    แผนที่
 ========================= */
 
 .mapBox {
   width: 100%;
+
   height: clamp(310px, 44dvh, 390px);
+
   margin-bottom: 12px;
 
   overflow: hidden;
 
   background: #e5e7eb;
+
   border-radius: 12px;
 }
 
@@ -197,7 +442,9 @@
 
   width: 100%;
   height: 100%;
+
   padding: 16px;
+
   box-sizing: border-box;
 
   color: #475569;
@@ -205,11 +452,12 @@
   font-size: 14px;
   font-weight: 800;
   line-height: 1.45;
+
   text-align: center;
 }
 
 /* =========================
-   ปุ่มเปิด Google Maps
+   ปุ่มเปิดใน Google Maps
 ========================= */
 
 .primaryButton {
@@ -217,21 +465,28 @@
   align-items: center;
   justify-content: center;
 
+  gap: 8px;
+
   width: 100%;
   min-height: 46px;
+
   margin-top: 8px;
   padding: 10px 14px;
+
   box-sizing: border-box;
 
   color: #ffffff;
   background: #005b86;
+
   border: 0;
   border-radius: 10px;
 
   font-family: inherit;
+
   font-size: 15px;
   font-weight: 900;
   line-height: 1.25;
+
   text-align: center;
   text-decoration: none;
 
@@ -268,16 +523,20 @@
 
   width: 100%;
   min-height: 44px;
+
   margin-top: 10px;
   padding: 10px 14px;
+
   box-sizing: border-box;
 
   color: #024b76;
   background: #ffffff;
+
   border: 1px solid #d8e0e8;
   border-radius: 10px;
 
   font-family: inherit;
+
   font-size: 15px;
   font-weight: 800;
   line-height: 1.25;
@@ -286,7 +545,8 @@
 
   transition:
     background 0.15s ease,
-    transform 0.15s ease;
+    transform 0.15s ease,
+    opacity 0.15s ease;
 }
 
 .secondaryButton:hover {
@@ -295,6 +555,11 @@
 
 .secondaryButton:active {
   transform: scale(0.985);
+}
+
+.secondaryButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 /* =========================
@@ -327,6 +592,37 @@
     font-size: 13px;
   }
 
+  .updateDescription {
+    font-size: 15px;
+  }
+
+  .updatePeriod {
+    font-size: 11px;
+  }
+
+  .radiusLabel {
+    font-size: 15px;
+  }
+
+  .radiusSelect {
+    width: 156px;
+    flex-basis: 156px;
+
+    font-size: 14px;
+  }
+
+  .updateButton {
+    min-height: 62px;
+  }
+
+  .updateButtonText {
+    font-size: 18px;
+  }
+
+  .updateButtonHint {
+    font-size: 12px;
+  }
+
   .mapBox {
     height: clamp(300px, 46dvh, 360px);
   }
@@ -334,6 +630,48 @@
   .primaryButton,
   .secondaryButton {
     min-height: 44px;
+
     font-size: 14px;
+  }
+}
+
+@media (max-width: 360px) {
+  .radiusRow {
+    gap: 8px;
+  }
+
+  .radiusLabel {
+    font-size: 14px;
+  }
+
+  .radiusSelect {
+    width: 145px;
+    flex-basis: 145px;
+
+    padding: 8px 34px 8px 10px;
+
+    background-position: right 10px center;
+    background-size: 16px 16px;
+
+    font-size: 14px;
+  }
+
+  .updateButton {
+    gap: 10px;
+
+    padding: 8px 12px;
+  }
+
+  .updateButtonIcon {
+    width: 26px;
+    height: 26px;
+  }
+
+  .updateButtonText {
+    font-size: 17px;
+  }
+
+  .updateButtonHint {
+    font-size: 11px;
   }
 }

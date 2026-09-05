@@ -19,6 +19,9 @@ from .patrol_area import router as patrol_area_router
 from .patrol_report import router as patrol_report_router
 from .patrol_report_export import router as patrol_report_export_router
 from .route import router as route_router
+from .route_location_update_setting import (
+    router as route_location_update_setting_router,
+)
 from .route_site_location import router as route_site_location_router
 from .route_site_location_change import router as route_site_location_change_router
 from .shift import router as shift_router
@@ -132,6 +135,12 @@ api_router.include_router(
     route_router,
     prefix="/routes",
     tags=["routes"],
+)
+
+api_router.include_router(
+    route_location_update_setting_router,
+    prefix="/route-location-update-settings",
+    tags=["route_location_update_settings"],
 )
 
 api_router.include_router(

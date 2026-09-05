@@ -3,19 +3,34 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from decimal import Decimal
 
+from fastapi import HTTPException, status
 from sqlalchemy import case, func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.constants import DBConstants
+from app.core.error_messages import (
+    EMPLOYEE_NOT_FOUND_DETAIL,
+    INVALID_REFERENCE_DETAIL,
+)
 from app.models.checkpoint_assignment import CheckpointAssignment
 from app.models.checkpoint_schedule_item import CheckpointScheduleItem
 from app.models.departments import Department
 from app.models.divisions import Divisions
+from app.models.employees import Employees
 from app.models.route import Route
 from app.models.route_site_location import RouteSiteLocation
 from app.models.site_location import SiteLocation
-from app.schemas.patrol_area import PatrolAreaSearchResponse
+from app.schemas.patrol_area import (
+    PatrolAreaLocationUpdateRequest,
+    PatrolAreaLocationUpdateResponse,
+    PatrolAreaSearchResponse,
+)
+from app.services.route_location_update_setting_service import (
+    RouteLocationUpdateSettingService,
+)
 
 
 # Python date.weekday()
@@ -41,6 +56,9 @@ SHIFT_ORDER: dict[str, int] = {
     "ผลัดกลางวัน": 1,
     "ผลัดกลางคืน": 2,
 }
+
+
+ALLOWED_LOCATION_RADIUS_METERS: frozenset[int] = frozenset({50, 70, 100})
 
 
 def _get_shift_name(shift_id: int | None) -> str:
@@ -580,3 +598,205 @@ class PatrolAreaService:
             )
 
         return results
+
+    @staticmethod
+    def update_patrol_area_location(
+        db: Session,
+        payload: PatrolAreaLocationUpdateRequest,
+    ) -> PatrolAreaLocationUpdateResponse:
+        """
+        แก้ไขพิกัดและรัศมีของหน่วยงานจากหน้าข้อมูลหน่วยงาน.
+
+        Flow นี้ไม่ได้อ้างอิง checkpoint_assignment เพราะผู้ใช้เข้ามาจาก
+        การค้นหาหน่วยงานโดยตรง จึงตรวจ scope จาก route_site_location แทน.
+
+        ไม่เรียก verify_checkpoint_location() และไม่เทียบ GPS ปัจจุบันกับ
+        พิกัดเดิม เนื่องจากจุดประสงค์ของรายการนี้คือแก้พิกัดเดิมที่อาจผิด.
+        """
+
+        clean_employee_code = payload.employee_code.strip()
+
+        # =====================================================
+        # 1. ตรวจพนักงาน
+        # =====================================================
+        employee_exists = db.scalar(
+            select(Employees.employee_code)
+            .where(
+                Employees.employee_code == clean_employee_code,
+            )
+            .limit(1)
+        )
+
+        if employee_exists is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=EMPLOYEE_NOT_FOUND_DETAIL,
+            )
+
+        # =====================================================
+        # 2. ตรวจ context ของหน่วยงานจาก route_site_location จริง
+        #
+        # location_id + department_id + division_id + route_id
+        # ต้องเป็นความสัมพันธ์เดียวกับที่ Backend ใช้ในหน้าค้นหา
+        # =====================================================
+        route_site_location_id = db.scalar(
+            select(
+                RouteSiteLocation.route_site_location_id
+            )
+            .select_from(RouteSiteLocation)
+            .join(
+                Divisions,
+                RouteSiteLocation.division_id
+                == Divisions.division_id,
+            )
+            .join(
+                Department,
+                Divisions.department_id
+                == Department.department_id,
+            )
+            .join(
+                Route,
+                RouteSiteLocation.routes_id
+                == Route.route_id,
+            )
+            .where(
+                RouteSiteLocation.location_id
+                == payload.location_id,
+                RouteSiteLocation.division_id
+                == payload.division_id,
+                RouteSiteLocation.routes_id
+                == payload.route_id,
+                Divisions.department_id
+                == payload.department_id,
+
+                RouteSiteLocation.mark_flag.is_(False),
+                RouteSiteLocation.is_active.is_(True),
+                RouteSiteLocation.effective_from
+                <= func.current_date(),
+                or_(
+                    RouteSiteLocation.effective_to.is_(None),
+                    RouteSiteLocation.effective_to
+                    >= func.current_date(),
+                ),
+
+                Route.is_active.is_(True),
+                Divisions.is_active.is_(True),
+                Department.is_active.is_(True),
+            )
+            .limit(1)
+        )
+
+        if route_site_location_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "ข้อมูลหน่วยงานหรือเส้นทางเปลี่ยนแปลงแล้ว "
+                    "กรุณาปิดและเปิดข้อมูลหน่วยงานใหม่"
+                ),
+            )
+
+        # =====================================================
+        # 3. ตรวจ Setting ซ้ำที่ Backend ก่อนเขียนข้อมูลจริง
+        #
+        # Setting รุ่นปัจจุบันใช้ allow_location_update ค่าเดียว
+        # สำหรับทั้งพิกัดและ radius_meter
+        # =====================================================
+        setting = (
+            RouteLocationUpdateSettingService
+            .get_allowed_route_location_update_setting(
+                db=db,
+                department_id=payload.department_id,
+                division_id=payload.division_id,
+                route_id=payload.route_id,
+            )
+        )
+
+        if setting is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    "เส้นทางนี้ไม่ได้รับอนุญาตให้แก้ไขพิกัด "
+                    "หรืออยู่นอกช่วงวันที่อนุญาต"
+                ),
+            )
+
+        if payload.radius_meter not in ALLOWED_LOCATION_RADIUS_METERS:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="ระยะรัศมีต้องเป็น 50, 70 หรือ 100 เมตร",
+            )
+
+        # =====================================================
+        # 4. Lock site_location เป้าหมายและ UPDATE
+        # =====================================================
+        site_location = db.scalar(
+            select(SiteLocation)
+            .where(
+                SiteLocation.location_id
+                == payload.location_id,
+                SiteLocation.mark_flag.is_(False),
+                SiteLocation.is_active.is_(True),
+            )
+            .execution_options(populate_existing=True)
+            .with_for_update()
+        )
+
+        if site_location is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="ไม่พบข้อมูลหน่วยงานที่ต้องการแก้ไขพิกัด",
+            )
+
+        # ให้รูปแบบการบันทึกพิกัดตรงกับ flow Checkpoint ที่ใช้งานอยู่
+        site_location.latitude = Decimal(
+            str(payload.latitude)
+        ).quantize(
+            Decimal("0.000001")
+        )
+
+        site_location.longitude = Decimal(
+            str(payload.longitude)
+        ).quantize(
+            Decimal("0.000001")
+        )
+
+        site_location.radius_meter = payload.radius_meter
+        site_location.updated_by = clean_employee_code
+
+        try:
+            db.commit()
+        except IntegrityError as exc:
+            db.rollback()
+
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=INVALID_REFERENCE_DETAIL,
+            ) from exc
+
+        db.refresh(site_location)
+
+        # =====================================================
+        # 5. คืนค่าที่อ่านจากฐานข้อมูลหลังบันทึก
+        # =====================================================
+        return PatrolAreaLocationUpdateResponse(
+            location_id=int(site_location.location_id),
+            department_id=payload.department_id,
+            division_id=payload.division_id,
+            route_id=payload.route_id,
+            contract_code=str(
+                site_location.contract_code or ""
+            ).strip(),
+            location_name=str(
+                site_location.location_name or ""
+            ).strip(),
+            location_detail=(
+                str(site_location.location_detail).strip()
+                if site_location.location_detail is not None
+                else None
+            ),
+            latitude=site_location.latitude,
+            longitude=site_location.longitude,
+            radius_meter=int(site_location.radius_meter),
+            grace_meter=int(site_location.grace_meter),
+            updated_at=site_location.updated_at,
+        )

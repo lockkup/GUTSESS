@@ -1,9 +1,8 @@
-from __future__ import annotations
 
 from datetime import date
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Path, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from sqlalchemy.orm import Session
 
 from app.core import get_db
@@ -19,6 +18,7 @@ from app.schemas.checkpoint_assignment import (
     CheckpointAssignmentResponse,
     CheckpointAssignmentUpdate,
     CheckpointMapLocationResponse,
+    CheckpointMapLocationUpdateRequest,
     TakeoverCheckpointAssignmentRequest,
     TakeoverCheckpointAssignmentResponse,
 )
@@ -135,12 +135,62 @@ def get_checkpoint_area_options(
 def get_checkpoint_map_location(
     contract_code: str = Query(..., min_length=1),
     location_name: str = Query(..., min_length=1),
+    assignment_id: int | None = Query(default=None, gt=0),
+    employee_code: str | None = Query(
+        default=None,
+        min_length=DBConstants.EMPLOYEE_CODE_LENGTH,
+        max_length=DBConstants.EMPLOYEE_CODE_LENGTH,
+    ),
     db: Session = Depends(get_db),
 ) -> CheckpointMapLocationResponse:
+    # ต้องส่ง Assignment และพนักงานมาพร้อมกันเพื่อให้ Service ตรวจสอบบริบท
+    if (assignment_id is None) != (employee_code is None):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="กรุณาระบุ assignment_id และ employee_code ให้ครบทั้งสองค่า",
+        )
+
+    # รองรับหน้าที่เปิดดูแผนที่แบบเดิมโดยไม่ได้ส่งบริบท Assignment
+    if assignment_id is None:
+        return CheckpointAssignmentService.get_checkpoint_map_location(
+            db=db,
+            contract_code=contract_code,
+            location_name=location_name,
+        )
+
+    normalized_employee_code = (employee_code or "").strip()
+
+    if len(normalized_employee_code) != DBConstants.EMPLOYEE_CODE_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="รหัสพนักงานไม่ถูกต้อง",
+        )
+
+    # Service ต้องตรวจสิทธิ์พนักงานและหาหน่วยงาน/ภาค/เขต/เส้นทางจาก Assignment
+    # ก่อนคืนข้อมูลบริบทให้ Frontend ใช้ตรวจ Setting
     return CheckpointAssignmentService.get_checkpoint_map_location(
         db=db,
         contract_code=contract_code,
         location_name=location_name,
+        assignment_id=assignment_id,
+        employee_code=normalized_employee_code,
+    )
+
+
+@router.post(
+    "/{assignment_id}/update-map-location",
+    response_model=CheckpointMapLocationResponse,
+    status_code=status.HTTP_200_OK,
+)
+def update_checkpoint_map_location(
+    payload: CheckpointMapLocationUpdateRequest,
+    assignment_id: int = Path(..., gt=0),
+    db: Session = Depends(get_db),
+) -> CheckpointMapLocationResponse:
+    return CheckpointAssignmentService.update_checkpoint_map_location(
+        db=db,
+        assignment_id=assignment_id,
+        payload=payload,
     )
 
 

@@ -1,4 +1,7 @@
+/* src/components/CheckpointMapModal/CheckpointMapModal.module.css */
+
 .overlay {
+  box-sizing: border-box;
   position: fixed;
   inset: 0;
   z-index: 9999;
@@ -9,8 +12,10 @@
 }
 
 .modal {
+  box-sizing: border-box;
   position: relative;
   width: min(430px, 96vw);
+  min-width: 0;
   max-height: min(94dvh, 780px);
   overflow-y: auto;
   border-radius: 18px;
@@ -26,7 +31,6 @@
     opacity: 0;
     transform: translateY(8px) scale(0.98);
   }
-
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
@@ -76,6 +80,29 @@
   line-height: 1.5;
 }
 
+/* ข้อความสำหรับหน่วยงานที่ได้รับสิทธิ์แก้ไขพิกัด */
+.updateDescription {
+  margin: 12px 0 8px;
+  color: #e51920;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.65;
+  text-align: left;
+}
+
+/* คงวันที่บรรทัดเดียว; จอแคบสามารถเลื่อนข้อความในแนวนอนได้ */
+.updatePeriod {
+  max-width: 100%;
+  margin: 0 0 12px;
+  padding-bottom: 4px;
+  overflow-x: auto;
+  color: #e51920;
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: left;
+  white-space: nowrap;
+}
+
 .infoBox {
   margin-bottom: 12px;
   padding: 12px;
@@ -109,6 +136,127 @@
   line-height: 1.5;
 }
 
+.updateControls {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  margin: 14px 0 16px;
+}
+
+/* ป้ายกำกับและดรอปดาวน์อยู่แถวเดียวกัน */
+.radiusRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.radiusLabel {
+  flex: 0 0 auto;
+  color: #e51920;
+  font-size: 16px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.radiusSelect {
+  box-sizing: border-box;
+  flex: 0 1 168px;
+  width: 168px;
+  min-width: 0;
+  min-height: 42px;
+  padding: 8px 40px 8px 12px;
+  border: 1px solid #79a8ed;
+  border-radius: 10px;
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: #ffffff;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23024b76' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 20px 20px;
+  color: #303640;
+  font: inherit;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.updateButton {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  width: 100%;
+  min-width: 0;
+  min-height: 64px;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 12px;
+  background: #ed171f;
+  color: #ffffff;
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+}
+
+.updateButton:hover:not(:disabled) {
+  background: #d4141b;
+}
+
+.updateButtonIcon {
+  flex: 0 0 auto;
+}
+
+.updateButtonText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.updateButtonHint {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.updateError,
+.updateSuccess {
+  margin: 8px 0 12px;
+  font-size: 14px;
+  line-height: 1.6;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.updateError {
+  color: #c5161d;
+}
+
+.updateSuccess {
+  color: #137443;
+}
+
+.radiusSelect:focus-visible,
+.updateButton:focus-visible,
+.updatePeriod:focus-visible {
+  outline: 3px solid #1762ae;
+  outline-offset: 3px;
+}
+
+.radiusSelect:disabled,
+.updateButton:disabled,
+.closeIconButton:disabled,
+.secondaryButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .mapBox {
   width: 100%;
   height: clamp(310px, 44dvh, 390px);
@@ -126,6 +274,7 @@
 }
 
 .mapPlaceholder {
+  box-sizing: border-box;
   display: grid;
   place-items: center;
   width: 100%;
@@ -208,6 +357,10 @@
     font-size: 13px;
   }
 
+  .updatePeriod {
+    font-size: 11px;
+  }
+
   .mapBox {
     height: clamp(300px, 46dvh, 360px);
   }
@@ -216,5 +369,35 @@
   .secondaryButton {
     min-height: 44px;
     font-size: 14px;
+  }
+}
+
+@media (max-width: 360px) {
+  .radiusRow {
+    gap: 8px;
+  }
+
+  .radiusLabel {
+    font-size: 14px;
+  }
+
+  .radiusSelect {
+    padding: 8px 32px 8px 10px;
+    background-position: right 10px center;
+    background-size: 16px 16px;
+    font-size: 14px;
+  }
+
+  .updateButton {
+    gap: 10px;
+    padding: 10px 12px;
+  }
+
+  .updateButtonText {
+    font-size: 18px;
+  }
+
+  .updateButtonHint {
+    font-size: 12px;
   }
 }

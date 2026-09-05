@@ -1,5 +1,3 @@
-// src/pages/PatrolAreaInfo/index.tsx
-
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -10,8 +8,12 @@ import {
 import { CircleAlert } from "lucide-react";
 
 import BackButton from "@/components/BackButton";
+import SuccessModal from "@/components/SuccessModal";
 import PatrolAreaInfoModal, {
   type PatrolAreaInfoModalLocation,
+  type PatrolAreaInfoUpdateContext,
+  type PatrolAreaInfoUpdatePayload,
+  type PatrolAreaInfoUpdateSetting,
 } from "@/components/PatrolAreaInfoModal";
 import Header from "@/layout/Header";
 import api from "@/lib/api";
@@ -103,7 +105,25 @@ type SiteLocationResponse =
     };
 
 
+type PatrolAreaLocationUpdateResponse = {
+  location_id: number;
+  department_id: number;
+  division_id: number;
+  route_id: number;
+  contract_code: string;
+  location_name: string;
+  location_detail: string | null;
+  latitude: string | number;
+  longitude: string | number;
+  radius_meter: number;
+  grace_meter: number;
+  updated_at: string;
+};
+
+
 const PATROL_AREA_SEARCH_ENDPOINT = "/patrol-areas/search";
+const PATROL_AREA_UPDATE_LOCATION_ENDPOINT =
+  "/patrol-areas/update-location";
 const PAGE_LIMIT = 20;
 
 
@@ -148,6 +168,179 @@ function getLocationId(
 ): string {
   return cleanText(
     location.location_id ?? location.id,
+  );
+}
+
+
+function toPositiveInteger(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  const parsed = Number(value);
+
+  return Number.isSafeInteger(parsed) && parsed > 0
+    ? parsed
+    : null;
+}
+
+
+function getPatrolAreaUpdateContext(
+  location: SiteLocation,
+): PatrolAreaInfoUpdateContext | null {
+  const locationId = toPositiveInteger(
+    location.location_id ?? location.id,
+  );
+
+  const departmentId = toPositiveInteger(
+    location.department_id,
+  );
+
+  const divisionId = toPositiveInteger(
+    location.division_id,
+  );
+
+  const routeId = toPositiveInteger(
+    location.routes_id,
+  );
+
+  if (
+    locationId === null ||
+    departmentId === null ||
+    divisionId === null ||
+    routeId === null
+  ) {
+    return null;
+  }
+
+  return {
+    locationId,
+    departmentId,
+    divisionId,
+    routeId,
+  };
+}
+
+
+function toSettingBoolean(
+  value: unknown,
+): boolean | null {
+  if (
+    value === true ||
+    value === 1 ||
+    value === "1" ||
+    value === "true"
+  ) {
+    return true;
+  }
+
+  if (
+    value === false ||
+    value === 0 ||
+    value === "0" ||
+    value === "false"
+  ) {
+    return false;
+  }
+
+  return null;
+}
+
+
+function toPatrolAreaUpdateSetting(
+  value: unknown,
+  context: PatrolAreaInfoUpdateContext,
+): PatrolAreaInfoUpdateSetting | null {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value)
+  ) {
+    return null;
+  }
+
+  const data = value as Record<string, unknown>;
+
+  const departmentId = toPositiveInteger(
+    data.department_id,
+  );
+
+  const divisionId = toPositiveInteger(
+    data.division_id,
+  );
+
+  const routeId = toPositiveInteger(
+    data.route_id,
+  );
+
+  if (
+    departmentId !== context.departmentId ||
+    divisionId !== context.divisionId ||
+    routeId !== context.routeId ||
+    toSettingBoolean(data.allow_location_update) !== true ||
+    toSettingBoolean(data.is_active) !== true ||
+    toSettingBoolean(data.mark_flag) !== false ||
+    (
+      data.effective_from !== null &&
+      typeof data.effective_from !== "string"
+    ) ||
+    (
+      data.effective_to !== null &&
+      typeof data.effective_to !== "string"
+    )
+  ) {
+    return null;
+  }
+
+  return {
+    departmentId,
+    divisionId,
+    routeId,
+    allowLocationUpdate: true,
+    effectiveFrom: data.effective_from as string | null,
+    effectiveTo: data.effective_to as string | null,
+    isActive: true,
+    markFlag: false,
+  };
+}
+
+
+async function loadPatrolAreaUpdateSetting(
+  context: PatrolAreaInfoUpdateContext,
+): Promise<PatrolAreaInfoUpdateSetting | null> {
+  const data = await api.get<unknown>(
+    "/route-location-update-settings/",
+    {
+      department_id: context.departmentId,
+      division_id: context.divisionId,
+      route_id: context.routeId,
+      allow_location_update: true,
+      is_active: true,
+      include_deleted: false,
+      only_effective: true,
+      limit: 2,
+    },
+  );
+
+  if (!Array.isArray(data)) {
+    throw new Error(
+      "รูปแบบข้อมูลสิทธิ์แก้ไขพิกัดไม่ถูกต้อง",
+    );
+  }
+
+  if (data.length === 0) {
+    return null;
+  }
+
+  if (data.length !== 1) {
+    throw new Error(
+      "พบการตั้งค่าสิทธิ์แก้ไขพิกัดซ้ำสำหรับเส้นทางนี้",
+    );
+  }
+
+  return toPatrolAreaUpdateSetting(
+    data[0],
+    context,
   );
 }
 
@@ -231,6 +424,23 @@ export default function PatrolAreaInfo({
     null,
   );
 
+  const [
+    modalUpdateSetting,
+    setModalUpdateSetting,
+  ] = useState<PatrolAreaInfoUpdateSetting | null>(
+    null,
+  );
+
+  const [
+    modalPermissionLoading,
+    setModalPermissionLoading,
+  ] = useState(false);
+
+  const [
+    isSuccessModalOpen,
+    setIsSuccessModalOpen,
+  ] = useState(false);
+
   const hasSearchCriteria =
     keyword.trim() !== "";
 
@@ -302,14 +512,26 @@ export default function PatrolAreaInfo({
   }
 
 
-  function handleOpenLocationModal(
+  async function handleOpenLocationModal(
     location: SiteLocation,
   ) {
+    const updateContext =
+      getPatrolAreaUpdateContext(location);
+
     setSelectedModalLocation({
       locationId:
         location.location_id ??
         location.id ??
         null,
+
+      departmentId:
+        location.department_id ?? null,
+
+      divisionId:
+        location.division_id ?? null,
+
+      routeId:
+        location.routes_id ?? null,
 
       contractCode: cleanText(
         location.contract_code,
@@ -338,13 +560,149 @@ export default function PatrolAreaInfo({
         location.updated_at ?? null,
     });
 
+    setModalUpdateSetting(null);
+    setModalPermissionLoading(
+      updateContext !== null,
+    );
     setIsModalOpen(true);
+
+    if (!updateContext) {
+      return;
+    }
+
+    try {
+      const updateSetting =
+        await loadPatrolAreaUpdateSetting(
+          updateContext,
+        );
+
+      setModalUpdateSetting(
+        updateSetting,
+      );
+    } catch (error) {
+      console.error(
+        "[PatrolAreaInfo] load location update setting error:",
+        error,
+      );
+
+      setModalUpdateSetting(null);
+    } finally {
+      setModalPermissionLoading(false);
+    }
   }
 
 
   function handleCloseLocationModal() {
     setIsModalOpen(false);
     setSelectedModalLocation(null);
+    setModalUpdateSetting(null);
+    setModalPermissionLoading(false);
+  }
+
+
+  async function handleUpdateLocation(
+    payload: PatrolAreaInfoUpdatePayload,
+  ) {
+    const normalizedEmployeeCode = empCode.trim();
+
+    if (!normalizedEmployeeCode) {
+      throw new Error(
+        "ไม่พบรหัสพนักงาน กรุณาเข้าสู่ระบบใหม่",
+      );
+    }
+
+    if (!selectedModalLocation) {
+      throw new Error(
+        "ไม่พบข้อมูลหน่วยงานที่กำลังแก้ไข",
+      );
+    }
+
+    const selectedContext = {
+      locationId: toPositiveInteger(
+        selectedModalLocation.locationId,
+      ),
+      departmentId: toPositiveInteger(
+        selectedModalLocation.departmentId,
+      ),
+      divisionId: toPositiveInteger(
+        selectedModalLocation.divisionId,
+      ),
+      routeId: toPositiveInteger(
+        selectedModalLocation.routeId,
+      ),
+    };
+
+    if (
+      selectedContext.locationId !== payload.locationId ||
+      selectedContext.departmentId !== payload.departmentId ||
+      selectedContext.divisionId !== payload.divisionId ||
+      selectedContext.routeId !== payload.routeId
+    ) {
+      throw new Error(
+        "ข้อมูลหน่วยงานเปลี่ยนแปลงแล้ว กรุณาปิดและเปิดข้อมูลหน่วยงานใหม่",
+      );
+    }
+
+    const response =
+      await api.post<PatrolAreaLocationUpdateResponse>(
+        PATROL_AREA_UPDATE_LOCATION_ENDPOINT,
+        {
+          employee_code: normalizedEmployeeCode,
+          location_id: payload.locationId,
+          department_id: payload.departmentId,
+          division_id: payload.divisionId,
+          route_id: payload.routeId,
+          latitude: payload.latitude,
+          longitude: payload.longitude,
+          accuracy_meter: payload.accuracyMeter,
+          radius_meter: payload.radiusMeter,
+        },
+      );
+
+    if (
+      response.location_id !== payload.locationId ||
+      response.department_id !== payload.departmentId ||
+      response.division_id !== payload.divisionId ||
+      response.route_id !== payload.routeId
+    ) {
+      throw new Error(
+        "ข้อมูลที่ Backend ส่งกลับไม่ตรงกับหน่วยงานที่เลือก",
+      );
+    }
+
+    /**
+     * อัปเดตเฉพาะ state บนหน้าจอ
+     * ไม่ Refresh ทั้งหน้า และไม่ต้องค้นหาใหม่
+     */
+    setSearchResults((currentResults) =>
+      currentResults.map((location) => {
+        const locationId = toPositiveInteger(
+          location.location_id ?? location.id,
+        );
+
+        if (locationId !== response.location_id) {
+          return location;
+        }
+
+        return {
+          ...location,
+          latitude: response.latitude,
+          longitude: response.longitude,
+          radius_meter: response.radius_meter,
+          grace_meter: response.grace_meter,
+          location_detail: response.location_detail,
+          updated_at: response.updated_at,
+        };
+      }),
+    );
+
+    handleCloseLocationModal();
+    setIsSuccessModalOpen(true);
+  }
+
+
+  function handleSuccessOk() {
+    setIsSuccessModalOpen(false);
   }
 
 
@@ -641,7 +999,7 @@ export default function PatrolAreaInfo({
                             onClick={(event) => {
                               event.preventDefault();
 
-                              handleOpenLocationModal(
+                              void handleOpenLocationModal(
                                 location,
                               );
                             }}
@@ -816,7 +1174,22 @@ export default function PatrolAreaInfo({
           <PatrolAreaInfoModal
             open={isModalOpen}
             location={selectedModalLocation}
+            updateSetting={modalUpdateSetting}
+            permissionLoading={
+              modalPermissionLoading
+            }
+            onUpdate={handleUpdateLocation}
             onClose={handleCloseLocationModal}
+          />
+
+          <SuccessModal
+            open={isSuccessModalOpen}
+            title="บันทึกสำเร็จ"
+            message="บันทึกข้อมูลเรียบร้อยแล้ว"
+            okText="ตกลง"
+            onOk={handleSuccessOk}
+            closeOnBackdrop={false}
+            closeOnEsc={false}
           />
 
           <div className="guts-fv-bottom">

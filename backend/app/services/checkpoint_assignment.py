@@ -1,6 +1,7 @@
-from __future__ import annotations
+
 
 from datetime import date, datetime, time, timedelta
+from decimal import Decimal
 from math import atan2, cos, radians, sin, sqrt
 from typing import Any, ClassVar, Final, Literal
 from zoneinfo import ZoneInfo
@@ -41,17 +42,22 @@ from app.schemas.checkpoint_assignment import (
     CheckpointAssignmentReservationAction,
     CheckpointAssignmentUpdate,
     CheckpointMapLocationResponse,
+    CheckpointMapLocationUpdateRequest,
     TakeoverCheckpointAssignmentResponse,
 )
 from app.schemas.checkpoint_location import (
     VerifyCheckpointLocationRequest,
     VerifyCheckpointLocationResponse,
 )
+from app.services.route_location_update_setting_service import (
+    RouteLocationUpdateSettingService,
+)
 
 
 _PARENT_ASSIGNMENT_ROOT_KEY: Final[int] = 0
 _ACTIVE_UNIQUE_KEY: Final[int] = 0
 _BANGKOK_TIMEZONE: Final[str] = "Asia/Bangkok"
+_ALLOWED_MAP_RADIUS_METERS: Final[frozenset[int]] = frozenset({50, 70, 100})
 
 _NO_CROSS_DAY_INSPECTION_MODES: Final[frozenset[str]] = frozenset(
     {
@@ -1544,6 +1550,8 @@ class CheckpointAssignmentService:
         db: Session,
         contract_code: str,
         location_name: str,
+        assignment_id: int | None = None,
+        employee_code: str | None = None,
     ) -> CheckpointMapLocationResponse:
         clean_contract_code = contract_code.strip()
         clean_location_name = location_name.strip()
@@ -1553,6 +1561,60 @@ class CheckpointAssignmentService:
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="กรุณาระบุรหัสสัญญาและชื่อหน่วยงาน",
             )
+
+        # การเปิดจากแถวในตารางต้องส่ง Assignment และพนักงานมาพร้อมกัน
+        # หากส่งมาไม่ครบ ให้ปฏิเสธแทนการย้อนกลับไปค้นหาด้วยชื่อเพียงอย่างเดียว
+        if (assignment_id is None) != (employee_code is None):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=INVALID_REFERENCE_DETAIL,
+            )
+
+        employee_field_id: int | None = None
+        employee_department_id: int | None = None
+
+        if assignment_id is not None:
+            clean_employee_code = (employee_code or "").strip()
+
+            if (
+                isinstance(assignment_id, bool)
+                or not isinstance(assignment_id, int)
+                or assignment_id <= 0
+                or len(clean_employee_code) != DBConstants.EMPLOYEE_CODE_LENGTH
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=INVALID_REFERENCE_DETAIL,
+                )
+
+            employee = (
+                CheckpointAssignmentService._get_active_employee_for_daily_filter(
+                    db=db,
+                    employee_code=clean_employee_code,
+                )
+            )
+
+            if employee is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=EMPLOYEE_NOT_FOUND_DETAIL,
+                )
+
+            employee_field_id = getattr(employee, "field_id", None)
+            employee_department_id = getattr(employee, "department_id", None)
+
+            # ใช้ขอบเขตเดียวกับ get_checkpoint_area_options:
+            # พนักงานเลือกเขต/เส้นทางอื่นภายใน field และ department ของตนได้
+            if (
+                employee_field_id is None
+                or employee_department_id is None
+                or employee_field_id <= 0
+                or employee_department_id <= 0
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=INVALID_REFERENCE_DETAIL,
+                )
 
         stmt = (
             select(
@@ -1564,22 +1626,86 @@ class CheckpointAssignmentService:
                 SiteLocation.grace_meter.label("grace_meter"),
                 SiteLocation.location_detail.label("location_detail"),
             )
+            .select_from(SiteLocation)
             .where(
                 func.trim(SiteLocation.contract_code) == clean_contract_code,
                 func.trim(SiteLocation.location_name) == clean_location_name,
                 SiteLocation.mark_flag.is_(False),
                 SiteLocation.is_active.is_(True),
             )
-            .order_by(SiteLocation.location_id.desc())
-            .limit(1)
         )
 
+        if assignment_id is not None:
+            # ยึด SiteLocation ที่ผูกกับ Assignment จริง เพื่อไม่เลือกหน่วยงาน
+            # ชื่อซ้ำหรือข้อมูลรุ่นอื่นที่มี location_id สูงกว่าโดยไม่ตั้งใจ
+            # ภาคอ่านจาก Divisions ตามโครงสร้างขอบเขตที่ใช้ในหน้า daily
+            stmt = (
+                stmt.add_columns(
+                    CheckpointAssignment.assignment_id.label("assignment_id"),
+                    SiteLocation.location_id.label("location_id"),
+                    Divisions.department_id.label("department_id"),
+                    RouteSiteLocation.division_id.label("division_id"),
+                    RouteSiteLocation.routes_id.label("route_id"),
+                )
+                .join(
+                    RouteSiteLocation,
+                    RouteSiteLocation.location_id == SiteLocation.location_id,
+                )
+                .join(
+                    CheckpointScheduleItem,
+                    CheckpointScheduleItem.route_site_location_id
+                    == RouteSiteLocation.route_site_location_id,
+                )
+                .join(
+                    CheckpointAssignment,
+                    CheckpointAssignment.schedule_item_id
+                    == CheckpointScheduleItem.schedule_item_id,
+                )
+                .join(
+                    Divisions,
+                    Divisions.division_id == RouteSiteLocation.division_id,
+                )
+                .join(
+                    Route,
+                    Route.route_id == RouteSiteLocation.routes_id,
+                )
+                .where(
+                    CheckpointAssignment.assignment_id == assignment_id,
+                    CheckpointAssignment.mark_flag.is_(False),
+                    CheckpointAssignment.is_active.is_(True),
+                    CheckpointScheduleItem.mark_flag.is_(False),
+                    CheckpointScheduleItem.is_active.is_(True),
+                    RouteSiteLocation.mark_flag.is_(False),
+                    RouteSiteLocation.is_active.is_(True),
+                    Divisions.is_active.is_(True),
+                    Route.is_active.is_(True),
+                    Divisions.field_id == employee_field_id,
+                    Divisions.department_id == employee_department_id,
+                    # ใช้วันของ Assignment เหมือน daily เพื่อรองรับงานค้างข้ามวัน
+                    or_(
+                        RouteSiteLocation.effective_from.is_(None),
+                        RouteSiteLocation.effective_from
+                        <= CheckpointAssignment.work_date,
+                    ),
+                    or_(
+                        RouteSiteLocation.effective_to.is_(None),
+                        RouteSiteLocation.effective_to
+                        >= CheckpointAssignment.work_date,
+                    ),
+                )
+            )
+
+        stmt = stmt.order_by(SiteLocation.location_id.desc()).limit(1)
         row = db.execute(stmt).mappings().first()
 
         if row is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="ไม่พบพิกัดของหน่วยงานนี้",
+                detail=(
+                    CHECKPOINT_ASSIGNMENT_NOT_FOUND_DETAIL
+                    if assignment_id is not None
+                    else "ไม่พบพิกัดของหน่วยงานนี้"
+                ),
             )
 
         latitude_raw = row["latitude"]
@@ -1604,7 +1730,20 @@ class CheckpointAssignmentService:
 
         location_detail = str(row["location_detail"] or "").strip() or None
 
+        # คืนรหัสจากแถวที่ผ่านการตรวจในฐานข้อมูลเท่านั้น
+        # คำขอแบบเดิมไม่มีบริบท จึงใช้ค่า None ตามค่าเริ่มต้นของ Response Schema
+        map_context: dict[str, int] = {}
+        if assignment_id is not None:
+            map_context = {
+                "assignment_id": int(row["assignment_id"]),
+                "location_id": int(row["location_id"]),
+                "department_id": int(row["department_id"]),
+                "division_id": int(row["division_id"]),
+                "route_id": int(row["route_id"]),
+            }
+
         return CheckpointMapLocationResponse(
+            **map_context,
             contract_code=str(row["contract_code"] or "").strip(),
             location_name=str(row["location_name"] or "").strip(),
             latitude=latitude,
@@ -1612,6 +1751,156 @@ class CheckpointAssignmentService:
             radius_meter=radius_meter,
             grace_meter=grace_meter,
             location_detail=location_detail,
+        )
+
+    @staticmethod
+    def update_checkpoint_map_location(
+        db: Session,
+        assignment_id: int,
+        payload: CheckpointMapLocationUpdateRequest,
+    ) -> CheckpointMapLocationResponse:
+        """
+        บันทึก GPS ปัจจุบันของผู้ใช้งานลง site_location.
+
+        ใช้สำหรับกรณีพิกัดเดิมของหน่วยงานไม่ถูกต้อง จึงตั้งใจไม่เรียก
+        verify_checkpoint_location() และไม่เปรียบเทียบ GPS ปัจจุบันกับ
+        latitude/longitude เดิมใน site_location.
+
+        ก่อนบันทึกต้อง:
+        - ตรวจพนักงานและ Assignment จากข้อมูลจริงฝั่ง Backend
+        - ตรวจ location/department/division/route ว่าตรงกับ Assignment
+        - ตรวจ route_location_update_setting ซ้ำ ณ เวลาบันทึก
+        - UPDATE เฉพาะ SiteLocation ที่ผูกกับ Assignment นั้น
+        """
+
+        clean_employee_code = payload.employee_code.strip()
+        clean_contract_code = payload.contract_code.strip()
+        clean_location_name = payload.location_name.strip()
+
+        CheckpointAssignmentService._ensure_employee_exists(
+            db=db,
+            employee_code=clean_employee_code,
+        )
+
+        # ใช้ method เดิมเป็นตัวหา context จาก Assignment จริง
+        # และตรวจขอบเขต field/department ของพนักงานก่อน
+        current_map = CheckpointAssignmentService.get_checkpoint_map_location(
+            db=db,
+            contract_code=clean_contract_code,
+            location_name=clean_location_name,
+            assignment_id=assignment_id,
+            employee_code=clean_employee_code,
+        )
+
+        expected_context = (
+            current_map.location_id,
+            current_map.department_id,
+            current_map.division_id,
+            current_map.route_id,
+        )
+        request_context = (
+            payload.location_id,
+            payload.department_id,
+            payload.division_id,
+            payload.route_id,
+        )
+
+        if expected_context != request_context:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "ข้อมูลหน่วยงานหรือเส้นทางเปลี่ยนแปลงแล้ว "
+                    "กรุณาปิดและเปิดแผนที่ใหม่"
+                ),
+            )
+
+        # Setting รุ่นปัจจุบันใช้ allow_location_update ค่าเดียว
+        # สำหรับทั้งการแก้พิกัด GPS และระยะรัศมี
+        setting = (
+            RouteLocationUpdateSettingService
+            .get_allowed_route_location_update_setting(
+                db=db,
+                department_id=payload.department_id,
+                division_id=payload.division_id,
+                route_id=payload.route_id,
+            )
+        )
+
+        if setting is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    "เส้นทางนี้ไม่ได้รับอนุญาตให้แก้ไขพิกัด "
+                    "หรืออยู่นอกช่วงวันที่อนุญาต"
+                ),
+            )
+
+        if (
+            payload.radius_meter is not None
+            and payload.radius_meter not in _ALLOWED_MAP_RADIUS_METERS
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="ระยะรัศมีต้องเป็น 50, 70 หรือ 100 เมตร",
+            )
+
+        # Lock เฉพาะแถว site_location เป้าหมายระหว่าง UPDATE
+        site_location = db.scalar(
+            select(SiteLocation)
+            .where(
+                SiteLocation.location_id == payload.location_id,
+                SiteLocation.mark_flag.is_(False),
+                SiteLocation.is_active.is_(True),
+            )
+            .execution_options(populate_existing=True)
+            .with_for_update()
+        )
+
+        if site_location is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="ไม่พบข้อมูลหน่วยงานที่ต้องการแก้ไขพิกัด",
+            )
+
+        # ตรวจชื่อซ้ำกับแถวที่ lock แล้ว เพื่อไม่ให้ request เก่าไปเขียนผิดหน่วยงาน
+        if (
+            str(site_location.contract_code or "").strip() != clean_contract_code
+            or str(site_location.location_name or "").strip() != clean_location_name
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "ข้อมูลหน่วยงานเปลี่ยนแปลงแล้ว "
+                    "กรุณาปิดและเปิดแผนที่ใหม่"
+                ),
+            )
+
+        # site_location เก็บพิกัด 6 ตำแหน่งทศนิยม
+        site_location.latitude = Decimal(str(payload.latitude)).quantize(
+            Decimal("0.000001")
+        )
+        site_location.longitude = Decimal(str(payload.longitude)).quantize(
+            Decimal("0.000001")
+        )
+
+        # None = ไม่เปลี่ยนรัศมี
+        # ถ้ามีค่า ให้บันทึกค่าที่ผู้ใช้เลือกจาก Modal
+        if payload.radius_meter is not None:
+            site_location.radius_meter = payload.radius_meter
+
+        site_location.updated_by = clean_employee_code
+
+        CheckpointAssignmentService._commit(db=db)
+        db.refresh(site_location)
+
+        # อ่านกลับผ่าน Assignment/context เดิม เพื่อให้ response มี
+        # assignment_id/location_id/department_id/division_id/route_id ครบ
+        return CheckpointAssignmentService.get_checkpoint_map_location(
+            db=db,
+            contract_code=clean_contract_code,
+            location_name=clean_location_name,
+            assignment_id=assignment_id,
+            employee_code=clean_employee_code,
         )
 
     @staticmethod

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -123,6 +124,128 @@ class PatrolAreaSearchResponse(BaseModel):
     # ]
     patrol_rounds: list[str] = Field(
         default_factory=list,
+    )
+
+    updated_at: datetime
+
+
+class PatrolAreaLocationUpdateRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        str_strip_whitespace=True,
+        allow_inf_nan=False,
+    )
+
+    employee_code: str = Field(
+        ...,
+        min_length=1,
+        max_length=DBConstants.EMPLOYEE_CODE_LENGTH,
+    )
+
+    location_id: int = Field(
+        ...,
+        gt=0,
+    )
+
+    department_id: int = Field(
+        ...,
+        gt=0,
+    )
+
+    division_id: int = Field(
+        ...,
+        gt=0,
+    )
+
+    route_id: int = Field(
+        ...,
+        gt=0,
+    )
+
+    latitude: Decimal = Field(
+        ...,
+        ge=Decimal("-90"),
+        le=Decimal("90"),
+    )
+
+    longitude: Decimal = Field(
+        ...,
+        ge=Decimal("-180"),
+        le=Decimal("180"),
+    )
+
+    accuracy_meter: float = Field(
+        ...,
+        ge=0,
+    )
+
+    radius_meter: Literal[50, 70, 100]
+
+
+class PatrolAreaLocationUpdateResponse(BaseModel):
+    model_config = ConfigDict(
+        from_attributes=True,
+        extra="forbid",
+        str_strip_whitespace=True,
+    )
+
+    location_id: int = Field(
+        ...,
+        gt=0,
+    )
+
+    department_id: int = Field(
+        ...,
+        gt=0,
+    )
+
+    division_id: int = Field(
+        ...,
+        gt=0,
+    )
+
+    route_id: int = Field(
+        ...,
+        gt=0,
+    )
+
+    contract_code: str = Field(
+        ...,
+        min_length=1,
+        max_length=DBConstants.CONTRACT_CODE_LENGTH,
+    )
+
+    location_name: str = Field(
+        ...,
+        min_length=1,
+        max_length=DBConstants.LOCATION_NAME_LENGTH,
+    )
+
+    location_detail: str | None = Field(
+        default=None,
+        max_length=DBConstants.LOCATION_DETAIL_LENGTH,
+    )
+
+    latitude: Decimal = Field(
+        ...,
+        ge=Decimal("-90"),
+        le=Decimal("90"),
+    )
+
+    longitude: Decimal = Field(
+        ...,
+        ge=Decimal("-180"),
+        le=Decimal("180"),
+    )
+
+    radius_meter: int = Field(
+        ...,
+        ge=0,
+    )
+
+    grace_meter: int = Field(
+        ...,
+        ge=0,
     )
 
     updated_at: datetime

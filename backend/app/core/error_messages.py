@@ -78,6 +78,17 @@ DUPLICATE_ROUTE_SITE_LOCATION_DETAIL: Final[str] = "Route site location already 
 
 
 # =========================================================
+# Route location update setting
+# =========================================================
+ROUTE_LOCATION_UPDATE_SETTING_NOT_FOUND_DETAIL: Final[str] = (
+    "ไม่พบการตั้งค่าสิทธิ์แก้ไขพิกัดของเส้นทางนี้"
+)
+DUPLICATE_ROUTE_LOCATION_UPDATE_SETTING_DETAIL: Final[str] = (
+    "มีการตั้งค่าสิทธิ์แก้ไขพิกัดสำหรับภาค เขต และเส้นทางนี้แล้ว"
+)
+
+
+# =========================================================
 # Face profile
 # =========================================================
 FACE_PROFILE_NOT_FOUND_DETAIL: Final[str] = "Face profile not found"

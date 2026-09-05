@@ -5,7 +5,11 @@ from sqlalchemy.orm import Session
 
 from app.core import get_db
 from app.core.constants import DBConstants
-from app.schemas.patrol_area import PatrolAreaSearchResponse
+from app.schemas.patrol_area import (
+    PatrolAreaLocationUpdateRequest,
+    PatrolAreaLocationUpdateResponse,
+    PatrolAreaSearchResponse,
+)
 from app.services.patrol_area import PatrolAreaService
 
 router = APIRouter()
@@ -57,4 +61,19 @@ def search_patrol_areas(
         contract_code=contract_code,
         skip=skip,
         limit=limit,
+    )
+
+
+@router.post(
+    "/update-location",
+    response_model=PatrolAreaLocationUpdateResponse,
+    status_code=status.HTTP_200_OK,
+)
+def update_patrol_area_location(
+    payload: PatrolAreaLocationUpdateRequest,
+    db: Session = Depends(get_db),
+) -> PatrolAreaLocationUpdateResponse:
+    return PatrolAreaService.update_patrol_area_location(
+        db=db,
+        payload=payload,
     )

@@ -5,6 +5,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { ClipboardList, Info, RefreshCcw, Search } from "lucide-react";
@@ -19,6 +20,9 @@ import CheckpointTakeoverConfirmModal from "@/components/CheckpointTakeoverConfi
 import CheckpointAreaConfirmModal from "@/components/CheckpointAreaConfirmModal";
 import CheckpointMapModal, {
   type CheckpointMapLocation,
+  type CheckpointMapUpdateContext,
+  type CheckpointMapUpdatePayload,
+  type CheckpointMapUpdateSetting,
 } from "@/components/CheckpointMapModal";
 import CheckpointCallModal, {
   type CallStatus,
@@ -40,6 +44,7 @@ import {
 } from "@/services/checkpointAssignmentService";
 import { createCheckpointAssignmentCall } from "@/services/checkpointAssignmentCallService";
 import { verifyCheckpointLocation } from "@/services/checkpointLocationService";
+import api from "@/lib/api";
 
 import type {
   CheckpointAreaOptionResponse,
@@ -875,6 +880,140 @@ function splitUnitName(unitName: string) {
   };
 }
 
+/**
+ * map-location ต้องคืน scope ที่ Backend ตรวจแล้วว่าเป็นของ assignment ที่เปิด.
+ * Service ฝั่ง Frontend ต้องส่ง assignmentId / employeeCode ไปกับคำขอด้วย.
+ * API รุ่นเดิมที่ยังไม่คืนข้อมูลนี้จะแสดงแผนที่ได้ แต่ยังไม่เปิดโหมดแก้ไข.
+ */
+type CheckpointMapScopeResponse = {
+  assignment_id?: unknown;
+  location_id?: unknown;
+  department_id?: unknown;
+  division_id?: unknown;
+  route_id?: unknown;
+};
+
+type CheckpointMapUpdateResponse = CheckpointMapScopeResponse & {
+  contract_code: string;
+  location_name: string;
+  latitude: number | null;
+  longitude: number | null;
+  radius_meter: number | null;
+  grace_meter: number | null;
+  location_detail?: string | null;
+};
+
+function toMapScopeId(value: unknown): number | null {
+  if (
+    (typeof value !== "number" && typeof value !== "string") ||
+    (typeof value === "string" && value.trim() === "")
+  ) {
+    return null;
+  }
+
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function getMapUpdateContext(
+  data: CheckpointMapScopeResponse,
+  assignmentId: number,
+): CheckpointMapUpdateContext | null {
+  const responseAssignmentId = toMapScopeId(data.assignment_id);
+  const locationId = toMapScopeId(data.location_id);
+  const departmentId = toMapScopeId(data.department_id);
+  const divisionId = toMapScopeId(data.division_id);
+  const routeId = toMapScopeId(data.route_id);
+
+  if (
+    responseAssignmentId !== assignmentId ||
+    locationId === null ||
+    departmentId === null ||
+    divisionId === null ||
+    routeId === null
+  ) {
+    return null;
+  }
+
+  return { locationId, departmentId, divisionId, routeId };
+}
+
+function toSettingBoolean(value: unknown): boolean | null {
+  if (value === true || value === 1 || value === "1" || value === "true") {
+    return true;
+  }
+  if (value === false || value === 0 || value === "0" || value === "false") {
+    return false;
+  }
+  return null;
+}
+
+function toCheckpointMapUpdateSetting(
+  value: unknown,
+  context: CheckpointMapUpdateContext,
+): CheckpointMapUpdateSetting | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const data = value as Record<string, unknown>;
+  const departmentId = toMapScopeId(data.department_id);
+  const divisionId = toMapScopeId(data.division_id);
+  const routeId = toMapScopeId(data.route_id);
+
+  if (
+    departmentId !== context.departmentId ||
+    divisionId !== context.divisionId ||
+    routeId !== context.routeId ||
+    toSettingBoolean(data.allow_location_update) !== true ||
+    toSettingBoolean(data.is_active) !== true ||
+    toSettingBoolean(data.mark_flag) !== false ||
+    (data.effective_from !== null && typeof data.effective_from !== "string") ||
+    (data.effective_to !== null && typeof data.effective_to !== "string")
+  ) {
+    return null;
+  }
+
+  return {
+    departmentId,
+    divisionId,
+    routeId,
+    allowLocationUpdate: true,
+    effectiveFrom: data.effective_from,
+    effectiveTo: data.effective_to,
+    isActive: true,
+    markFlag: false,
+  };
+}
+
+async function loadCheckpointMapUpdateSetting(
+  context: CheckpointMapUpdateContext,
+): Promise<CheckpointMapUpdateSetting | null> {
+  const data = await api.get<unknown>("/route-location-update-settings/", {
+    department_id: context.departmentId,
+    division_id: context.divisionId,
+    route_id: context.routeId,
+    allow_location_update: true,
+    is_active: true,
+    include_deleted: false,
+    only_effective: true,
+    limit: 2,
+  });
+
+  if (!Array.isArray(data)) {
+    throw new Error("รูปแบบข้อมูลสิทธิ์แก้ไขพิกัดไม่ถูกต้อง");
+  }
+  if (data.length === 0) {
+    return null;
+  }
+  if (data.length !== 1) {
+    throw new Error("พบการตั้งค่าสิทธิ์แก้ไขพิกัดซ้ำสำหรับเส้นทางนี้");
+  }
+
+  // ใช้วันที่ปัจจุบันของ Backend ผ่าน only_effective; Modal ตรวจวันที่ไทยซ้ำ.
+  return toCheckpointMapUpdateSetting(data[0], context);
+}
+
 export default function Checkpoint({
   empCode,
   displayName,
@@ -943,11 +1082,29 @@ export default function Checkpoint({
     useState("");
 
   const [isMapModalOpen, setIsMapModalOpen] = useState(false);
+  const [mapAssignmentId, setMapAssignmentId] = useState<number | null>(null);
   const [mapLocation, setMapLocation] = useState<CheckpointMapLocation | null>(
     null,
   );
   const [mapLoading, setMapLoading] = useState(false);
   const [mapErrorMessage, setMapErrorMessage] = useState<string | null>(null);
+  const [mapUpdateSetting, setMapUpdateSetting] =
+    useState<CheckpointMapUpdateSetting | null>(null);
+  const [mapPermissionLoading, setMapPermissionLoading] = useState(false);
+  const mapRequestIdRef = useRef(0);
+  const mapSaveRequestIdRef = useRef<number | null>(null);
+
+  const closeCheckpointMapModal = useCallback(() => {
+    // ยกเลิกผลลัพธ์เก่าหลังปิด Modal หรือเปลี่ยนพนักงาน/พื้นที่/ผลัด.
+    mapRequestIdRef.current += 1;
+    setIsMapModalOpen(false);
+    setMapAssignmentId(null);
+    setMapLocation(null);
+    setMapErrorMessage(null);
+    setMapLoading(false);
+    setMapUpdateSetting(null);
+    setMapPermissionLoading(false);
+  }, []);
 
   const currentShift = useMemo(
     () => getCurrentShiftTypeByTime(currentDate),
@@ -1082,6 +1239,21 @@ export default function Checkpoint({
     () => formatApiDate(selectedWorkDate),
     [selectedWorkDate],
   );
+
+  useEffect(() => {
+    closeCheckpointMapModal();
+
+    return () => {
+      mapRequestIdRef.current += 1;
+    };
+  }, [
+    closeCheckpointMapModal,
+    empCode,
+    selectedPatrolArea?.division_id,
+    selectedPatrolArea?.route_id,
+    selectedShift,
+    selectedWorkDateText,
+  ]);
 
   const currentDateText = useMemo(
     () => formatApiDate(currentDate),
@@ -1434,6 +1606,8 @@ export default function Checkpoint({
 
   const openCheckpointMapModal = async (row: CheckRow) => {
     const { contractCode, locationName } = splitUnitName(row.unitName);
+    const requestId = ++mapRequestIdRef.current;
+    const isCurrentRequest = () => requestId === mapRequestIdRef.current;
 
     logDev("[Checkpoint] MAP LOCATION REQUEST", {
       assignmentId: row.assignmentId,
@@ -1443,15 +1617,32 @@ export default function Checkpoint({
     });
 
     setIsMapModalOpen(true);
+    setMapAssignmentId(row.assignmentId);
     setMapLoading(true);
     setMapLocation(null);
     setMapErrorMessage(null);
+    setMapUpdateSetting(null);
+    setMapPermissionLoading(true);
 
     try {
-      const data = await getCheckpointMapLocation({
+      /**
+       * checkpointAssignmentService ต้องส่งสองฟิลด์ใหม่นี้เป็น
+       * assignment_id / employee_code เพื่อให้ Backend ตรวจ scope ของงาน.
+       */
+      const mapRequest: Parameters<typeof getCheckpointMapLocation>[0] & {
+        assignmentId: number;
+        employeeCode: string;
+      } = {
         contractCode,
         locationName,
-      });
+        assignmentId: row.assignmentId,
+        employeeCode: empCode.trim(),
+      };
+      const data = await getCheckpointMapLocation(mapRequest);
+
+      if (!isCurrentRequest()) {
+        return;
+      }
 
       logDev("[Checkpoint] MAP LOCATION RESULT", {
         row,
@@ -1460,9 +1651,10 @@ export default function Checkpoint({
         data,
       });
 
-      const mapData = data as typeof data & {
+      const mapData = data as typeof data & CheckpointMapScopeResponse & {
         location_detail?: string | null;
       };
+      const updateContext = getMapUpdateContext(mapData, row.assignmentId);
 
       setMapLocation({
         contractCode: mapData.contract_code,
@@ -1472,8 +1664,46 @@ export default function Checkpoint({
         radiusMeter: mapData.radius_meter,
         graceMeter: mapData.grace_meter,
         locationDetail: mapData.location_detail ?? null,
+        updateContext,
       });
+      setMapLoading(false);
+
+      if (!updateContext) {
+        logDevError("[Checkpoint] MAP UPDATE CONTEXT MISSING OR MISMATCHED", {
+          expectedAssignmentId: row.assignmentId,
+          assignmentId: mapData.assignment_id,
+          locationId: mapData.location_id,
+          departmentId: mapData.department_id,
+          divisionId: mapData.division_id,
+          routeId: mapData.route_id,
+        });
+        return;
+      }
+
+      try {
+        const updateSetting = await loadCheckpointMapUpdateSetting(updateContext);
+
+        if (!isCurrentRequest()) {
+          return;
+        }
+
+        setMapUpdateSetting(updateSetting);
+        logDev("[Checkpoint] MAP UPDATE SETTING", {
+          assignmentId: row.assignmentId,
+          updateContext,
+          updateSetting,
+        });
+      } catch (error) {
+        if (isCurrentRequest()) {
+          setMapUpdateSetting(null);
+          logDevError("[Checkpoint] LOAD MAP UPDATE SETTING ERROR", error);
+        }
+      }
     } catch (error) {
+      if (!isCurrentRequest()) {
+        return;
+      }
+
       logDevError("[Checkpoint] LOAD MAP LOCATION ERROR", error);
 
       setMapLocation({
@@ -1492,15 +1722,129 @@ export default function Checkpoint({
           : "โหลดพิกัดหน่วยงานไม่สำเร็จ",
       );
     } finally {
-      setMapLoading(false);
+      if (isCurrentRequest()) {
+        setMapLoading(false);
+        setMapPermissionLoading(false);
+      }
     }
   };
 
-  const closeCheckpointMapModal = () => {
-    setIsMapModalOpen(false);
-    setMapLocation(null);
-    setMapErrorMessage(null);
-    setMapLoading(false);
+  const handleUpdateCheckpointMapLocation = async (
+    payload: CheckpointMapUpdatePayload,
+  ): Promise<void> => {
+    const context = mapLocation?.updateContext;
+    const employeeCode = empCode.trim();
+    const requestId = mapRequestIdRef.current;
+
+    if (
+      !isMapModalOpen ||
+      mapLoading ||
+      mapPermissionLoading ||
+      mapAssignmentId === null ||
+      !mapLocation ||
+      !context ||
+      !mapUpdateSetting ||
+      !employeeCode
+    ) {
+      throw new Error("ยังไม่พร้อมบันทึกพิกัด กรุณาปิดและเปิดแผนที่ใหม่");
+    }
+
+    if (
+      payload.locationId !== context.locationId ||
+      payload.departmentId !== context.departmentId ||
+      payload.divisionId !== context.divisionId ||
+      payload.routeId !== context.routeId
+    ) {
+      throw new Error("หน่วยงานที่เลือกเปลี่ยนแล้ว กรุณาเปิดแผนที่ใหม่");
+    }
+
+    if (mapSaveRequestIdRef.current !== null) {
+      throw new Error("ระบบกำลังบันทึกข้อมูล กรุณารอสักครู่");
+    }
+
+    const assignmentId = mapAssignmentId;
+    mapSaveRequestIdRef.current = requestId;
+
+    try {
+      const requestPayload = {
+        employee_code: employeeCode,
+        contract_code: mapLocation.contractCode.trim(),
+        location_name: mapLocation.locationName.trim(),
+        location_id: payload.locationId,
+        department_id: payload.departmentId,
+        division_id: payload.divisionId,
+        route_id: payload.routeId,
+        latitude: payload.latitude,
+        longitude: payload.longitude,
+        accuracy_meter: payload.accuracyMeter,
+        radius_meter: payload.radiusMeter,
+      };
+
+      logDev("[Checkpoint] MAP LOCATION UPDATE REQUEST", {
+        assignmentId,
+        ...requestPayload,
+      });
+
+      /**
+       * Backend endpoint นี้เป็นขั้นถัดไปที่ต้องเพิ่มในชุด checkpoint_assignment.
+       * Backend ต้องตรวจ Setting ซ้ำก่อนเขียนลง site_location.
+       */
+      const data = await api.post<CheckpointMapUpdateResponse>(
+        `/checkpoint-assignments/${assignmentId}/update-map-location`,
+        requestPayload,
+      );
+
+      // ถ้าปิด Modal หรือเปิดหน่วยงานอื่นระหว่างรอ ไม่ใช้ผลลัพธ์คำขอเดิม
+      if (requestId !== mapRequestIdRef.current) {
+        return;
+      }
+
+      const updatedContext = getMapUpdateContext(data, assignmentId);
+
+      if (
+        !updatedContext ||
+        updatedContext.locationId !== context.locationId ||
+        updatedContext.departmentId !== context.departmentId ||
+        updatedContext.divisionId !== context.divisionId ||
+        updatedContext.routeId !== context.routeId
+      ) {
+        throw new Error(
+          "ข้อมูลหน่วยงานที่ตอบกลับไม่ตรง กรุณาปิดและเปิดแผนที่ใหม่",
+        );
+      }
+
+      setMapLocation({
+        contractCode: data.contract_code,
+        locationName: data.location_name,
+        latitude: data.latitude,
+        longitude: data.longitude,
+        radiusMeter: data.radius_meter,
+        graceMeter: data.grace_meter,
+        locationDetail: data.location_detail ?? null,
+        updateContext: updatedContext,
+      });
+
+      logDev("[Checkpoint] MAP LOCATION UPDATE RESULT", {
+        assignmentId,
+        data,
+      });
+
+      // บันทึกสำเร็จแล้ว: ปิด Modal แผนที่และใช้ SuccessModal เดิมของหน้านี้
+      // ไม่ refresh ทั้งหน้า และไม่ใช้ window.location.reload()
+      closeCheckpointMapModal();
+      setIsSuccessModalOpen(true);
+    } catch (error) {
+      logDevError("[Checkpoint] MAP LOCATION UPDATE ERROR", {
+        assignmentId,
+        error,
+      });
+
+      throw error;
+    } finally {
+      if (mapSaveRequestIdRef.current === requestId) {
+        mapSaveRequestIdRef.current = null;
+      }
+    }
   };
 
   const checkLocationBeforeGoCheckInOut = async (
@@ -2842,10 +3186,14 @@ export default function Checkpoint({
       />
 
       <CheckpointMapModal
+        key={mapRequestIdRef.current}
         open={isMapModalOpen}
         location={mapLocation}
         loading={mapLoading}
         errorMessage={mapErrorMessage}
+        updateSetting={mapUpdateSetting}
+        permissionLoading={mapPermissionLoading}
+        onUpdate={handleUpdateCheckpointMapLocation}
         onClose={closeCheckpointMapModal}
       />
     </>

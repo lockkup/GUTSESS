@@ -20,6 +20,9 @@ from .patrol_area import PatrolAreaService
 from .patrol_report_service import get_patrol_report_rows
 from .positions import PositionService
 from .route import RouteService
+from .route_location_update_setting_service import (
+    RouteLocationUpdateSettingService,
+)
 from .route_site_location import RouteSiteLocationService
 from .route_site_location_change import RouteSiteLocationChangeService
 from .shift import ShiftService
@@ -50,6 +53,7 @@ __all__ = [
     "get_patrol_report_rows",
     "PositionService",
     "RouteService",
+    "RouteLocationUpdateSettingService",
     "RouteSiteLocationService",
     "RouteSiteLocationChangeService",
     "ShiftService",
