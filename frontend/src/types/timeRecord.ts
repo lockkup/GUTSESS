@@ -35,6 +35,29 @@ export type TimeRecord = {
   updated_by?: string | null;
 };
 
+/**
+ * Payload สำหรับค้นหาหน่วยงานที่อยู่ในพื้นที่ GPS ปัจจุบัน
+ * employee_code ใช้ตรวจสอบสถานะรายการค้างของแต่ละหน่วยงาน
+ */
+export type AttendanceLocationSearchRequest = {
+  employee_code: string;
+  work_date: string;
+  current_latitude: number;
+  current_longitude: number;
+  gps_accuracy?: number | null;
+};
+
+/**
+ * หน่วยงานที่อยู่ในพื้นที่ GPS พร้อมสถานะลงเวลาของพนักงาน
+ */
+export type AttendanceLocationOptionResponse = {
+  location_id: number;
+  contract_code: string;
+  location_name: string;
+  has_open_record: boolean;
+  open_time_record_id: number | null;
+};
+
 export type TimeRecordCheckIn = {
   employee_code: string;
   work_date: string;
@@ -57,13 +80,19 @@ export type TimeRecordCheckIn = {
    */
   assignment_id?: number | null;
 
+  /**
+   * ใช้เฉพาะ attendance ปกติ เมื่อเลือกหน่วยงานจากพื้นที่ทับซ้อน
+   * กรณี checkpoint ไม่ต้องส่ง เพราะ Backend หา location จาก assignment_id
+   */
+  checkin_location_id?: number | null;
+
   current_latitude: number;
   current_longitude: number;
   gps_accuracy?: number | null;
 
   /**
-   * Backend จะใช้ current_latitude/current_longitude ตรวจพื้นที่
-   * และกำหนด checkin_location_id เอง
+   * Backend จะตรวจ current_latitude/current_longitude กับหน่วยงานที่เลือก
+   * และบันทึกพิกัดที่ใช้ลงเวลา
    */
   checkin: string;
   checkin_lat?: number | null;
@@ -94,13 +123,19 @@ export type TimeRecordCheckOut = {
    */
   assignment_id?: number | null;
 
+  /**
+   * ใช้เฉพาะ attendance ปกติ เพื่อยืนยันหน่วยงานของรายการที่ออกงาน
+   * กรณี checkpoint ไม่ต้องส่ง เพราะ Backend หา location จาก assignment_id
+   */
+  checkout_location_id?: number | null;
+
   current_latitude: number;
   current_longitude: number;
   gps_accuracy?: number | null;
 
   /**
-   * Backend จะใช้ current_latitude/current_longitude ตรวจพื้นที่
-   * และกำหนด checkout_location_id เอง
+   * Backend จะตรวจ current_latitude/current_longitude กับหน่วยงานที่เลือก
+   * และบันทึกพิกัดที่ใช้ลงเวลา
    */
   checkout: string;
   checkout_lat?: number | null;

@@ -9,7 +9,9 @@ from .checkpoint_assignment_change import router as checkpoint_assignment_change
 from .checkpoint_schedule import router as checkpoint_schedule_router
 from .checkpoint_schedule_change import router as checkpoint_schedule_change_router
 from .checkpoint_schedule_item import router as checkpoint_schedule_item_router
-from .checkpoint_schedule_item_change import router as checkpoint_schedule_item_change_router
+from .checkpoint_schedule_item_change import (
+    router as checkpoint_schedule_item_change_router,
+)
 from .divisions import router as divisions_router
 from .employees import router as employees_router
 from .face_profile import router as face_profile_router
@@ -29,10 +31,17 @@ from .shift_change import router as shift_change_router
 from .site_location import router as site_location_router
 from .site_location_change import router as site_location_change_router
 from .time_record import router as time_record_router
+from .work_report import router as work_report_router
+from .work_report_item import router as work_report_item_router
+from .work_report_item_type import router as work_report_item_type_router
+from .work_report_purpose import router as work_report_purpose_router
+
 
 api_router = APIRouter()
 
+
 api_router.include_router(auth_router)
+
 api_router.include_router(password_router)
 
 api_router.include_router(
@@ -61,19 +70,19 @@ api_router.include_router(
 
 api_router.include_router(
     checkpoint_assignment_change_router,
-    prefix="/checkpoint-assignment-changes",
+    prefix="/checkpoint-assignment-ch-changes",
     tags=["checkpoint_assignment_changes"],
 )
 
 api_router.include_router(
     checkpoint_schedule_router,
     prefix="/checkpoint-schedules",
-    tags=["checkpoint_schedules"],
+    tags=["checkpoint_s-changes"],
 )
 
 api_router.include_router(
     checkpoint_schedule_change_router,
-    prefix="/checkpoint-schedule-changes",
+    prefix="/checkpoint-schedule-ch-changes",
     tags=["checkpoint_schedule_changes"],
 )
 
@@ -183,4 +192,28 @@ api_router.include_router(
     time_record_router,
     prefix="/time-records",
     tags=["time_records"],
+)
+
+api_router.include_router(
+    work_report_purpose_router,
+    prefix="/work-report-purposes",
+    tags=["work_report_purposes"],
+)
+
+api_router.include_router(
+    work_report_item_type_router,
+    prefix="/work-report-item-types",
+    tags=["work_report_item_types"],
+)
+
+api_router.include_router(
+    work_report_router,
+    prefix="/work-reports",
+    tags=["work_reports"],
+)
+
+api_router.include_router(
+    work_report_item_router,
+    prefix="/work-report-items",
+    tags=["work_report_items"],
 )

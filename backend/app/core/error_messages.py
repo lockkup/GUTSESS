@@ -1,4 +1,4 @@
-from __future__ import annotations
+
 
 from typing import Final
 
@@ -176,6 +176,28 @@ CHECKPOINT_ASSIGNMENT_SHIFT_NOT_FOUND_DETAIL: Final[str] = (
 
 
 # =========================================================
+# Work report purpose
+# =========================================================
+WORK_REPORT_PURPOSE_NOT_FOUND_DETAIL: Final[str] = (
+    "Work report purpose not found"
+)
+WORK_REPORT_PURPOSE_CODE_ALREADY_EXISTS_DETAIL: Final[str] = (
+    "Work report purpose code already exists"
+)
+
+
+# =========================================================
+# Work report item type
+# =========================================================
+WORK_REPORT_ITEM_TYPE_NOT_FOUND_DETAIL: Final[str] = (
+    "Work report item type not found"
+)
+WORK_REPORT_ITEM_TYPE_CODE_ALREADY_EXISTS_DETAIL: Final[str] = (
+    "Work report item type code already exists"
+)
+
+
+# =========================================================
 # Checkpoint schedule
 # =========================================================
 CHECKPOINT_SCHEDULE_NOT_FOUND_DETAIL: Final[str] = "Checkpoint schedule not found"
@@ -329,4 +351,27 @@ PATROL_REPORT_EXPORT_CANCELLED_DETAIL: Final[str] = (
 
 PATROL_REPORT_EXPORT_DOWNLOAD_NOT_ALLOWED_DETAIL: Final[str] = (
     "Report export download is not allowed"
+)
+# =========================================================
+# Work report
+# =========================================================
+WORK_REPORT_NOT_FOUND_DETAIL: Final[str] = (
+    "Work report not found"
+)
+WORK_REPORT_ALREADY_EXISTS_DETAIL: Final[str] = (
+    "Work report already exists for this time record"
+)
+
+
+# =========================================================
+# Work report item
+# =========================================================
+WORK_REPORT_ITEM_NOT_FOUND_DETAIL: Final[str] = (
+    "Work report item not found"
+)
+WORK_REPORT_ITEM_SEQUENCE_ALREADY_EXISTS_DETAIL: Final[str] = (
+    "Work report item sequence number already exists"
+)
+WORK_REPORT_ITEM_DETAIL_REQUIRED_DETAIL: Final[str] = (
+    "Work item detail is required for this work item type"
 )

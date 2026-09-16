@@ -61,6 +61,52 @@ class TimeRecordBase(BaseModel):
     work_date: date
 
 
+class AttendanceLocationSearchRequest(TimeRecordBase):
+    """ค้นหาหน่วยงานที่พนักงานอยู่ภายในรัศมีจาก GPS ปัจจุบัน"""
+
+    current_latitude: Decimal = Field(
+        ...,
+        ge=Decimal("-90"),
+        le=Decimal("90"),
+    )
+    current_longitude: Decimal = Field(
+        ...,
+        ge=Decimal("-180"),
+        le=Decimal("180"),
+    )
+    gps_accuracy: Decimal | None = Field(default=None, ge=0)
+
+
+class AttendanceLocationOptionResponse(BaseModel):
+    """หน่วยงานหนึ่งแห่งที่สามารถเลือกลงเวลาได้จากตำแหน่งปัจจุบัน"""
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        extra="forbid",
+        str_strip_whitespace=True,
+    )
+
+    location_id: int
+
+    contract_code: str | None = Field(
+        default=None,
+        max_length=DBConstants.CONTRACT_CODE_LENGTH,
+    )
+
+    location_name: str = Field(
+        ...,
+        max_length=DBConstants.LOCATION_NAME_LENGTH,
+    )
+
+    # แต่ละหน่วยงานมีสถานะอิสระจากกัน
+    # true  = แสดงปุ่มกดออกงาน
+    # false = แสดงปุ่มลงเวลาเข้า
+    has_open_record: bool
+
+    # ใช้ระบุรายการที่จะออกงาน เมื่อหน่วยงานนี้มีรายการเข้างานค้างอยู่
+    open_time_record_id: int | None = Field(default=None, gt=0)
+
+
 class TimeRecordCheckIn(TimeRecordBase):
     # ใช้เฉพาะกรณีมาจากตารางงานสายตรวจ
     # ถ้าเป็นลงเวลาเข้า-ออกงานปกติ ไม่ต้องส่ง shift_id
@@ -69,6 +115,10 @@ class TimeRecordCheckIn(TimeRecordBase):
     # ใช้เฉพาะกรณีมาจากตารางงานสายตรวจ
     # ถ้าเป็นลงเวลาเข้า-ออกงานปกติ ไม่ต้องส่ง assignment_id
     assignment_id: int | None = Field(default=None, gt=0)
+
+    # ใช้เฉพาะ attendance ปกติ เมื่อผู้ใช้เลือกหน่วยงานจากพื้นที่ทับซ้อน
+    # กรณี checkpoint ให้ Backend หา location จาก assignment_id ตามเดิม
+    checkin_location_id: int | None = Field(default=None, gt=0)
 
     current_latitude: Decimal = Field(..., ge=Decimal("-90"), le=Decimal("90"))
     current_longitude: Decimal = Field(..., ge=Decimal("-180"), le=Decimal("180"))
@@ -126,6 +176,10 @@ class TimeRecordCheckOut(BaseModel):
     # ใช้เฉพาะกรณีออกงานจากตารางงานสายตรวจ
     # ถ้าเป็นออกงานปกติ ไม่ต้องส่ง assignment_id
     assignment_id: int | None = Field(default=None, gt=0)
+
+    # ใช้เฉพาะ attendance ปกติ เพื่อยืนยันหน่วยงานของรายการที่กำลังออกงาน
+    # กรณี checkpoint ให้ Backend หา location จาก assignment_id ตามเดิม
+    checkout_location_id: int | None = Field(default=None, gt=0)
 
     current_latitude: Decimal = Field(..., ge=Decimal("-90"), le=Decimal("90"))
     current_longitude: Decimal = Field(..., ge=Decimal("-180"), le=Decimal("180"))

@@ -1,0 +1,289 @@
+/* src/pages/Attendance/LocationSelect/LocationSelect.module.css */
+
+:root {
+  /* ======================================================
+     ปรับขนาดตัวอักษรของหน้านี้จากจุดเดียว
+     ====================================================== */
+
+  --location-select-title-size: 16px;
+  --location-select-section-title-size: 15px;
+  --location-select-table-head-size: 12px;
+  --location-select-table-text-size: 12px;
+  --location-select-action-text-size: 14px;
+  --location-select-history-status-size: 12px;
+  --location-select-edit-text-size: 12px;
+  --location-select-date-text-size: 11px;
+  --location-select-empty-text-size: 12px;
+
+  /* ======================================================
+     ปรับความหนาตัวอักษรของหน้านี้จากจุดเดียว
+     ====================================================== */
+
+  --location-select-title-weight: 900;
+  --location-select-section-title-weight: 400;
+  --location-select-table-head-weight: 400;
+  --location-select-table-text-weight: 400;
+  --location-select-action-text-weight: 700;
+
+  /* ======================================================
+     ปรับขนาดปุ่มและความสูงของแถว
+     ====================================================== */
+
+  --location-select-row-height: 52px;
+  --location-select-action-height: 38px;
+}
+
+.attTitle {
+  width: 100%;
+  align-self: stretch;
+  margin: 14px 0 3px;
+  color: rgba(27, 43, 74, 0.92);
+  font-size: var(--location-select-title-size);
+  font-weight: var(--location-select-title-weight);
+  line-height: 1.3;
+  letter-spacing: 0.2px;
+  text-align: left;
+}
+
+.section {
+  width: 100%;
+  align-self: stretch;
+  margin-top: 12px;
+}
+
+.attTitle + .section {
+  margin-top: 0;
+}
+
+.sectionTitle {
+  width: 100%;
+  margin: 2px 0 7px;
+  color: #000000;
+  font-size: var(--location-select-section-title-size);
+  font-weight: var(--location-select-section-title-weight);
+  line-height: 1.4;
+  text-align: left;
+}
+
+.tableCard {
+  width: 100%;
+  padding: 0;
+  overflow: hidden;
+  border: 2px solid rgba(2, 75, 118, 0.18);
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 14px 26px rgba(0, 0, 0, 0.1);
+}
+
+.tableWrap {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid #d6dee8;
+  border-radius: 0;
+  background: #ffffff;
+}
+
+.table {
+  width: 100%;
+  border-spacing: 0;
+  border-collapse: separate;
+  table-layout: fixed;
+  font-family: inherit;
+  font-size: var(--location-select-table-text-size);
+}
+
+.table th,
+.table td {
+  box-sizing: border-box;
+  vertical-align: middle;
+}
+
+.table th {
+  padding: 8px 4px;
+  border-right: 2px solid #ffffff;
+  background: #173f7a;
+  color: #ffffff;
+  font-size: var(--location-select-table-head-size);
+  font-weight: var(--location-select-table-head-weight);
+  line-height: 1.2;
+  text-align: center;
+}
+
+.table th:last-child {
+  border-right: 0;
+}
+
+.table td {
+  height: var(--location-select-row-height);
+  padding: 8px;
+  border-top: 2px solid #f4f4f6;
+  background: #ececef;
+  color: #024b76;
+  font-size: var(--location-select-table-text-size);
+  font-weight: var(--location-select-table-text-weight);
+}
+
+.actionColumn {
+  width: 38%;
+}
+
+.statusColumn {
+  width: 31%;
+}
+
+.editColumn {
+  width: 20%;
+}
+
+.locationCell {
+  line-height: 1.25;
+  text-align: left;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.actionCell,
+.editCell {
+  padding: 5px !important;
+  text-align: center;
+}
+
+.actionButton {
+  width: 100%;
+  min-height: var(--location-select-action-height);
+  padding: 6px 7px;
+  border: 0;
+  border-radius: 10px;
+  color: #ffffff;
+  font-family: inherit;
+  font-size: var(--location-select-action-text-size);
+  font-weight: var(--location-select-action-text-weight);
+  line-height: 1.15;
+  text-align: center;
+  cursor: pointer;
+  box-shadow: 0 6px 10px rgba(0, 0, 0, 0.08);
+  transition:
+    filter 160ms ease,
+    transform 160ms ease,
+    opacity 160ms ease;
+}
+
+.actionButton:hover:not(:disabled) {
+  filter: brightness(0.94);
+}
+
+.actionButton:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.actionButton:focus-visible,
+.editButton:focus-visible,
+.dateInput:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.3);
+  outline-offset: 2px;
+}
+
+.actionButton:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+.checkInButton {
+  background: #05a95c;
+}
+
+.checkOutButton {
+  background: #e00000;
+}
+
+.emptyCell {
+  height: auto !important;
+  padding: 16px 8px !important;
+  color: #64748b !important;
+  font-size: var(--location-select-empty-text-size) !important;
+  text-align: center;
+}
+
+.historyHeadingRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 7px;
+}
+
+.historyHeadingRow .sectionTitle {
+  margin-bottom: 0;
+}
+
+.dateInput {
+  width: 122px;
+  min-height: 30px;
+  padding: 3px 5px;
+  border: 1px solid #b8c3d1;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #1f3152;
+  font-family: inherit;
+  font-size: var(--location-select-date-text-size);
+  font-weight: 400;
+}
+
+.historyStatus {
+  font-size: var(--location-select-history-status-size) !important;
+  font-weight: 700 !important;
+  line-height: 1.25;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.inProgressStatus {
+  color: #dc2626 !important;
+}
+
+.completedStatus {
+  color: #059669 !important;
+}
+
+.editButton {
+  padding: 2px 3px;
+  border: 0;
+  background: transparent;
+  color: #1d4ed8;
+  font-family: inherit;
+  font-size: var(--location-select-edit-text-size);
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.editButton:disabled {
+  color: #94a3b8;
+  cursor: not-allowed;
+  text-decoration: none;
+}
+
+@media (max-width: 380px) {
+  .table th {
+    padding-right: 3px;
+    padding-left: 3px;
+  }
+
+  .table td {
+    padding-right: 6px;
+    padding-left: 6px;
+  }
+
+  .actionColumn {
+    width: 40%;
+  }
+
+  .actionCell,
+  .editCell {
+    padding: 4px !important;
+  }
+
+  .dateInput {
+    width: 110px;
+  }
+}

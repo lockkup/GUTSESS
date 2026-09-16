@@ -2,6 +2,8 @@
 
 import { api } from "../lib/api";
 import type {
+  AttendanceLocationOptionResponse,
+  AttendanceLocationSearchRequest,
   GetTimeRecordsParams,
   TimeRecordCheckIn,
   TimeRecordCheckOut,
@@ -120,6 +122,22 @@ export const timeRecordService = {
 
   checkIn(payload: TimeRecordCheckIn) {
     return api.post<TimeRecordResponse>(`${BASE_PATH}/`, payload);
+  },
+
+  /**
+   * ค้นหาหน่วยงานที่อยู่ในพื้นที่ GPS ปัจจุบัน
+   *
+   * employee_code ใช้ตรวจสถานะรายการเข้างานที่ยังไม่ออก
+   * ของแต่ละหน่วยงาน ไม่ได้ใช้กรองสิทธิ์ของพนักงาน
+   *
+   * Endpoint จริงหลังผ่าน api.ts:
+   * POST /api/time-records/attendance-locations/search
+   */
+  searchAttendanceLocations(payload: AttendanceLocationSearchRequest) {
+    return api.post<AttendanceLocationOptionResponse[]>(
+      `${BASE_PATH}/attendance-locations/search`,
+      payload,
+    );
   },
 
   /**

@@ -23,6 +23,7 @@ from app.core.orm import Base
 
 if TYPE_CHECKING:
     from app.models.time_record import TimeRecord
+    from app.models.work_report_item import WorkReportItem
 
 
 class TimeRecordImage(Base):
@@ -34,6 +35,10 @@ class TimeRecordImage(Base):
             "image_type",
             "sequence_no",
             name="uq_time_record_image_type_sequence",
+        ),
+        UniqueConstraint(
+            "work_report_item_id",
+            name="uq_time_record_image_work_report_item",
         ),
         CheckConstraint(
             "sequence_no > 0",
@@ -60,6 +65,16 @@ class TimeRecordImage(Base):
         ),
         nullable=False,
         index=True,
+    )
+
+    work_report_item_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey(
+            "work_report_item.work_report_item_id",
+            name="fk_time_record_image_work_report_item",
+            ondelete="CASCADE",
+        ),
+        nullable=True,
     )
 
     image_type: Mapped[str] = mapped_column(
@@ -92,5 +107,10 @@ class TimeRecordImage(Base):
 
     time_record: Mapped["TimeRecord"] = relationship(
         "TimeRecord",
+        back_populates="images",
+    )
+
+    work_report_item: Mapped["WorkReportItem | None"] = relationship(
+        "WorkReportItem",
         back_populates="images",
     )

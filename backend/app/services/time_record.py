@@ -1,4 +1,4 @@
-# app/services/time_record.py
+
 
 from __future__ import annotations
 
@@ -43,6 +43,8 @@ from app.models.site_location import SiteLocation
 from app.models.time_record import TimeRecord
 from app.models.time_record_image import TimeRecordImage
 from app.schemas.time_record import (
+    AttendanceLocationOptionResponse,
+    AttendanceLocationSearchRequest,
     TimeRecordCheckIn,
     TimeRecordCheckOut,
     TimeRecordListItemResponse,
@@ -198,6 +200,75 @@ class TimeRecordService:
         )
 
         return db.scalar(stmt)
+
+    @staticmethod
+    def _get_open_attendance_time_record_by_employee_and_location_raw(
+        db: Session,
+        employee_code: str,
+        location_id: int,
+        work_date: date | None = None,
+    ) -> TimeRecord | None:
+        """
+        ดึงรายการ Attendance ที่ยังไม่ออกงานของพนักงาน แยกตามหน่วยงาน
+
+        ใช้สำหรับพื้นที่ทับซ้อน:
+        - พนักงานสามารถมีรายการเปิดอยู่หลายหน่วยงานพร้อมกันได้
+        - แต่หน่วยงานเดียวกันเปิดซ้ำไม่ได้
+        - ไม่รวม time_record ที่ผูกกับ checkpoint_assignment
+        """
+
+        checkpoint_time_record_exists = (
+            select(CheckpointAssignment.assignment_id)
+            .where(CheckpointAssignment.time_record_id == TimeRecord.time_record_id)
+            .exists()
+        )
+
+        stmt = (
+            select(TimeRecord)
+            .where(TimeRecord.employee_code == employee_code)
+            .where(TimeRecord.checkin_location_id == location_id)
+            .where(TimeRecord.checkout.is_(None))
+            .where(~checkpoint_time_record_exists)
+        )
+
+        if work_date is not None:
+            stmt = stmt.where(TimeRecord.work_date == work_date)
+
+        stmt = stmt.order_by(
+            TimeRecord.created_at.desc(),
+            TimeRecord.time_record_id.desc(),
+        )
+
+        return db.scalar(stmt)
+
+    @staticmethod
+    def _get_open_attendance_time_records_by_employee_raw(
+        db: Session,
+        employee_code: str,
+        work_date: date,
+    ) -> list[TimeRecord]:
+        """ดึงรายการ Attendance ที่ยังไม่ออกงานทั้งหมดสำหรับสร้างสถานะรายหน่วยงาน"""
+
+        checkpoint_time_record_exists = (
+            select(CheckpointAssignment.assignment_id)
+            .where(CheckpointAssignment.time_record_id == TimeRecord.time_record_id)
+            .exists()
+        )
+
+        stmt = (
+            select(TimeRecord)
+            .where(TimeRecord.employee_code == employee_code)
+            .where(TimeRecord.work_date == work_date)
+            .where(TimeRecord.checkin_location_id.is_not(None))
+            .where(TimeRecord.checkout.is_(None))
+            .where(~checkpoint_time_record_exists)
+            .order_by(
+                TimeRecord.created_at.desc(),
+                TimeRecord.time_record_id.desc(),
+            )
+        )
+
+        return list(db.scalars(stmt).all())
 
     @staticmethod
     def _get_open_checkpoint_time_record_by_employee_raw(
@@ -688,6 +759,191 @@ class TimeRecordService:
         return best_site_location
 
     @staticmethod
+    def _validate_selected_attendance_location_gate(
+        db: Session,
+        location_id: int,
+        current_latitude: Any,
+        current_longitude: Any,
+        detail: str,
+    ) -> SiteLocation:
+        """
+        ตรวจ GPS กับหน่วยงานที่ผู้ใช้เลือกจากหน้า LocationSelect
+
+        ไม่เลือกหน่วยงานใกล้ที่สุดแทน เพราะตำแหน่งหนึ่งอาจอยู่ในรัศมี
+        ของหลายหน่วยงานพร้อมกันได้
+        """
+
+        site_location = TimeRecordService._ensure_site_location_exists(
+            db=db,
+            location_id=location_id,
+            detail=detail,
+        )
+
+        if site_location.latitude is None or site_location.longitude is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=SITE_LOCATION_COORDINATES_NOT_FOUND_DETAIL,
+            )
+
+        current_lat, current_lng = TimeRecordService._coerce_current_coordinates(
+            current_latitude=current_latitude,
+            current_longitude=current_longitude,
+        )
+
+        site_lat = float(site_location.latitude)
+        site_lng = float(site_location.longitude)
+        radius_meter = float(site_location.radius_meter or 0)
+        grace_meter = float(getattr(site_location, "grace_meter", 0) or 0)
+        allowed_radius = radius_meter + grace_meter
+
+        if not all(
+            isfinite(value)
+            for value in [
+                site_lat,
+                site_lng,
+                allowed_radius,
+            ]
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=INVALID_COORDINATES_DETAIL,
+            )
+
+        distance_meter = TimeRecordService._distance_meters(
+            lat1=current_lat,
+            lng1=current_lng,
+            lat2=site_lat,
+            lng2=site_lng,
+        )
+
+        if distance_meter > allowed_radius:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=ATTENDANCE_OUT_OF_AREA_TEMPLATE.format(
+                    location_name=site_location.location_name,
+                    distance_meter=round(distance_meter),
+                ),
+            )
+
+        return site_location
+
+    @staticmethod
+    def search_attendance_locations(
+        db: Session,
+        payload: AttendanceLocationSearchRequest,
+    ) -> list[AttendanceLocationOptionResponse]:
+        """
+        คืนหน่วยงานที่ GPS ปัจจุบันอยู่ภายในรัศมีทั้งหมด
+
+        กติกา:
+        - ไม่กรองตามพนักงาน ภาค เขต หรือเส้นทาง
+        - ใช้เฉพาะ site_location ที่ไม่ถูกลบและยังเปิดใช้งาน
+        - หน่วยงานที่มีพื้นที่ทับซ้อนกันจะถูกคืนมาทุกแห่ง
+        - สถานะ open record แยกด้วย employee_code + work_date + location_id
+        - เรียงหน่วยงานจากระยะใกล้ไปไกล
+        """
+
+        TimeRecordService._ensure_employee_exists(
+            db=db,
+            employee_code=payload.employee_code,
+            detail=EMPLOYEE_NOT_FOUND_DETAIL,
+        )
+
+        current_lat, current_lng = TimeRecordService._coerce_current_coordinates(
+            current_latitude=payload.current_latitude,
+            current_longitude=payload.current_longitude,
+        )
+
+        site_location_stmt = (
+            select(SiteLocation)
+            .where(SiteLocation.latitude.is_not(None))
+            .where(SiteLocation.longitude.is_not(None))
+        )
+
+        site_locations = list(db.scalars(site_location_stmt).all())
+
+        open_time_records = (
+            TimeRecordService._get_open_attendance_time_records_by_employee_raw(
+                db=db,
+                employee_code=payload.employee_code,
+                work_date=payload.work_date,
+            )
+        )
+
+        open_record_by_location_id: dict[int, TimeRecord] = {}
+
+        for time_record in open_time_records:
+            location_id = time_record.checkin_location_id
+
+            if location_id is None or location_id in open_record_by_location_id:
+                continue
+
+            open_record_by_location_id[location_id] = time_record
+
+        matched_locations: list[tuple[float, SiteLocation]] = []
+
+        for site_location in site_locations:
+            if TimeRecordService._is_deleted_or_inactive(site_location):
+                continue
+
+            try:
+                site_lat = float(site_location.latitude)
+                site_lng = float(site_location.longitude)
+                radius_meter = float(site_location.radius_meter or 0)
+                grace_meter = float(
+                    getattr(site_location, "grace_meter", 0) or 0
+                )
+            except (TypeError, ValueError):
+                continue
+
+            allowed_radius = radius_meter + grace_meter
+
+            if not all(
+                isfinite(value)
+                for value in [
+                    site_lat,
+                    site_lng,
+                    allowed_radius,
+                ]
+            ):
+                continue
+
+            distance_meter = TimeRecordService._distance_meters(
+                lat1=current_lat,
+                lng1=current_lng,
+                lat2=site_lat,
+                lng2=site_lng,
+            )
+
+            if distance_meter <= allowed_radius:
+                matched_locations.append((distance_meter, site_location))
+
+        matched_locations.sort(key=lambda item: (item[0], item[1].location_id))
+
+        results: list[AttendanceLocationOptionResponse] = []
+
+        for _, site_location in matched_locations:
+            open_time_record = open_record_by_location_id.get(
+                site_location.location_id
+            )
+
+            results.append(
+                AttendanceLocationOptionResponse(
+                    location_id=site_location.location_id,
+                    contract_code=site_location.contract_code,
+                    location_name=site_location.location_name,
+                    has_open_record=open_time_record is not None,
+                    open_time_record_id=(
+                        open_time_record.time_record_id
+                        if open_time_record is not None
+                        else None
+                    ),
+                )
+            )
+
+        return results
+
+    @staticmethod
     def _get_status_code(time_record: TimeRecord) -> str:
         if time_record.checkin is None and time_record.checkout is None:
             return "pending"
@@ -867,6 +1123,11 @@ class TimeRecordService:
         )
 
         assignment_id = getattr(payload, "assignment_id", None)
+        selected_checkin_location_id = getattr(
+            payload,
+            "checkin_location_id",
+            None,
+        )
 
         assignment: CheckpointAssignment | None = None
         assignment_shift_id: int | None = None
@@ -896,22 +1157,46 @@ class TimeRecordService:
             # สิทธิ์ของ Checkpoint ถูกตัดสินด้วย Assignment ที่ล็อกไว้แล้ว
             open_time_record = None
         else:
-            site_location = TimeRecordService._validate_nearest_attendance_location_gate(
-                db=db,
-                current_latitude=payload.current_latitude,
-                current_longitude=payload.current_longitude,
-                detail=CHECKIN_LOCATION_NOT_FOUND_DETAIL,
-            )
-
-            open_time_record = (
-                TimeRecordService._get_open_attendance_time_record_by_employee_raw(
-                    db=db,
-                    employee_code=payload.employee_code,
-                    work_date=payload.work_date,
+            if selected_checkin_location_id is not None:
+                site_location = (
+                    TimeRecordService._validate_selected_attendance_location_gate(
+                        db=db,
+                        location_id=selected_checkin_location_id,
+                        current_latitude=payload.current_latitude,
+                        current_longitude=payload.current_longitude,
+                        detail=CHECKIN_LOCATION_NOT_FOUND_DETAIL,
+                    )
                 )
-            )
 
-        # Attendance ปกติ: กันพนักงานคนเดิมเปิดรายการซ้ำ
+                open_time_record = (
+                    TimeRecordService._get_open_attendance_time_record_by_employee_and_location_raw(
+                        db=db,
+                        employee_code=payload.employee_code,
+                        location_id=site_location.location_id,
+                        work_date=payload.work_date,
+                    )
+                )
+            else:
+                # รองรับ Frontend เดิมระหว่างเชื่อมหน้า LocationSelect
+                site_location = (
+                    TimeRecordService._validate_nearest_attendance_location_gate(
+                        db=db,
+                        current_latitude=payload.current_latitude,
+                        current_longitude=payload.current_longitude,
+                        detail=CHECKIN_LOCATION_NOT_FOUND_DETAIL,
+                    )
+                )
+
+                open_time_record = (
+                    TimeRecordService._get_open_attendance_time_record_by_employee_raw(
+                        db=db,
+                        employee_code=payload.employee_code,
+                        work_date=payload.work_date,
+                    )
+                )
+
+        # Attendance ใหม่: กันเปิดซ้ำเฉพาะ employee + work_date + location
+        # Attendance เดิมที่ยังไม่ส่ง location_id: กันรายการเปิดซ้ำแบบเดิม
         # Checkpoint: ใช้ Assignment Lock เป็นตัวควบคุม 1 คนต่อ 1 จุด
         if assignment_id is None and open_time_record is not None:
             raise HTTPException(
@@ -928,6 +1213,7 @@ class TimeRecordService:
             exclude={
                 "shift_id",
                 "assignment_id",
+                "checkin_location_id",
                 "current_latitude",
                 "current_longitude",
                 "gps_accuracy",
@@ -1205,6 +1491,11 @@ class TimeRecordService:
         )
 
         assignment_id = getattr(payload, "assignment_id", None)
+        selected_checkout_location_id = getattr(
+            payload,
+            "checkout_location_id",
+            None,
+        )
 
         assignment: CheckpointAssignment | None = None
         assignment_shift_id: int | None = None
@@ -1247,12 +1538,36 @@ class TimeRecordService:
                     detail=INVALID_TIME_RECORD_UPDATE_DETAIL,
                 )
 
-            site_location = TimeRecordService._validate_nearest_attendance_location_gate(
-                db=db,
-                current_latitude=payload.current_latitude,
-                current_longitude=payload.current_longitude,
-                detail=CHECKOUT_LOCATION_NOT_FOUND_DETAIL,
-            )
+            if selected_checkout_location_id is not None:
+                if (
+                    time_record.checkin_location_id is not None
+                    and time_record.checkin_location_id
+                    != selected_checkout_location_id
+                ):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=INVALID_TIME_RECORD_UPDATE_DETAIL,
+                    )
+
+                site_location = (
+                    TimeRecordService._validate_selected_attendance_location_gate(
+                        db=db,
+                        location_id=selected_checkout_location_id,
+                        current_latitude=payload.current_latitude,
+                        current_longitude=payload.current_longitude,
+                        detail=CHECKOUT_LOCATION_NOT_FOUND_DETAIL,
+                    )
+                )
+            else:
+                # รองรับ Frontend เดิมระหว่างเชื่อมหน้า LocationSelect
+                site_location = (
+                    TimeRecordService._validate_nearest_attendance_location_gate(
+                        db=db,
+                        current_latitude=payload.current_latitude,
+                        current_longitude=payload.current_longitude,
+                        detail=CHECKOUT_LOCATION_NOT_FOUND_DETAIL,
+                    )
+                )
 
         checkout_images = [
             payload.images_checkout_1,
@@ -1264,6 +1579,7 @@ class TimeRecordService:
             exclude={
                 "shift_id",
                 "assignment_id",
+                "checkout_location_id",
                 "current_latitude",
                 "current_longitude",
                 "gps_accuracy",

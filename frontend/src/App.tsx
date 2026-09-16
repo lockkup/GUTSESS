@@ -5,6 +5,10 @@ import Home from "./pages/Home";
 import Dashboard from "./pages/Dashboard";
 import Checkpoint from "./pages/Attendance/Checkpoint";
 import CheckInOut from "./pages/Attendance/CheckInOut";
+import LocationSelect, {
+  type AttendanceLocationSelection,
+} from "./pages/Attendance/LocationSelect";
+import WorkAssignment from "./pages/Attendance/WorkAssignment";
 import PatrolReportPage from "./pages/Attendance/PatrolReport";
 import FaceVerify from "./pages/Attendance/FaceVerify";
 import AttendanceFaceVerify from "./pages/Attendance/CheckInOut/AttendanceFaceVerify";
@@ -14,13 +18,18 @@ import PatrolAreaInfoPage from "./pages/PatrolAreaInfo";
 import { useStore, type AuthEmployee } from "./store/store";
 import { timeRecordService } from "./services/timeRecord.service";
 import { faceVerifyService } from "./services/faceVerify.service";
-import type { TimeRecordResponse } from "./types/timeRecord";
+import type {
+  AttendanceLocationOptionResponse,
+  TimeRecordResponse,
+} from "./types/timeRecord";
 
 type Route =
   | "login"
   | "home"
   | "dashboard"
   | "checkpoint"
+  | "locationSelect"
+  | "workAssignment"
   | "checkInOut"
   | "patrolReport"
   | "patrolAreaInfo"
@@ -42,6 +51,14 @@ type PassedLocation = {
   latitude: number;
   longitude: number;
   accuracy: number;
+};
+
+type SelectedAttendanceLocation = {
+  locationId: number;
+  contractCode: string | null;
+  locationName: string;
+  hasOpenRecord: boolean;
+  openTimeRecordId: number | null;
 };
 
 type SelectedCheckpoint = {
@@ -99,10 +116,6 @@ type LocationCoords = {
 
 type AttendanceTimeContext = {
   workDate: string;
-};
-
-type OpenAttendanceTimeRecordParams = {
-  work_date: string;
 };
 
 type PatrolAreaInfo = {
@@ -311,12 +324,45 @@ function formatWorkDate(date = new Date()) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-function toOpenRecordParams(
-  context: AttendanceTimeContext,
-): OpenAttendanceTimeRecordParams {
-  return {
-    work_date: context.workDate,
-  };
+function getCurrentLocation(): Promise<PassedLocation> {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error("อุปกรณ์นี้ไม่รองรับการอ่านตำแหน่ง GPS"));
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        resolve({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+        });
+      },
+      (error) => {
+        if (error.code === error.PERMISSION_DENIED) {
+          reject(
+            new Error(
+              "ไม่ได้รับอนุญาตให้เข้าถึงตำแหน่ง กรุณาเปิดสิทธิ์ GPS แล้วลองใหม่",
+            ),
+          );
+          return;
+        }
+
+        if (error.code === error.TIMEOUT) {
+          reject(new Error("ใช้เวลาค้นหาตำแหน่งนานเกินไป กรุณาลองใหม่"));
+          return;
+        }
+
+        reject(new Error("ไม่สามารถอ่านตำแหน่ง GPS ปัจจุบันได้"));
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 20_000,
+        maximumAge: 0,
+      },
+    );
+  });
 }
 
 export default function App() {
@@ -380,6 +426,18 @@ export default function App() {
   const [attendanceTimeContext, setAttendanceTimeContext] =
     useState<AttendanceTimeContext | null>(null);
 
+  const [attendanceLocations, setAttendanceLocations] = useState<
+    AttendanceLocationOptionResponse[]
+  >([]);
+  const [selectedAttendanceLocation, setSelectedAttendanceLocation] =
+    useState<SelectedAttendanceLocation | null>(null);
+  const [busyAttendanceLocationId, setBusyAttendanceLocationId] = useState<
+    number | null
+  >(null);
+  const [attendanceHistoryDate, setAttendanceHistoryDate] = useState(() =>
+    formatWorkDate(),
+  );
+
   const [, setOpenTimeRecord] = useState<TimeRecordResponse | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -388,6 +446,7 @@ export default function App() {
    * ใช้ ref เพราะเปลี่ยนค่าได้ทันที ไม่ต้องรอ React setState
    */
   const submittingRef = useRef(false);
+  const attendanceLocationSearchRef = useRef(false);
 
   const [selectedCheckpoint, setSelectedCheckpoint] =
     useState<SelectedCheckpoint | null>(null);
@@ -423,6 +482,41 @@ export default function App() {
     setOpenTimeRecord(null);
     setLastInAt(null);
     setLastOutAt(null);
+  }
+
+  function clearAttendanceLocationState() {
+    setAttendanceLocations([]);
+    setSelectedAttendanceLocation(null);
+    setBusyAttendanceLocationId(null);
+  }
+
+  function updateAttendanceLocationOpenRecord(
+    locationId: number,
+    openTimeRecordId: number | null,
+  ) {
+    const hasOpenRecord = openTimeRecordId !== null;
+
+    setAttendanceLocations((currentLocations) =>
+      currentLocations.map((location) =>
+        location.location_id === locationId
+          ? {
+              ...location,
+              has_open_record: hasOpenRecord,
+              open_time_record_id: openTimeRecordId,
+            }
+          : location,
+      ),
+    );
+
+    setSelectedAttendanceLocation((currentLocation) =>
+      currentLocation?.locationId === locationId
+        ? {
+            ...currentLocation,
+            hasOpenRecord,
+            openTimeRecordId,
+          }
+        : currentLocation,
+    );
   }
 
   /**
@@ -489,12 +583,26 @@ export default function App() {
       return;
     }
 
+    /**
+     * Attendance Phase 2 ต้องมีหน่วยงานที่เลือกก่อนเข้าหน้าลงเวลา
+     * หาก Refresh แล้ว state ชั่วคราวหาย ให้กลับ Home เพื่อค้นหา GPS ใหม่
+     */
+    if (!selectedAttendanceLocation) {
+      reset("home");
+      return;
+    }
+
     const context = attendanceTimeContext ?? makeAttendanceTimeContext();
 
     setAttendanceTimeContext(context);
 
-    void loadOpenAttendanceTimeRecord(empCode, context);
-  }, [route, empCode, selectedCheckpoint]);
+    void loadSelectedAttendanceTimeRecord(selectedAttendanceLocation).catch(
+      (error) => {
+        console.error("loadSelectedAttendanceTimeRecord error:", error);
+        clearCheckInOutTimeState();
+      },
+    );
+  }, [route, empCode, selectedCheckpoint, selectedAttendanceLocation]);
 
   useEffect(() => {
     if (!empCode) return;
@@ -543,6 +651,7 @@ export default function App() {
 
     setAttendanceTimeContext(context);
     clearCheckInOutTimeState();
+    clearAttendanceLocationState();
     setSelectedCheckpoint(null);
     setCheckpointAreaSelection(null);
     setPunchType("in");
@@ -550,31 +659,38 @@ export default function App() {
     reset("home");
   }
 
-  async function loadOpenAttendanceTimeRecord(
-    employeeCode: string,
-    context?: AttendanceTimeContext | null,
+  async function loadSelectedAttendanceTimeRecord(
+    location: SelectedAttendanceLocation,
   ) {
-    try {
-      const attendanceContext = context ?? makeAttendanceTimeContext();
-
-      const record =
-        await timeRecordService.getOpenAttendanceTimeRecordByEmployeeCode(
-          employeeCode,
-          toOpenRecordParams(attendanceContext),
-        );
-
-      if (!record) {
-        clearCheckInOutTimeState();
-        return;
-      }
-
-      setOpenTimeRecord(record);
-      setLastInAt(record.checkin ?? null);
-      setLastOutAt(record.checkout ?? null);
-    } catch (error) {
-      console.error("loadOpenAttendanceTimeRecord error:", error);
+    if (!location.hasOpenRecord || !location.openTimeRecordId) {
       clearCheckInOutTimeState();
+      return;
     }
+
+    const record = await timeRecordService.getTimeRecordById(
+      location.openTimeRecordId,
+    );
+
+    setOpenTimeRecord(record);
+    setLastInAt(record.checkin ?? null);
+    setLastOutAt(record.checkout ?? null);
+  }
+
+  async function selectAttendanceLocation(
+    location: AttendanceLocationOptionResponse,
+  ) {
+    const selectedLocation: SelectedAttendanceLocation = {
+      locationId: location.location_id,
+      contractCode: location.contract_code || null,
+      locationName: location.location_name,
+      hasOpenRecord: location.has_open_record,
+      openTimeRecordId: location.open_time_record_id,
+    };
+
+    setSelectedAttendanceLocation(selectedLocation);
+    setPunchType(location.has_open_record ? "out" : "in");
+
+    await loadSelectedAttendanceTimeRecord(selectedLocation);
   }
 
   async function loadOpenCheckpointTimeRecord(
@@ -626,6 +742,7 @@ export default function App() {
     });
     setAttendanceTimeContext(null);
     clearCheckInOutTimeState();
+    clearAttendanceLocationState();
     setSelectedCheckpoint(null);
     setCheckpointAreaSelection(null);
     setPunchType("in");
@@ -634,25 +751,116 @@ export default function App() {
   }
 
   async function goDirectCheckInOut() {
+    if (attendanceLocationSearchRef.current) {
+      return;
+    }
+
+    if (!empCode) {
+      alert("ไม่พบรหัสพนักงาน กรุณาเข้าสู่ระบบใหม่");
+      return;
+    }
+
+    attendanceLocationSearchRef.current = true;
+
     /**
      * กรณีกดเมนู "ลงเวลา เข้า-ออกงาน" จากหน้า Home
-     * เป็น Attendance ปกติ:
-     * - ไม่มี assignment_id
-     * - ไม่ส่ง shift_id
+     * ตรวจ GPS และค้นหาหน่วยงานทั้งหมดที่พื้นที่ทับซ้อนกันก่อน
      */
-    setSelectedCheckpoint(null);
-    localStorage.setItem(APP_CHECK_IN_OUT_MODE_KEY, "attendance");
+    try {
+      setSelectedCheckpoint(null);
+      clearAttendanceLocationState();
+      clearCheckInOutTimeState();
+      localStorage.setItem(APP_CHECK_IN_OUT_MODE_KEY, "attendance");
 
-    const context = makeAttendanceTimeContext();
+      const context = makeAttendanceTimeContext();
+      const currentLocation = await getCurrentLocation();
 
-    setAttendanceTimeContext(context);
-    await loadOpenAttendanceTimeRecord(empCode, context);
+      setAttendanceTimeContext(context);
+      setAttendanceHistoryDate(context.workDate);
 
-    push("checkInOut");
+      const locations = await timeRecordService.searchAttendanceLocations({
+        employee_code: empCode,
+        work_date: context.workDate,
+        current_latitude: currentLocation.latitude,
+        current_longitude: currentLocation.longitude,
+        gps_accuracy: currentLocation.accuracy,
+      });
+
+      if (locations.length === 0) {
+        alert("ไม่พบหน่วยงานที่สามารถลงเวลาได้จากตำแหน่งปัจจุบัน");
+        return;
+      }
+
+      setAttendanceLocations(locations);
+
+      if (locations.length === 1) {
+        await selectAttendanceLocation(locations[0]);
+
+        if (locations[0].has_open_record) {
+          push("workAssignment");
+        } else {
+          push("checkInOut");
+        }
+
+        return;
+      }
+
+      push("locationSelect");
+    } catch (error) {
+      console.error("goDirectCheckInOut error:", error);
+
+      alert(
+        error instanceof Error
+          ? error.message
+          : "ไม่สามารถค้นหาหน่วยงานจากตำแหน่งปัจจุบันได้",
+      );
+    } finally {
+      attendanceLocationSearchRef.current = false;
+    }
+  }
+
+  async function handleAttendanceLocationSelect(
+    selection: AttendanceLocationSelection,
+  ) {
+    if (busyAttendanceLocationId !== null) {
+      return;
+    }
+
+    const location = attendanceLocations.find(
+      (item) => item.location_id === selection.location.locationId,
+    );
+
+    if (!location) {
+      alert("ไม่พบข้อมูลหน่วยงานที่เลือก กรุณาค้นหาใหม่อีกครั้ง");
+      return;
+    }
+
+    setBusyAttendanceLocationId(location.location_id);
+
+    try {
+      await selectAttendanceLocation(location);
+
+      if (location.has_open_record) {
+        push("workAssignment");
+      } else {
+        push("checkInOut");
+      }
+    } catch (error) {
+      console.error("handleAttendanceLocationSelect error:", error);
+
+      alert(
+        error instanceof Error
+          ? error.message
+          : "ไม่สามารถเปิดข้อมูลลงเวลาของหน่วยงานที่เลือกได้",
+      );
+    } finally {
+      setBusyAttendanceLocationId(null);
+    }
   }
 
   async function goCheckpoint() {
     localStorage.removeItem(APP_CHECK_IN_OUT_MODE_KEY);
+    clearAttendanceLocationState();
     setSelectedCheckpoint(null);
     setAttendanceTimeContext(null);
     clearCheckInOutTimeState();
@@ -662,6 +870,7 @@ export default function App() {
 
   async function goCheckInOut(payload: GoCheckInOutPayload) {
     localStorage.setItem(APP_CHECK_IN_OUT_MODE_KEY, "checkpoint");
+    clearAttendanceLocationState();
 
     /**
      * กรณีมาจากหน้า Checkpoint / ตารางงานสายตรวจ:
@@ -712,11 +921,17 @@ export default function App() {
       workDate?: string | null;
     },
   ) {
+    if (!selectedAttendanceLocation) {
+      alert("ไม่พบหน่วยงานที่เลือก กรุณากลับไปเลือกหน่วยงานใหม่");
+      return;
+    }
+
     /**
      * Attendance ปกติ:
      * - ล้าง selectedCheckpoint
      * - ไม่มี assignment_id
      * - ไม่ส่ง shift_id
+     * - ใช้ location_id จากหน่วยงานที่เลือก
      */
     setSelectedCheckpoint(null);
 
@@ -814,6 +1029,12 @@ export default function App() {
       throw new Error("ระบบกำลังบันทึกอยู่ กรุณารอสักครู่");
     }
 
+    const attendanceLocation = selectedAttendanceLocation;
+
+    if (!attendanceLocation) {
+      throw new Error("ไม่พบหน่วยงานที่เลือก กรุณากลับไปเลือกหน่วยงานใหม่");
+    }
+
     submittingRef.current = true;
     setIsSubmitting(true);
 
@@ -828,30 +1049,19 @@ export default function App() {
         });
 
       const workDate = context.workDate;
-      const openRecordParams = toOpenRecordParams(context);
 
       if (type === "in") {
-        const existingOpen =
-          await timeRecordService.getOpenAttendanceTimeRecordByEmployeeCode(
-            empCode,
-            openRecordParams,
-          );
-
-        if (existingOpen) {
-          setOpenTimeRecord(existingOpen);
-          setLastInAt(existingOpen.checkin ?? null);
-          setLastOutAt(existingOpen.checkout ?? null);
-          throw new Error("มีการลงเวลาเข้างานค้างไว้แล้วในระบบ");
-        }
-
         /**
          * Attendance ปกติ:
          * - ไม่มี assignment_id
          * - ไม่ส่ง shift_id
+         * - ส่ง checkin_location_id ของหน่วยงานที่ผู้ใช้เลือก
          */
         const createPayload = {
           employee_code: empCode,
           work_date: workDate,
+
+          checkin_location_id: attendanceLocation.locationId,
 
           current_latitude: location.latitude,
           current_longitude: location.longitude,
@@ -865,6 +1075,7 @@ export default function App() {
 
           created_by: empCode,
         } as Parameters<typeof timeRecordService.createTimeRecord>[0] & {
+          checkin_location_id: number;
           current_latitude: number;
           current_longitude: number;
           gps_accuracy: number | null;
@@ -875,14 +1086,12 @@ export default function App() {
         setOpenTimeRecord(created);
         setLastInAt(created.checkin ?? null);
         setLastOutAt(created.checkout ?? null);
+        updateAttendanceLocationOpenRecord(
+          attendanceLocation.locationId,
+          created.time_record_id,
+        );
       } else {
-        const record =
-          await timeRecordService.getOpenAttendanceTimeRecordByEmployeeCode(
-            empCode,
-            openRecordParams,
-          );
-
-        if (!record) {
+        if (!attendanceLocation.openTimeRecordId) {
           throw new Error("ไม่พบข้อมูลการเข้างานเพื่อทำการออกงาน");
         }
 
@@ -890,9 +1099,12 @@ export default function App() {
          * Attendance ปกติ:
          * - ไม่มี assignment_id
          * - ไม่ส่ง shift_id
+         * - ส่ง checkout_location_id ของหน่วยงานที่ผู้ใช้เลือก
          * - ส่ง current_latitude/current_longitude ให้ Backend ตรวจพิกัด
          */
         const updatePayload = {
+          checkout_location_id: attendanceLocation.locationId,
+
           current_latitude: location.latitude,
           current_longitude: location.longitude,
           gps_accuracy: location.accuracy ?? null,
@@ -905,13 +1117,14 @@ export default function App() {
 
           updated_by: empCode,
         } as Parameters<typeof timeRecordService.updateTimeRecord>[1] & {
+          checkout_location_id: number;
           current_latitude: number;
           current_longitude: number;
           gps_accuracy: number | null;
         };
 
         const updated = await timeRecordService.updateTimeRecord(
-          record.time_record_id,
+          attendanceLocation.openTimeRecordId,
           updatePayload,
         );
 
@@ -923,6 +1136,10 @@ export default function App() {
         setOpenTimeRecord(null);
         setLastInAt(updated.checkin ?? null);
         setLastOutAt(updated.checkout ?? null);
+        updateAttendanceLocationOpenRecord(
+          attendanceLocation.locationId,
+          null,
+        );
       }
     } catch (error) {
       console.error("onAttendanceFaceConfirm error:", error);
@@ -1099,12 +1316,41 @@ export default function App() {
 
     setAttendanceTimeContext(context);
     clearCheckInOutTimeState();
+    clearAttendanceLocationState();
     setPunchType("in");
 
     reset("home");
   }
 
+  function goHomeFromWorkAssignment() {
+    localStorage.removeItem(APP_CHECK_IN_OUT_MODE_KEY);
+    setSelectedCheckpoint(null);
+
+    const context = makeAttendanceTimeContext();
+
+    setAttendanceTimeContext(context);
+    clearCheckInOutTimeState();
+    clearAttendanceLocationState();
+    setPunchType("in");
+
+    reset("home");
+  }
+
+  function handleWorkAssignmentSave() {
+    alert("ส่วนบันทึกข้อมูลการเข้าหน่วยงานยังไม่ได้เชื่อม API");
+  }
+
   function goCheckInOutFromFaceVerify() {
+    /**
+     * กรณีเมนู "ลงเวลา เข้า-ออกงาน" ปกติ
+     * หลังเข้างานสำเร็จและกดตกลงใน SuccessModal
+     * ให้ไปหน้าบันทึกการเข้าหน่วยงาน
+     */
+    if (!selectedCheckpoint && punchType === "in") {
+      reset("workAssignment");
+      return;
+    }
+
     /**
      * กรณีเมนู "ลงเวลา เข้า-ออกงาน" ปกติ
      * หลังออกงานสำเร็จและกดตกลงใน SuccessModal
@@ -1179,6 +1425,40 @@ export default function App() {
         />
       )}
 
+      {route === "locationSelect" && (
+        <LocationSelect
+          empCode={empCode}
+          displayName={displayName}
+          locations={attendanceLocations.map((location) => ({
+            locationId: location.location_id,
+            contractCode: location.contract_code ?? null,
+            locationName: location.location_name,
+            hasOpenRecord: location.has_open_record,
+          }))}
+          busyLocationId={busyAttendanceLocationId}
+          historyDate={attendanceHistoryDate}
+          onHistoryDateChange={setAttendanceHistoryDate}
+          onSelectLocation={(selection) => {
+            void handleAttendanceLocationSelect(selection);
+          }}
+          onBack={() => {
+            clearAttendanceLocationState();
+            back();
+          }}
+        />
+      )}
+
+      {route === "workAssignment" && (
+        <WorkAssignment
+          empCode={empCode}
+          displayName={displayName}
+          unitCode={selectedAttendanceLocation?.contractCode ?? null}
+          unitName={selectedAttendanceLocation?.locationName ?? null}
+          onBack={goHomeFromWorkAssignment}
+          onSave={handleWorkAssignmentSave}
+        />
+      )}
+
       {route === "patrolAreaInfo" && (
         <PatrolAreaInfoPage
           empCode={empCode}
@@ -1233,7 +1513,11 @@ export default function App() {
           mode={checkInOutMode}
           workDate={checkInOutWorkDate}
           assignmentId={selectedCheckpoint?.assignmentId ?? null}
-          unitName={selectedCheckpoint?.unitName ?? null}
+          unitName={
+            selectedCheckpoint?.unitName ??
+            selectedAttendanceLocation?.locationName ??
+            null
+          }
           passedLocation={selectedCheckpoint?.passedLocation ?? null}
           patrolAreaValues={selectedCheckpoint?.patrolAreaValues ?? null}
           shiftId={selectedCheckpoint?.shiftId ?? null}

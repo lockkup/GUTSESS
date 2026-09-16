@@ -30,6 +30,11 @@ from .shift_change import ShiftChangeService
 from .site_location import SiteLocationService
 from .site_location_change import SiteLocationChangeService
 from .time_record import TimeRecordService
+from .work_report import WorkReportService
+from .work_report_item import WorkReportItemService
+from .work_report_item_type import WorkReportItemTypeService
+from .work_report_purpose import WorkReportPurposeService
+
 
 __all__ = [
     "AppSettingService",
@@ -61,4 +66,8 @@ __all__ = [
     "SiteLocationService",
     "SiteLocationChangeService",
     "TimeRecordService",
+    "WorkReportService",
+    "WorkReportItemService",
+    "WorkReportItemTypeService",
+    "WorkReportPurposeService",
 ]

@@ -1,10 +1,11 @@
-/* src/pages/Attendance/WorkAssignment/WorkAssignment.module.css */
 
 :root {
-  --work-assignment-title-size: clamp(20px, 5vw, 24px);
-  --work-assignment-section-size: clamp(15px, 3.9vw, 18px);
-  --work-assignment-text-size: clamp(15px, 3.8vw, 17px);
-  --work-assignment-button-size: clamp(17px, 4.4vw, 20px);
+  --work-assignment-page-title-font-size: 16px;
+  --work-assignment-unit-status-font-size: 15px;
+  --work-assignment-section-title-font-size: 18px;
+  --work-assignment-item-font-size: 16px;
+  --work-assignment-button-font-size: 18px;
+  --work-assignment-note-font-size: 16px;
   --work-assignment-blue: #024b76;
   --work-assignment-blue-dark: #013a5a;
   --work-assignment-text: #1b2b4a;
@@ -20,34 +21,40 @@
 
 .pageTitle {
   width: 100%;
-  margin: 14px 0 4px;
+  margin: 14px 0 7px;
+  padding: 0 8px;
   color: var(--work-assignment-text);
-  font-size: var(--work-assignment-title-size);
+  font-size: var(--work-assignment-page-title-font-size);
   font-weight: 900;
   line-height: 1.3;
-  text-align: center;
+  text-align: left;
 }
 
 .unitStatus {
   width: 100%;
-  margin: 0 0 12px;
-  color: var(--work-assignment-green);
-  font-size: clamp(15px, 3.8vw, 17px);
-  font-weight: 700;
-  line-height: 1.35;
-  text-align: center;
+  margin: 0 0 13px;
+  padding: 0 8px;
+  color: #111827;
+  font-size: var(--work-assignment-unit-status-font-size);
+  font-weight: 400;
+  line-height: 1.45;
+  text-align: left;
 }
 
 .unitName {
-  font-weight: 900;
+  font-weight: 400;
   overflow-wrap: anywhere;
+}
+
+.unitStatus > div + div {
+  margin-top: 3px;
 }
 
 .formCard {
   width: 100%;
   overflow: hidden;
   border: 2px solid var(--work-assignment-border);
-  border-radius: 22px;
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.9);
   box-shadow: 0 14px 28px rgba(15, 23, 42, 0.1);
 }
@@ -59,8 +66,9 @@
 .sectionTitle {
   margin: 0;
   padding: 11px 14px;
+  border-radius: 0;
   color: #fff;
-  font-size: var(--work-assignment-section-size);
+  font-size: var(--work-assignment-section-title-font-size);
   font-weight: 900;
   line-height: 1.35;
   background: linear-gradient(
@@ -86,7 +94,7 @@
   background: transparent;
   color: var(--work-assignment-text);
   font: inherit;
-  font-size: var(--work-assignment-text-size);
+  font-size: var(--work-assignment-item-font-size);
   font-weight: 600;
   line-height: 1.35;
   text-align: left;
@@ -137,7 +145,7 @@
   border-radius: 14px;
   background: #fff;
   color: var(--work-assignment-blue);
-  font-size: var(--work-assignment-text-size);
+  font-size: var(--work-assignment-button-font-size);
   font-weight: 900;
   cursor: pointer;
 }
@@ -155,7 +163,7 @@
   margin: 0 12px;
   overflow: hidden;
   border: 1px solid rgba(15, 23, 42, 0.16);
-  border-radius: 14px;
+  border-radius: 0;
 }
 
 .workItemRow {
@@ -175,7 +183,7 @@
 
 .workItemNumber {
   color: #526277;
-  font-size: 14px;
+  font-size: var(--work-assignment-item-font-size);
   font-weight: 800;
   text-align: center;
 }
@@ -183,7 +191,7 @@
 .workItemTitle {
   min-width: 0;
   color: var(--work-assignment-text);
-  font-size: clamp(14px, 3.5vw, 16px);
+  font-size: var(--work-assignment-item-font-size);
   font-weight: 700;
   line-height: 1.35;
   overflow-wrap: anywhere;
@@ -211,7 +219,7 @@
 
 .imagePicker {
   color: #075fd4;
-  font-size: clamp(13px, 3.2vw, 15px);
+  font-size: var(--work-assignment-button-font-size);
   font-weight: 700;
   text-decoration: underline;
   white-space: nowrap;
@@ -240,7 +248,7 @@
   background: rgba(214, 0, 0, 0.07);
   color: var(--work-assignment-red);
   font: inherit;
-  font-size: 14px;
+  font-size: var(--work-assignment-button-font-size);
   font-weight: 800;
   cursor: pointer;
 }
@@ -254,7 +262,7 @@
 .emptyItems {
   padding: 20px 12px;
   color: #64748b;
-  font-size: 15px;
+  font-size: var(--work-assignment-item-font-size);
   text-align: center;
   background: #fff;
 }
@@ -274,7 +282,7 @@
   outline: none;
   color: var(--work-assignment-text);
   font: inherit;
-  font-size: 16px;
+  font-size: var(--work-assignment-note-font-size);
   line-height: 1.5;
   background: #fff;
 }
@@ -322,7 +330,7 @@
   border-radius: 999px;
   color: #fff;
   font: inherit;
-  font-size: var(--work-assignment-button-size);
+  font-size: var(--work-assignment-button-font-size);
   font-weight: 900;
   cursor: pointer;
   transition:

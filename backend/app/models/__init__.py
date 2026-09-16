@@ -28,6 +28,11 @@ from .site_location import SiteLocation
 from .site_location_change import SiteLocationChange
 from .time_record import TimeRecord
 from .time_record_image import TimeRecordImage
+from .work_report import WorkReport
+from .work_report_item import WorkReportItem
+from .work_report_item_type import WorkReportItemType
+from .work_report_purpose import WorkReportPurpose
+
 
 __all__ = [
     "AuditLog",
@@ -58,4 +63,8 @@ __all__ = [
     "SiteLocationChange",
     "TimeRecord",
     "TimeRecordImage",
+    "WorkReport",
+    "WorkReportItem",
+    "WorkReportItemType",
+    "WorkReportPurpose",
 ]

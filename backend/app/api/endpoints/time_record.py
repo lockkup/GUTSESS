@@ -1,6 +1,4 @@
-# app/api/endpoints/time_record.py
 
-from __future__ import annotations
 
 from datetime import date
 
@@ -11,6 +9,8 @@ from app.core import get_db
 from app.core.constants import DBConstants
 from app.core.error_messages import OPEN_TIME_RECORD_NOT_FOUND_DETAIL
 from app.schemas.time_record import (
+    AttendanceLocationOptionResponse,
+    AttendanceLocationSearchRequest,
     TimeRecordCheckIn,
     TimeRecordCheckOut,
     TimeRecordListItemResponse,
@@ -43,6 +43,28 @@ def create_time_record(
     db: Session = Depends(get_db),
 ) -> TimeRecordResponse:
     return TimeRecordService.create_time_record(
+        db=db,
+        payload=payload,
+    )
+
+
+# =========================================================
+# ATTENDANCE LOCATIONS
+# ค้นหาหน่วยงานที่อยู่ในพื้นที่ GPS ปัจจุบัน
+#
+# ใช้ employee_code เพื่อตรวจสอบสถานะรายการค้างของแต่ละหน่วยงาน
+# ไม่ได้ใช้ employee_code เพื่อจำกัดสิทธิ์หรือกรองหน่วยงาน
+# =========================================================
+@router.post(
+    "/attendance-locations/search",
+    response_model=list[AttendanceLocationOptionResponse],
+    status_code=status.HTTP_200_OK,
+)
+def search_attendance_locations(
+    payload: AttendanceLocationSearchRequest,
+    db: Session = Depends(get_db),
+) -> list[AttendanceLocationOptionResponse]:
+    return TimeRecordService.search_attendance_locations(
         db=db,
         payload=payload,
     )

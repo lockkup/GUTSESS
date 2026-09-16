@@ -1,43 +1,42 @@
-// src/pages/Attendance/WorkAssignment/index.tsx
-
 import { useEffect, useMemo, useState } from "react";
 import type { ChangeEvent } from "react";
 
 import Header from "@/layout/Header";
 import BackButton from "@/components/BackButton";
+import { workReportService } from "@/services/workReport.service";
+import type {
+  WorkReportItemTypeResponse,
+  WorkReportPurposeResponse,
+} from "@/types/workReport";
 
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
-  faCheck,
   faImage,
   faPlus,
   faTrashCan,
 } from "@fortawesome/free-solid-svg-icons";
 
+import WorkItemModal from "@/components/WorkItemModal";
+import type { WorkItemModalValue } from "@/components/WorkItemModal";
 import styles from "./WorkAssignment.module.css";
 
-export type VisitPurpose = "normal_plan" | "meet_client" | "other_assignment";
+export type VisitPurpose = string;
 
 export type SaveMode = "stay" | "checkout";
 
 export type WorkItem = {
   id: string;
+  workItemTypeId: number | null;
+  workItemCode: string;
+  workItemDetail: string;
+  requireDetail: boolean;
   title: string;
   imageName: string;
   imageDataUrl: string;
 };
 
-type WorkItemOptionValue =
-  | "documents"
-  | "meeting"
-  | "follow_up"
-  | "onsite_training"
-  | "shift_handover"
-  | "drug_test"
-  | "simulation"
-  | "other";
-
 export type WorkAssignmentPayload = {
+  purposeId: number;
   purpose: VisitPurpose;
   purposeLabel: string;
   workItems: WorkItem[];
@@ -50,9 +49,15 @@ type Props = {
 
   unitCode?: string | null;
   unitName?: string | null;
+  checkin?: string | null;
+  checkout?: string | null;
 
   initialWorkItems?: Array<{
     id?: string;
+    workItemTypeId?: number | null;
+    workItemCode?: string;
+    workItemDetail?: string;
+    requireDetail?: boolean;
     title: string;
     imageName?: string;
     imageDataUrl?: string;
@@ -65,66 +70,6 @@ type Props = {
     mode: SaveMode,
   ) => Promise<void> | void;
 };
-
-const PURPOSE_OPTIONS: Array<{
-  value: VisitPurpose;
-  label: string;
-}> = [
-  {
-    value: "normal_plan",
-    label: "ผู้ปฏิบัติงานตามแผนปกติ",
-  },
-  {
-    value: "meet_client",
-    label: "เข้าพบผู้ว่าจ้าง",
-  },
-  {
-    value: "other_assignment",
-    label: "ได้รับมอบหมายงานอื่น ๆ",
-  },
-];
-
-/**
- * รายการใน Dropdown ของส่วนที่ 2
- * สามารถเพิ่มรายการใหม่ใน Array นี้ได้ภายหลัง
- */
-const WORK_ITEM_OPTIONS: Array<{
-  value: WorkItemOptionValue;
-  label: string;
-}> = [
-  {
-    value: "documents",
-    label: "รับ-ส่งเอกสาร",
-  },
-  {
-    value: "meeting",
-    label: "เข้าร่วมประชุม",
-  },
-  {
-    value: "follow_up",
-    label: "ติดตามงาน",
-  },
-  {
-    value: "onsite_training",
-    label: "พัฒนาอบรมหน้างาน",
-  },
-  {
-    value: "shift_handover",
-    label: "รวมแถวเปลี่ยนผลัด",
-  },
-  {
-    value: "drug_test",
-    label: "ตรวจสารเสพติด",
-  },
-  {
-    value: "simulation",
-    label: "จำลองสถานการณ์",
-  },
-  {
-    value: "other",
-    label: "อื่น ๆ",
-  },
-];
 
 const DEFAULT_WORK_ITEMS: WorkItem[] = [];
 
@@ -146,11 +91,45 @@ function readFileAsDataUrl(file: File) {
   });
 }
 
+function formatThaiDateTime(value?: string | null) {
+  const cleanValue = value?.trim();
+
+  if (!cleanValue) return "-";
+
+  const localDateTimeMatch = cleanValue.match(
+    /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?$/,
+  );
+  const date = localDateTimeMatch
+    ? new Date(
+        `${localDateTimeMatch[1]}-${localDateTimeMatch[2]}-${localDateTimeMatch[3]}` +
+          `T${localDateTimeMatch[4]}:${localDateTimeMatch[5]}:${localDateTimeMatch[6] ?? "00"}+07:00`,
+      )
+    : new Date(cleanValue);
+
+  if (Number.isNaN(date.getTime())) return cleanValue;
+
+  const formatted = new Intl.DateTimeFormat("th-TH", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Bangkok",
+  })
+    .format(date)
+    .replace(",", "");
+
+  return `${formatted} น.`;
+}
+
 export default function WorkAssignment({
   empCode,
   displayName,
   unitCode = null,
   unitName = null,
+  checkin = null,
+  checkout = null,
   initialWorkItems,
   busy = false,
   onBack,
@@ -163,25 +142,28 @@ export default function WorkAssignment({
 
     return initialWorkItems.map((item) => ({
       id: item.id ?? createWorkItemId(),
+      workItemTypeId: item.workItemTypeId ?? null,
+      workItemCode: item.workItemCode ?? "",
+      workItemDetail: item.workItemDetail ?? "",
+      requireDetail: item.requireDetail ?? false,
       title: item.title.trim(),
       imageName: item.imageName ?? "",
       imageDataUrl: item.imageDataUrl ?? "",
     }));
   }, [initialWorkItems]);
 
-  const [purpose, setPurpose] = useState<VisitPurpose>("normal_plan");
+  const [purposeOptions, setPurposeOptions] = useState<
+    WorkReportPurposeResponse[]
+  >([]);
+  const [workItemTypeOptions, setWorkItemTypeOptions] = useState<
+    WorkReportItemTypeResponse[]
+  >([]);
+  const [purposeId, setPurposeId] = useState<number | null>(null);
   const [workItems, setWorkItems] = useState<WorkItem[]>(preparedInitialItems);
-  const [additionalNote, setAdditionalNote] = useState("");
-
+  const additionalNote = "";
   const [addModalOpen, setAddModalOpen] = useState(false);
-  const [selectedWorkItemType, setSelectedWorkItemType] = useState<
-    WorkItemOptionValue | ""
-  >("");
-  const [otherDetail, setOtherDetail] = useState("");
-  const [modalImageName, setModalImageName] = useState("");
-  const [modalImageDataUrl, setModalImageDataUrl] = useState("");
-  const [modalError, setModalError] = useState("");
-
+  const [masterDataLoading, setMasterDataLoading] = useState(true);
+  const [masterDataError, setMasterDataError] = useState("");
   const [internalBusy, setInternalBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -191,35 +173,69 @@ export default function WorkAssignment({
     .join(" - ");
 
   useEffect(() => {
-    if (!addModalOpen) return;
+    let active = true;
 
-    const previousOverflow = document.body.style.overflow;
+    async function loadMasterData() {
+      setMasterDataLoading(true);
+      setMasterDataError("");
 
-    function handleEscape(event: KeyboardEvent) {
-      if (event.key === "Escape" && !isBusy) {
-        closeAddModal();
+      try {
+        const [purposeData, workItemTypeData] = await Promise.all([
+          workReportService.getWorkReportPurposes(),
+          workReportService.getWorkReportItemTypes(),
+        ]);
+
+        if (!Array.isArray(purposeData) || !Array.isArray(workItemTypeData)) {
+          throw new Error("รูปแบบข้อมูลรายการจากระบบไม่ถูกต้อง");
+        }
+
+        const activePurposes = purposeData
+          .filter((item) => item.is_active)
+          .sort((a, b) => a.display_order - b.display_order);
+        const activeWorkItemTypes = workItemTypeData
+          .filter((item) => item.is_active)
+          .sort((a, b) => a.display_order - b.display_order);
+
+        if (!active) return;
+
+        setPurposeOptions(activePurposes);
+        setWorkItemTypeOptions(activeWorkItemTypes);
+        setPurposeId((current) => {
+          if (
+            current !== null &&
+            activePurposes.some((item) => item.purpose_id === current)
+          ) {
+            return current;
+          }
+
+          return activePurposes[0]?.purpose_id ?? null;
+        });
+      } catch (loadError) {
+        if (!active) return;
+
+        setPurposeOptions([]);
+        setWorkItemTypeOptions([]);
+        setPurposeId(null);
+        setMasterDataError(
+          loadError instanceof Error
+            ? loadError.message
+            : "โหลดข้อมูลรายการจากระบบไม่สำเร็จ",
+        );
+      } finally {
+        if (active) {
+          setMasterDataLoading(false);
+        }
       }
     }
 
-    document.body.style.overflow = "hidden";
-    document.addEventListener("keydown", handleEscape);
+    void loadMasterData();
 
     return () => {
-      document.body.style.overflow = previousOverflow;
-      document.removeEventListener("keydown", handleEscape);
+      active = false;
     };
-  }, [addModalOpen, isBusy]);
-
-  function resetAddModalForm() {
-    setSelectedWorkItemType("");
-    setOtherDetail("");
-    setModalImageName("");
-    setModalImageDataUrl("");
-    setModalError("");
-  }
+  }, []);
 
   function openAddModal() {
-    resetAddModalForm();
     setError("");
     setAddModalOpen(true);
   }
@@ -228,76 +244,24 @@ export default function WorkAssignment({
     if (isBusy) return;
 
     setAddModalOpen(false);
-    resetAddModalForm();
   }
 
-  async function handleModalImageChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-
-    event.target.value = "";
-
-    if (!file) return;
-
-    if (!file.type.startsWith("image/")) {
-      setModalError("กรุณาเลือกไฟล์รูปภาพเท่านั้น");
-      return;
-    }
-
-    setModalError("");
-
-    try {
-      const imageDataUrl = await readFileAsDataUrl(file);
-
-      setModalImageName(file.name);
-      setModalImageDataUrl(imageDataUrl);
-    } catch (readError) {
-      setModalError(
-        readError instanceof Error
-          ? readError.message
-          : "อ่านไฟล์รูปภาพไม่สำเร็จ",
-      );
-    }
-  }
-
-  function saveWorkItemFromModal() {
-    if (!selectedWorkItemType) {
-      setModalError("กรุณาเลือกสิ่งที่ดำเนินการเรียบร้อยแล้ว");
-      return;
-    }
-
-    const selectedOption = WORK_ITEM_OPTIONS.find(
-      (option) => option.value === selectedWorkItemType,
-    );
-
-    if (!selectedOption) {
-      setModalError("ไม่พบรายการที่เลือก กรุณาลองใหม่");
-      return;
-    }
-
-    const cleanOtherDetail = otherDetail.trim();
-
-    if (selectedWorkItemType === "other" && !cleanOtherDetail) {
-      setModalError("กรุณาระบุรายละเอียด");
-      return;
-    }
-
-    const title =
-      selectedWorkItemType === "other"
-        ? `${selectedOption.label} - ${cleanOtherDetail}`
-        : selectedOption.label;
-
+  function saveWorkItemFromModal(item: WorkItemModalValue) {
+    setPurposeId(item.purposeId);
     setWorkItems((current) => [
       ...current,
       {
         id: createWorkItemId(),
-        title,
-        imageName: modalImageName,
-        imageDataUrl: modalImageDataUrl,
+        workItemTypeId: item.workItemTypeId,
+        workItemCode: item.workItemCode,
+        workItemDetail: item.workItemDetail,
+        requireDetail: item.requireDetail,
+        title: item.title,
+        imageName: item.imageName,
+        imageDataUrl: item.imageDataUrl,
       },
     ]);
-
     setAddModalOpen(false);
-    resetAddModalForm();
     setError("");
   }
 
@@ -347,13 +311,16 @@ export default function WorkAssignment({
   }
 
   async function handleSave(mode: SaveMode) {
-    if (isBusy) return;
+    if (isBusy || masterDataLoading) return;
 
-    const purposeOption = PURPOSE_OPTIONS.find(
-      (option) => option.value === purpose,
+    const purposeOption = purposeOptions.find(
+      (option) => option.purpose_id === purposeId,
     );
 
-    if (!purposeOption) return;
+    if (!purposeOption) {
+      setError("กรุณาเลือกวัตถุประสงค์การเข้าหน่วยงาน");
+      return;
+    }
 
     setInternalBusy(true);
     setError("");
@@ -361,8 +328,9 @@ export default function WorkAssignment({
     try {
       await onSave(
         {
-          purpose,
-          purposeLabel: purposeOption.label,
+          purposeId: purposeOption.purpose_id,
+          purpose: purposeOption.purpose_code,
+          purposeLabel: purposeOption.purpose_name,
           workItems,
           additionalNote: additionalNote.trim(),
         },
@@ -389,67 +357,48 @@ export default function WorkAssignment({
           >
             <Header empCode={empCode} displayName={displayName} />
 
-            <h2 className={styles.pageTitle}>หน้าจอ - บันทึกการเข้าหน่วยงาน</h2>
+            <h2 className={styles.pageTitle}>
+              หน้าจอ – บันทึกรายงาน (ติดตาม/มอบหมาย)
+            </h2>
 
             {unitDisplay ? (
               <div className={styles.unitStatus}>
-                <div>ขณะนี้ท่านอยู่ในหน่วยงาน</div>
                 <div className={styles.unitName}>{unitDisplay}</div>
+                <div>
+                  เวลาเข้า : {formatThaiDateTime(checkin)} เวลาออก :{" "}
+                  {formatThaiDateTime(checkout)}
+                </div>
               </div>
             ) : null}
 
-            <div className={styles.formCard}>
+            <div className={styles.formCard} style={{ borderRadius: 0 }}>
               <section className={styles.formSection}>
-                <h3 className={styles.sectionTitle}>
-                  ส่วนที่ 1 : วัตถุประสงค์การเข้าหน่วยงาน
-                </h3>
-
-                <div
-                  className={styles.purposeList}
-                  role="radiogroup"
-                  aria-label="วัตถุประสงค์การเข้าหน่วยงาน"
+                <h3
+                  className={styles.sectionTitle}
+                  style={{ borderRadius: 0 }}
                 >
-                  {PURPOSE_OPTIONS.map((option) => {
-                    const selected = purpose === option.value;
-
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        role="radio"
-                        aria-checked={selected}
-                        className={`${styles.purposeOption} ${
-                          selected ? styles.purposeOptionSelected : ""
-                        }`}
-                        onClick={() => setPurpose(option.value)}
-                        disabled={isBusy}
-                      >
-                        <span className={styles.radioMark} aria-hidden="true">
-                          {selected ? <FontAwesomeIcon icon={faCheck} /> : null}
-                        </span>
-                        <span>{option.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </section>
-
-              <section className={styles.formSection}>
-                <h3 className={styles.sectionTitle}>
-                  ส่วนที่ 2 : สิ่งที่ดำเนินการเรียบร้อยแล้ว
+                  ขั้นตอนที่ 1. กดเพิ่มบันทึกรายงาน
                 </h3>
 
                 <button
                   type="button"
                   className={styles.addButton}
                   onClick={openAddModal}
-                  disabled={isBusy}
+                  disabled={
+                    isBusy ||
+                    masterDataLoading ||
+                    purposeOptions.length === 0 ||
+                    workItemTypeOptions.length === 0
+                  }
                 >
                   <FontAwesomeIcon icon={faPlus} />
                   กดเพิ่มข้อมูล
                 </button>
 
-                <div className={styles.workItemList}>
+                <div
+                  className={styles.workItemList}
+                  style={{ borderRadius: 0 }}
+                >
                   {workItems.length > 0 ? (
                     workItems.map((item, index) => (
                       <div className={styles.workItemRow} key={item.id}>
@@ -506,25 +455,11 @@ export default function WorkAssignment({
                 </div>
               </section>
 
-              <section className={styles.formSection}>
-                <h3 className={styles.sectionTitle}>
-                  ส่วนที่ 3 : กรุณาระบุข้อมูลเพิ่มเติม
-                </h3>
-
-                <div className={styles.noteWrap}>
-                  <textarea
-                    className={styles.noteInput}
-                    value={additionalNote}
-                    onChange={(event) => setAdditionalNote(event.target.value)}
-                    placeholder="กรุณาระบุข้อมูลเพิ่มเติม"
-                    maxLength={500}
-                    disabled={isBusy}
-                  />
-                  <div className={styles.characterCount}>
-                    {additionalNote.length}/500
-                  </div>
+              {masterDataError ? (
+                <div className={styles.errorMessage} role="alert">
+                  {masterDataError}
                 </div>
-              </section>
+              ) : null}
 
               {error ? (
                 <div className={styles.errorMessage} role="alert">
@@ -537,7 +472,7 @@ export default function WorkAssignment({
                   type="button"
                   className={styles.saveStayButton}
                   onClick={() => void handleSave("stay")}
-                  disabled={isBusy}
+                  disabled={isBusy || masterDataLoading || purposeId === null}
                 >
                   {isBusy ? "กำลังบันทึก..." : "บันทึกแต่ยังไม่ออกงาน"}
                 </button>
@@ -546,7 +481,7 @@ export default function WorkAssignment({
                   type="button"
                   className={styles.saveCheckoutButton}
                   onClick={() => void handleSave("checkout")}
-                  disabled={isBusy}
+                  disabled={isBusy || masterDataLoading || purposeId === null}
                 >
                   {isBusy ? "กำลังบันทึก..." : "บันทึกและออกงาน"}
                 </button>
@@ -565,158 +500,15 @@ export default function WorkAssignment({
       </main>
 
       {addModalOpen ? (
-        <div
-          className={styles.modalOverlay}
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) {
-              closeAddModal();
-            }
-          }}
-        >
-          <section
-            className={styles.modal}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="work-assignment-modal-title"
-          >
-            <h2 className={styles.modalHeader} id="work-assignment-modal-title">
-              เพิ่มข้อมูลสิ่งที่ดำเนินการเรียบร้อย
-            </h2>
-
-            <div className={styles.modalSectionTitle}>
-              <span>2.</span>
-              <span>สิ่งที่ดำเนินการเรียบร้อย</span>
-            </div>
-
-            <div className={styles.modalBody}>
-              <div className={styles.modalItemRow}>
-                <div className={styles.modalItemNumber}>
-                  2.{workItems.length + 1}
-                </div>
-
-                <div className={styles.modalField}>
-                  <label className={styles.modalLabel} htmlFor="work-item-type">
-                    โปรดเลือก <span aria-hidden="true">*</span>
-                  </label>
-
-                  <select
-                    id="work-item-type"
-                    className={styles.modalSelect}
-                    value={selectedWorkItemType}
-                    onChange={(event) => {
-                      const nextValue = event.target.value as
-                        WorkItemOptionValue | "";
-
-                      setSelectedWorkItemType(nextValue);
-
-                      if (nextValue !== "other") {
-                        setOtherDetail("");
-                      }
-
-                      setModalError("");
-                    }}
-                    disabled={isBusy}
-                    autoFocus
-                  >
-                    <option value="">-- โปรดเลือก --</option>
-                    {WORK_ITEM_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {selectedWorkItemType === "other" ? (
-                <div className={styles.modalField}>
-                  <label
-                    className={styles.modalLabel}
-                    htmlFor="work-item-other-detail"
-                  >
-                    รายละเอียด <span aria-hidden="true">*</span>
-                  </label>
-                  <textarea
-                    id="work-item-other-detail"
-                    className={styles.modalDetailInput}
-                    value={otherDetail}
-                    onChange={(event) => {
-                      setOtherDetail(event.target.value);
-                      setModalError("");
-                    }}
-                    placeholder="กรุณาระบุรายละเอียด"
-                    maxLength={250}
-                    disabled={isBusy}
-                  />
-                  <div className={styles.modalCharacterCount}>
-                    {otherDetail.length}/250
-                  </div>
-                </div>
-              ) : null}
-
-              <div className={styles.modalField}>
-                <div className={styles.modalLabel}>รูปภาพ (ไม่บังคับ)</div>
-
-                <div className={styles.modalImagePreview}>
-                  {modalImageDataUrl ? (
-                    <img src={modalImageDataUrl} alt="ภาพประกอบรายการใหม่" />
-                  ) : (
-                    <div className={styles.modalImagePlaceholder}>
-                      <FontAwesomeIcon icon={faImage} />
-                      <span>ยังไม่ได้เลือกรูปภาพ</span>
-                    </div>
-                  )}
-                </div>
-
-                <label className={styles.modalImagePicker}>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    onChange={(event) => void handleModalImageChange(event)}
-                    disabled={isBusy}
-                  />
-                  <FontAwesomeIcon icon={faImage} />
-                  {modalImageDataUrl ? "เปลี่ยนรูปภาพ" : "เลือกรูปภาพ"}
-                </label>
-
-                {modalImageName ? (
-                  <div className={styles.modalImageName}>{modalImageName}</div>
-                ) : null}
-              </div>
-
-              {modalError ? (
-                <div className={styles.modalError} role="alert">
-                  {modalError}
-                </div>
-              ) : null}
-            </div>
-
-            <div className={styles.modalActions}>
-              <button
-                type="button"
-                className={styles.modalCloseButton}
-                onClick={closeAddModal}
-                disabled={isBusy}
-              >
-                ปิดหน้าจอ
-              </button>
-
-              <button
-                type="button"
-                className={styles.modalSaveButton}
-                onClick={saveWorkItemFromModal}
-                disabled={
-                  isBusy ||
-                  !selectedWorkItemType ||
-                  (selectedWorkItemType === "other" && !otherDetail.trim())
-                }
-              >
-                บันทึก
-              </button>
-            </div>
-          </section>
-        </div>
+        <WorkItemModal
+          itemNumber={workItems.length + 1}
+          purposeOptions={purposeOptions}
+          workItemTypeOptions={workItemTypeOptions}
+          initialPurposeId={purposeId}
+          busy={isBusy}
+          onClose={closeAddModal}
+          onSave={saveWorkItemFromModal}
+        />
       ) : null}
     </>
   );

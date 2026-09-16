@@ -25,9 +25,10 @@ class ImageStorageService:
     """
     จัดการไฟล์รูปภาพของระบบ GUTS ESS
 
-    Phase 1:
+    ประเภทภาพ:
     - checkin
     - checkout
+    - work_report
 
     โครงสร้างไฟล์:
 
@@ -40,7 +41,10 @@ class ImageStorageService:
                         ├── checkin/
                         │   ├── 001.jpg
                         │   └── 002.jpg
-                        └── checkout/
+                        ├── checkout/
+                        │   ├── 001.jpg
+                        │   └── 002.jpg
+                        └── work_report/
                             ├── 001.jpg
                             └── 002.jpg
     """
@@ -65,13 +69,14 @@ class ImageStorageService:
     PUBLIC_UPLOAD_PREFIX: Final[str] = "/uploads"
 
     # ============================================================
-    # Phase 1 image types
+    # Allowed image types
     # ============================================================
 
     ALLOWED_IMAGE_TYPES: Final[frozenset[str]] = frozenset(
         {
             "checkin",
             "checkout",
+            "work_report",
         }
     )
 

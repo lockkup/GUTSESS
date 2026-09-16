@@ -168,6 +168,31 @@ from app.schemas.time_record_image import (
     TimeRecordImageCreate,
     TimeRecordImageResponse,
 )
+from app.schemas.work_report import (
+    WorkReportBase,
+    WorkReportCreate,
+    WorkReportResponse,
+    WorkReportUpdate,
+)
+from app.schemas.work_report_item import (
+    WorkReportItemBase,
+    WorkReportItemCreate,
+    WorkReportItemResponse,
+    WorkReportItemUpdate,
+)
+from app.schemas.work_report_item_type import (
+    WorkReportItemTypeBase,
+    WorkReportItemTypeCreate,
+    WorkReportItemTypeResponse,
+    WorkReportItemTypeUpdate,
+)
+from app.schemas.work_report_purpose import (
+    WorkReportPurposeBase,
+    WorkReportPurposeCreate,
+    WorkReportPurposeResponse,
+    WorkReportPurposeUpdate,
+)
+
 
 # ============================================================
 # Auth schemas ของระบบ Login ทีม
@@ -303,6 +328,22 @@ __all__ = [
     "TimeRecordImageBase",
     "TimeRecordImageCreate",
     "TimeRecordImageResponse",
+    "WorkReportBase",
+    "WorkReportCreate",
+    "WorkReportUpdate",
+    "WorkReportResponse",
+    "WorkReportItemBase",
+    "WorkReportItemCreate",
+    "WorkReportItemUpdate",
+    "WorkReportItemResponse",
+    "WorkReportItemTypeBase",
+    "WorkReportItemTypeCreate",
+    "WorkReportItemTypeUpdate",
+    "WorkReportItemTypeResponse",
+    "WorkReportPurposeBase",
+    "WorkReportPurposeCreate",
+    "WorkReportPurposeUpdate",
+    "WorkReportPurposeResponse",
     "EmployeeLogin",
     "EmployeeRegister",
     "AuthEmployeeResponse",
