@@ -1,4 +1,3 @@
-
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from math import atan2, cos, radians, sin, sqrt
@@ -60,8 +59,9 @@ _ALLOWED_MAP_RADIUS_METERS: Final[frozenset[int]] = frozenset({50, 70, 100})
 
 _NO_CROSS_DAY_INSPECTION_MODES: Final[frozenset[str]] = frozenset(
     {
+        "DAILY",
         "WEEKLY",
-        "SPLIT_MONTH",
+        "SPLIT_MONTH_WEEKDAY",
     }
 )
 
@@ -85,10 +85,13 @@ _WINDOW_INSPECTION_MODES: Final[frozenset[str]] = frozenset(
     }
 )
 
-# ใช้กติกาซ่อนหลังจบผลัดเฉพาะ EXACT_* และ FLEXIBLE_*
-# WEEKLY / SPLIT_MONTH ต้องคงพฤติกรรมเดิม
+# ใช้กติกาซ่อนหลังจบผลัดสำหรับ EXACT_*, FLEXIBLE_* และ SPLIT_MONTH
+# call_status 1/2 ยังแสดง completed ในผลัดปัจจุบัน
+# เมื่อหมดผลัดให้ซ่อนจนกว่าจะขึ้นรอบใหม่
 _CALL_TERMINAL_HIDE_MODES: Final[frozenset[str]] = (
-    _EXACT_INSPECTION_MODES | _WINDOW_INSPECTION_MODES
+    _EXACT_INSPECTION_MODES
+    | _WINDOW_INSPECTION_MODES
+    | frozenset({"SPLIT_MONTH"})
 )
 
 ShiftType = Literal["day", "night"]
@@ -1319,7 +1322,8 @@ class CheckpointAssignmentService:
             )
         )
 
-        # WEEKLY/SPLIT_MONTH หรือข้อมูลรอบไม่สมบูรณ์ ให้ล็อกเฉพาะวันงาน
+        # DAILY/WEEKLY/SPLIT_MONTH_WEEKDAY หรือข้อมูลรอบไม่สมบูรณ์
+        # ให้ล็อกเฉพาะวันงาน
         if inspection_period is None:
             period_start = resolved_period_anchor_work_date
             period_end = resolved_period_anchor_work_date
@@ -2473,9 +2477,10 @@ class CheckpointAssignmentService:
         )
 
         # กรอง Assignment ที่ค้างจากวันก่อน:
-        # - WEEKLY/SPLIT_MONTH ไม่แสดงข้ามวัน
+        # - DAILY/WEEKLY/SPLIT_MONTH_WEEKDAY ไม่แสดงข้ามวัน
         # - EXACT_* ใช้รอบจาก work_date ตามจำนวนวันของ inspection_mode
         # - FLEXIBLE_* ใช้ assignment_start_date/assignment_end_date ของ run
+        # - SPLIT_MONTH ใช้ assignment_start_date/assignment_end_date ของ run
         # - รองรับทั้ง in_progress และลูกตรวจแทน pending
         # - เมื่อพ้นรอบแล้วไม่แสดงงานค้างจากรอบเดิม
         rule_run_ids_for_cross_day = {
@@ -2894,7 +2899,7 @@ class CheckpointAssignmentService:
                     in terminal_call_assignment_ids_in_target_shift
                 )
 
-                # EXACT_* / FLEXIBLE_*:
+                # EXACT_* / FLEXIBLE_* / SPLIT_MONTH:
                 # call_status 1/2 = จบงาน แต่ยังคงแถว completed
                 # ในผลัดที่บันทึกการโทรไว้ก่อน เมื่อหมดผลัดจึงซ่อนจนขึ้นรอบใหม่
                 if (
