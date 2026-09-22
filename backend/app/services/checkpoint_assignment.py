@@ -1,5 +1,4 @@
 
-
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from math import atan2, cos, radians, sin, sqrt
@@ -84,6 +83,12 @@ _WINDOW_INSPECTION_MODES: Final[frozenset[str]] = frozenset(
         "FLEXIBLE_15",
         "FLEXIBLE_MONTHLY",
     }
+)
+
+# ใช้กติกาซ่อนหลังจบผลัดเฉพาะ EXACT_* และ FLEXIBLE_*
+# WEEKLY / SPLIT_MONTH ต้องคงพฤติกรรมเดิม
+_CALL_TERMINAL_HIDE_MODES: Final[frozenset[str]] = (
+    _EXACT_INSPECTION_MODES | _WINDOW_INSPECTION_MODES
 )
 
 ShiftType = Literal["day", "night"]
@@ -2036,6 +2041,49 @@ class CheckpointAssignmentService:
             else None
         )
 
+        # เก็บ Assignment ที่มีการโทรจบงาน (call_status 1/2)
+        # ภายใน "ผลัดที่กำลังเปิดดูและยังเป็นผลัดปัจจุบัน"
+        # เพื่อให้ completed ยังแสดงจนกว่าผลัดนั้นจะจบ
+        target_shift_start_datetime: datetime | None = None
+        target_shift_end_datetime: datetime | None = None
+        is_target_shift_current = False
+        terminal_call_assignment_ids_in_target_shift: set[int] = set()
+
+        if target_shift_info is not None:
+            (
+                target_shift_start_datetime,
+                target_shift_end_datetime,
+            ) = CheckpointAssignmentService._build_shift_datetime_window(
+                work_date=work_date,
+                start_time=target_shift_info["start_time"],
+                end_time=target_shift_info["end_time"],
+                crosses_midnight=bool(
+                    target_shift_info["crosses_midnight"]
+                ),
+            )
+            is_target_shift_current = (
+                target_shift_start_datetime
+                <= now
+                <= target_shift_end_datetime
+            )
+
+            if is_target_shift_current:
+                terminal_call_assignment_ids_in_target_shift = {
+                    int(assignment_id)
+                    for assignment_id in db.scalars(
+                        select(CheckpointAssignmentCall.assignment_id).where(
+                            CheckpointAssignmentCall.call_status.in_((1, 2)),
+                            CheckpointAssignmentCall.created_at
+                            >= target_shift_start_datetime,
+                            CheckpointAssignmentCall.created_at
+                            <= target_shift_end_datetime,
+                            CheckpointAssignmentCall.is_active.is_(True),
+                            CheckpointAssignmentCall.mark_flag.is_(False),
+                        )
+                    ).all()
+                    if assignment_id is not None
+                }
+
         # Alias สำหรับดึงข้อมูลพนักงานที่กำลังถือ Assignment อยู่
         # (กรณี assignment_status = "in_progress")
         InProgressEmployee = aliased(Employees)
@@ -2166,6 +2214,16 @@ class CheckpointAssignmentService:
                         CheckpointAssignment.due_datetime.is_not(None),
                         CheckpointAssignment.due_datetime >= now,
                     ),
+                    # EXACT/FLEXIBLE อาจจบด้วยการโทรในวันถัดมาของรอบ
+                    # ให้ completed ของผลัดปัจจุบันยังเป็น candidate จนหมดผลัด
+                    and_(
+                        CheckpointAssignment.work_date < work_date,
+                        CheckpointAssignment.schedule_rule_run_id.is_not(None),
+                        CheckpointAssignment.assignment_status == "completed",
+                        CheckpointAssignment.assignment_id.in_(
+                            terminal_call_assignment_ids_in_target_shift
+                        ),
+                    ),
                 )
             )
         )
@@ -2283,18 +2341,31 @@ class CheckpointAssignmentService:
             # ดึงงาน Rule Engine ที่ยังเปิดอยู่จากทั้งสองผลัดมาก่อน
             # เพื่อให้สามารถจำแนก EXACT_* และเปิดให้แสดงข้ามผลัดได้
             # จากนั้นจึงกรอง inspection_mode ที่ไม่เกี่ยวข้องด้านล่าง
-            stmt = stmt.where(
-                or_(
-                    CheckpointScheduleItem.shift_id == target_shift_id,
+            shift_visibility_conditions = [
+                CheckpointScheduleItem.shift_id == target_shift_id,
+                and_(
+                    CheckpointAssignment.schedule_rule_run_id.is_not(None),
+                    CheckpointAssignment.assignment_status.in_(
+                        ("pending", "in_progress")
+                    ),
+                    CheckpointAssignment.completed_at.is_(None),
+                ),
+            ]
+
+            # ถ้าโทรจบงานด้วย status 1/2 ในผลัดปัจจุบัน
+            # completed ต้องยังแสดงจนกว่าผลัดนั้นจะจบ
+            if terminal_call_assignment_ids_in_target_shift:
+                shift_visibility_conditions.append(
                     and_(
                         CheckpointAssignment.schedule_rule_run_id.is_not(None),
-                        CheckpointAssignment.assignment_status.in_(
-                            ("pending", "in_progress")
+                        CheckpointAssignment.assignment_status == "completed",
+                        CheckpointAssignment.assignment_id.in_(
+                            terminal_call_assignment_ids_in_target_shift
                         ),
-                        CheckpointAssignment.completed_at.is_(None),
-                    ),
+                    )
                 )
-            )
+
+            stmt = stmt.where(or_(*shift_visibility_conditions))
 
         stmt = stmt.order_by(
             CheckpointAssignment.work_date.asc(),
@@ -2369,8 +2440,18 @@ class CheckpointAssignmentService:
                     and row.get("started_at") is None
                     and row.get("completed_at") is None
                 )
+                is_exact_terminal_call_completed = (
+                    is_target_shift_current
+                    and inspection_mode in _EXACT_INSPECTION_MODES
+                    and row.get("assignment_status") == "completed"
+                    and int(row["assignment_id"])
+                    in terminal_call_assignment_ids_in_target_shift
+                )
 
-                if is_exact_pending:
+                if (
+                    is_exact_pending
+                    or is_exact_terminal_call_completed
+                ):
                     shift_filtered_rows.append(row)
 
             rows = shift_filtered_rows
@@ -2570,6 +2651,7 @@ class CheckpointAssignmentService:
             set[int],
         ] = {}
         completed_period_keys: set[tuple[int, date, date]] = set()
+        terminal_call_period_keys: set[tuple[int, date, date]] = set()
 
         if rule_run_ids:
             rule_state_stmt = (
@@ -2620,6 +2702,29 @@ class CheckpointAssignmentService:
             )
 
             rule_state_rows = db.execute(rule_state_stmt).mappings().all()
+
+            rule_state_assignment_ids = {
+                int(state_row["assignment_id"])
+                for state_row in rule_state_rows
+                if state_row["assignment_id"] is not None
+            }
+            terminal_call_assignment_ids: set[int] = set()
+
+            if rule_state_assignment_ids:
+                terminal_call_assignment_ids = {
+                    int(assignment_id)
+                    for assignment_id in db.scalars(
+                        select(CheckpointAssignmentCall.assignment_id).where(
+                            CheckpointAssignmentCall.assignment_id.in_(
+                                rule_state_assignment_ids
+                            ),
+                            CheckpointAssignmentCall.call_status.in_((1, 2)),
+                            CheckpointAssignmentCall.is_active.is_(True),
+                            CheckpointAssignmentCall.mark_flag.is_(False),
+                        )
+                    ).all()
+                    if assignment_id is not None
+                }
 
             state_assignment_ids = {
                 int(state_row["assignment_id"])
@@ -2696,6 +2801,9 @@ class CheckpointAssignmentService:
                         set(),
                     ).add(state_assignment_id)
 
+                if state_assignment_id in terminal_call_assignment_ids:
+                    terminal_call_period_keys.add(state_period_key)
+
                 if (
                     state_row["completed_at"] is not None
                     or state_status in {"completed", "repaired"}
@@ -2766,6 +2874,33 @@ class CheckpointAssignmentService:
                 if (
                     assignment_id
                     in takeover_pending_parent_assignment_ids
+                ):
+                    continue
+
+                visibility_rule_run_context = rule_run_contexts.get(
+                    schedule_rule_run_id
+                )
+                visibility_inspection_mode = str(
+                    (visibility_rule_run_context or {}).get(
+                        "inspection_mode"
+                    )
+                    or ""
+                ).strip().upper()
+
+                keep_terminal_call_visible_in_current_shift = (
+                    is_target_shift_current
+                    and row_status == "completed"
+                    and assignment_id
+                    in terminal_call_assignment_ids_in_target_shift
+                )
+
+                # EXACT_* / FLEXIBLE_*:
+                # call_status 1/2 = จบงาน แต่ยังคงแถว completed
+                # ในผลัดที่บันทึกการโทรไว้ก่อน เมื่อหมดผลัดจึงซ่อนจนขึ้นรอบใหม่
+                if (
+                    visibility_inspection_mode in _CALL_TERMINAL_HIDE_MODES
+                    and row_period_key in terminal_call_period_keys
+                    and not keep_terminal_call_visible_in_current_shift
                 ):
                     continue
 
