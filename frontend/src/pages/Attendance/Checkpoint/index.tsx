@@ -42,7 +42,10 @@ import {
   reserveCheckpointAssignment,
   takeoverCheckpointAssignment,
 } from "@/services/checkpointAssignmentService";
-import { createCheckpointAssignmentCall } from "@/services/checkpointAssignmentCallService";
+import {
+  createCheckpointAssignmentCall,
+  getLatestCheckpointAssignmentCall,
+} from "@/services/checkpointAssignmentCallService";
 import { verifyCheckpointLocation } from "@/services/checkpointLocationService";
 import api from "@/lib/api";
 
@@ -1505,15 +1508,36 @@ export default function Checkpoint({
     }, 0);
   };
 
-  const openCallModal = (row: CheckRow) => {
+  const openCallModal = async (row: CheckRow) => {
     if (!isSelectedCurrentShift) {
       openOutOfAreaModal(selectedShiftMismatchMessage);
       return;
     }
 
-    setSelectedRow(row);
     resetCallForm();
-    setIsCallModalOpen(true);
+
+    try {
+      const latestCall = await getLatestCheckpointAssignmentCall(
+        row.assignmentId,
+      );
+
+      if (latestCall) {
+        setContactDetail(latestCall.contact_detail ?? "");
+        setCallNote(latestCall.call_note ?? "");
+        setCallStatus(normalizeCallStatus(latestCall.call_status) ?? 1);
+      }
+
+      setSelectedRow(row);
+      setIsCallModalOpen(true);
+    } catch (error) {
+      logDevError("[Checkpoint] LOAD LATEST CALL ERROR", error);
+
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "โหลดข้อมูลการโทรล่าสุดไม่สำเร็จ",
+      );
+    }
   };
 
   const closeCallModal = () => {
@@ -2992,7 +3016,7 @@ export default function Checkpoint({
                                 onClick={(event) => {
                                   event.preventDefault();
                                   event.stopPropagation();
-                                  openCallModal(row);
+                                  void openCallModal(row);
                                 }}
                                 onPointerDown={(event) => {
                                   event.stopPropagation();
