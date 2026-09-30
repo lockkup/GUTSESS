@@ -1,0 +1,704 @@
+:root {
+  --work-record-page-title-font-size: 16px;
+  --work-record-unit-status-font-size: 15px;
+  --work-record-section-title-font-size: 16px;
+  --work-record-item-font-size: 16px;
+  --work-record-button-font-size: 18px;
+  --work-record-blue: #024b76;
+  --work-record-blue-dark: #013a5a;
+  --work-record-red: #ff0a0a;
+  --work-record-text: #1b2b4a;
+  --work-record-line: #7c7c7c;
+  --work-record-border: rgba(2, 75, 118, 0.18);
+}
+
+/* ===== Page wrapper ===== */
+
+.pageCard {
+  width: 100%;
+  min-width: 0;
+}
+
+.pageTitle {
+  width: 100%;
+  margin: 14px 0 7px;
+  padding: 0 8px;
+  color: var(--work-record-text);
+  font-size: var(--work-record-page-title-font-size);
+  font-weight: 900;
+  line-height: 1.3;
+  text-align: left;
+}
+
+.unitStatus {
+  width: 100%;
+  margin: 0 0 13px;
+  padding: 0 8px;
+  color: #111827;
+  font-size: var(--work-record-unit-status-font-size);
+  font-weight: 400;
+  line-height: 1.45;
+  text-align: left;
+}
+
+.unitName {
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+
+.unitStatus > div + div {
+  margin-top: 3px;
+}
+
+.formCard {
+  width: 100%;
+  overflow: hidden;
+  border: 2px solid var(--work-record-border);
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.1);
+}
+
+/* ===== Accordion sections ===== */
+
+.section {
+  border-bottom: 1px solid var(--work-record-line);
+}
+
+.sectionHeader,
+.innerSectionHeader {
+  width: 100%;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 0;
+  background: linear-gradient(
+    90deg,
+    var(--work-record-blue),
+    var(--work-record-blue-dark)
+  );
+  color: #fff;
+  font: inherit;
+  font-size: var(--work-record-section-title-font-size);
+  font-weight: 900;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+}
+
+.summaryHeader {
+  background: var(--work-record-red);
+}
+
+.innerSection {
+  border-bottom: 1px solid var(--work-record-line);
+}
+
+.innerSectionHeader {
+  min-height: 42px;
+  font-size: 14px;
+}
+
+.sectionBody {
+  background: #fff;
+}
+
+.chevron {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  margin-right: 1px;
+  color: #fff;
+  transform: rotate(0deg);
+  transform-origin: center;
+  transition: transform 0.15s ease;
+}
+
+.chevronClosed {
+  transform: rotate(-90deg);
+}
+
+/* ===== Section 1 ===== */
+
+.checkRow {
+  min-height: 43px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 7px 11px;
+  border-bottom: 1px solid var(--work-record-line);
+  color: #111;
+  font-size: var(--work-record-item-font-size);
+}
+
+.checkRow input {
+  width: 26px;
+  height: 26px;
+  margin: 0;
+}
+
+/* ===== Other assignment detail ===== */
+
+.otherAssignmentBlock {
+  padding: 10px 11px 12px 47px;
+  border-bottom: 1px solid var(--work-record-line);
+  background: #f8fafc;
+}
+
+.otherAssignmentLabel {
+  display: block;
+  margin-bottom: 6px;
+  color: #111;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.otherAssignmentInput {
+  width: 100%;
+  min-height: 74px;
+  padding: 8px 10px;
+  box-sizing: border-box;
+  border: 1px solid #9ca3af;
+  border-radius: 5px;
+  background: #fff;
+  color: #111;
+  font: inherit;
+  font-size: 15px;
+  line-height: 1.4;
+  resize: vertical;
+}
+
+.otherAssignmentInput:focus {
+  border-color: var(--work-record-blue);
+  outline: 2px solid rgba(2, 75, 118, 0.12);
+  outline-offset: 0;
+}
+
+.otherAssignmentInput::placeholder {
+  color: #8a8a8a;
+}
+
+/* ===== Signature area ===== */
+
+.signatureBlock {
+  padding: 12px 14px 9px;
+  border-bottom: 1px solid var(--work-record-line);
+  color: #111;
+  font-size: 14px;
+}
+
+.signatureTopRow {
+  width: 100%;
+  max-width: 270px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 110px;
+  gap: 5px;
+  align-items: center;
+  overflow: hidden;
+}
+
+.signatureButton {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  min-height: 34px;
+  padding: 0 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 0;
+  border-bottom: 1px solid #333;
+  border-radius: 0;
+  background: transparent;
+  color: #555;
+  font: inherit;
+  font-size: 12px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.signatureImage {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: 30px;
+  max-height: 30px;
+  object-fit: contain;
+  object-position: center;
+  pointer-events: none;
+}
+
+.signatureNameRow {
+  width: 100%;
+  max-width: 270px;
+  margin: 3px auto 0;
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 110px;
+  gap: 5px;
+  align-items: center;
+}
+
+.signatureNameSpacer {
+  display: block;
+}
+
+.signatureNameValue {
+  min-width: 0;
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-bottom: 1px solid #333;
+  font-size: 13px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.editSignatureButton {
+  min-height: 24px;
+  padding: 0 0 0 8px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  border: 0;
+  background: transparent;
+  color: #0b6797;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.positionRow {
+  width: 100%;
+  max-width: 270px;
+  margin: 7px auto 0;
+  display: grid;
+  grid-template-columns: 75px minmax(0, 1fr);
+  align-items: start;
+  gap: 5px;
+}
+
+.positionValue {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 22px;
+  padding: 1px 2px 3px;
+  box-sizing: border-box;
+  border-bottom: 1px solid #333;
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+
+.signatureDateTime {
+  width: 100%;
+  margin: 8px auto 0;
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: center;
+}
+
+/* ===== Section 2 / table rows ===== */
+
+.workItemRow {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  min-height: 38px;
+  border-top: 1px solid var(--work-record-line);
+}
+
+.workItemNumber {
+  display: flex;
+  align-items: center;
+  padding: 7px 11px;
+  color: #111;
+  font-size: 15px;
+}
+
+.workItemContent {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 11px;
+  border-left: 1px solid var(--work-record-line);
+}
+
+/* แสดงชื่อรายการเพียง 1 บรรทัด และตัดด้วย ... */
+
+.workItemTitle {
+  min-width: 0;
+  flex: 1;
+  color: #111;
+  font-size: 15px;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workItemActions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+}
+
+.workItemActions button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #333;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.tableRow {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  min-height: 38px;
+  border-top: 1px solid var(--work-record-line);
+}
+
+.tableNumber,
+.tableText,
+.tableAddButton {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  padding: 7px 11px;
+  color: #111;
+  font-size: 15px;
+}
+
+.tableText,
+.tableAddButton {
+  border-left: 1px solid var(--work-record-line);
+}
+
+.tableAddButton {
+  width: 100%;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
+  border-radius: 0;
+  background: #fff;
+  color: #111;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 400;
+  text-align: center;
+  cursor: pointer;
+}
+
+.addIcon {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 17px;
+  display: block;
+}
+
+.tableAddButton:hover:not(:disabled) {
+  background: #f7f7f7;
+}
+
+.tableAddButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* ===== Section 5 ===== */
+
+.section5Text {
+  padding: 9px 11px 10px;
+  color: #111;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.section5ApprovalArea {
+  border-top: 1px solid var(--work-record-line);
+  padding: 0 11px 14px;
+  color: #111;
+  font-size: 14px;
+}
+
+.approvalGroup {
+  padding-top: 11px;
+}
+
+.approvalGroup + .approvalGroup {
+  margin-top: 5px;
+}
+
+.approvalTitle {
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.approvalCheckRow {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-left: 18px;
+  color: #111;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.approvalCheckRow input {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  margin: 0;
+}
+
+.approvalDate {
+  margin-top: 3px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.section5Note {
+  margin-top: 17px;
+  color: #f40000;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.section5NoteTitle {
+  margin-bottom: 2px;
+  font-weight: 700;
+}
+
+.section5NoteGap {
+  margin-top: 14px;
+}
+
+/* ===== Error ===== */
+
+.errorMessage {
+  margin: 10px 12px;
+  padding: 9px 10px;
+  border: 1px solid rgba(214, 0, 0, 0.25);
+  background: rgba(214, 0, 0, 0.06);
+  color: #b00000;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+/* ===== Bottom actions ===== */
+
+/* Flow ปกติ: ยกเลิก / บันทึก */
+.footerBar {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+  padding: 11px 14px calc(13px + env(safe-area-inset-bottom));
+  background: #fff;
+}
+
+.footerBar button {
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 9px;
+  color: #fff;
+  font: inherit;
+  font-size: var(--work-record-button-font-size);
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.cancelButton {
+  background: #f40000;
+}
+
+.saveButton {
+  background: #0b5f9d;
+}
+
+.footerBar button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/*
+ * Flow "กดลงเวลาออก" และมี work_report แล้ว:
+ * แถวบน  = บันทึกรายงาน / บันทึกและกดออกงาน
+ * แถวล่าง = ย้อนกลับ
+ */
+.checkoutFooterBar {
+  display: grid;
+  gap: 10px;
+  padding: 11px 14px calc(13px + env(safe-area-inset-bottom));
+  background: #fff;
+}
+
+.checkoutActionRow {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.saveReportButton,
+.saveAndCheckoutButton {
+  width: 100%;
+  height: clamp(56px, 6.6vw, 62px);
+  padding: 8px 10px;
+  border-radius: 30px;
+  color: #fff;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1.2;
+  cursor: pointer;
+  box-shadow: 0 10px 16px rgba(0, 0, 0, 0.22);
+  transition:
+    transform 0.08s ease,
+    opacity 0.15s ease,
+    filter 0.15s ease;
+}
+
+.saveReportButton {
+  border: 2px solid #0b5f9d;
+  background: #0b5f9d;
+}
+
+.saveAndCheckoutButton {
+  border: 2px solid #f40000;
+  background: #f40000;
+}
+
+.saveReportButton:hover:not(:disabled),
+.saveAndCheckoutButton:hover:not(:disabled) {
+  filter: brightness(0.94);
+}
+
+.saveReportButton:active:not(:disabled),
+.saveAndCheckoutButton:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+/*
+ * รูปแบบเดียวกับปุ่มย้อนกลับสีดำของระบบ
+ * แนว .guts-btn-back
+ */
+.backButton {
+  width: 100%;
+  height: clamp(56px, 6.6vw, 62px);
+  padding: 8px 14px;
+  border: 2px solid #000;
+  border-radius: 30px;
+  background: #000;
+  color: #fff;
+  font: inherit;
+  font-size: clamp(16px, 2.1vw, 18px);
+  font-weight: 900;
+  line-height: 1.2;
+  cursor: pointer;
+  box-shadow: 0 10px 16px rgba(0, 0, 0, 0.22);
+  transition:
+    transform 0.08s ease,
+    opacity 0.15s ease;
+}
+
+.backButton:hover:not(:disabled) {
+  opacity: 0.92;
+}
+
+.backButton:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.saveReportButton:disabled,
+.saveAndCheckoutButton:disabled,
+.backButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* ===== Responsive ===== */
+
+@media (max-width: 420px) {
+  .pageTitle {
+    padding-right: 6px;
+    padding-left: 6px;
+  }
+
+  .unitStatus {
+    padding-right: 6px;
+    padding-left: 6px;
+  }
+
+  .sectionHeader,
+  .innerSectionHeader {
+    padding: 10px 11px;
+  }
+}
+
+@media (max-width: 380px) {
+  .signatureTopRow,
+  .signatureNameRow {
+    max-width: 260px;
+    grid-template-columns: 44px minmax(0, 1fr) 108px;
+  }
+
+  .positionRow {
+    max-width: 260px;
+  }
+
+  .footerBar,
+  .checkoutFooterBar {
+    padding-right: 11px;
+    padding-left: 11px;
+  }
+
+  .footerBar,
+  .checkoutActionRow {
+    gap: 8px;
+  }
+
+  .saveReportButton,
+  .saveAndCheckoutButton {
+    font-size: 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chevron {
+    transition: none;
+  }
+}

@@ -39,6 +39,10 @@ class PatrolReportResponse(BaseModel):
 
     id: int = Field(..., ge=1)
 
+    # เชื่อมรายการรายงานกับ time_record
+    # ใช้สำหรับดึง work_report / work_report_item / รูปประกอบใน PDF
+    timeRecordId: int | None = Field(default=None, ge=1)
+
     contractCode: str
     siteName: str
     status: PatrolStatus

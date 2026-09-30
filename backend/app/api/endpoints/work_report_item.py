@@ -1,13 +1,15 @@
-
-
 from fastapi import APIRouter, Depends, Path, Query, status
+
 from sqlalchemy.orm import Session
 
 from app.core import get_db
 from app.core.constants import DBConstants
+
+from app.schemas.time_record_image import TimeRecordImageResponse
 from app.schemas.work_report_item import (
     WorkReportItemAction,
     WorkReportItemCreate,
+    WorkReportItemImagesSave,
     WorkReportItemResponse,
     WorkReportItemUpdate,
 )
@@ -58,6 +60,41 @@ def get_work_report_items(
         work_item_type_id=work_item_type_id,
         is_active=is_active,
         include_deleted=include_deleted,
+    )
+
+
+@router.get(
+    "/{work_report_item_id}/images",
+    response_model=list[TimeRecordImageResponse],
+    status_code=status.HTTP_200_OK,
+)
+def get_work_report_item_images(
+    work_report_item_id: int = Path(..., gt=0),
+    db: Session = Depends(get_db),
+) -> list[TimeRecordImageResponse]:
+    return WorkReportItemService.get_work_report_item_images(
+        db=db,
+        work_report_item_id=work_report_item_id,
+    )
+
+
+@router.post(
+    "/{work_report_item_id}/images",
+    response_model=list[TimeRecordImageResponse],
+    status_code=status.HTTP_200_OK,
+)
+def save_work_report_item_images(
+    payload: WorkReportItemImagesSave,
+    work_report_item_id: int = Path(..., gt=0),
+    db: Session = Depends(get_db),
+) -> list[TimeRecordImageResponse]:
+    return WorkReportItemService.save_work_report_item_images(
+        db=db,
+        work_report_item_id=work_report_item_id,
+        image_base64_values=payload.image_base64_values,
+        updated_by=payload.updated_by,
+        image_ids=payload.image_ids,
+        deleted_image_ids=payload.deleted_image_ids,
     )
 
 

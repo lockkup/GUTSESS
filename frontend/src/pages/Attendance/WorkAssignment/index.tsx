@@ -16,8 +16,6 @@ import {
   faTrashCan,
 } from "@fortawesome/free-solid-svg-icons";
 
-import WorkItemModal from "@/components/WorkItemModal";
-import type { WorkItemModalValue } from "@/components/WorkItemModal";
 import styles from "./WorkAssignment.module.css";
 
 export type VisitPurpose = string;
@@ -64,6 +62,8 @@ type Props = {
   }>;
 
   busy?: boolean;
+
+  onOpenWorkRecordReport: () => void;
   onBack: () => void;
   onSave: (
     payload: WorkAssignmentPayload,
@@ -132,6 +132,7 @@ export default function WorkAssignment({
   checkout = null,
   initialWorkItems,
   busy = false,
+  onOpenWorkRecordReport,
   onBack,
   onSave,
 }: Props) {
@@ -161,7 +162,6 @@ export default function WorkAssignment({
   const [purposeId, setPurposeId] = useState<number | null>(null);
   const [workItems, setWorkItems] = useState<WorkItem[]>(preparedInitialItems);
   const additionalNote = "";
-  const [addModalOpen, setAddModalOpen] = useState(false);
   const [masterDataLoading, setMasterDataLoading] = useState(true);
   const [masterDataError, setMasterDataError] = useState("");
   const [internalBusy, setInternalBusy] = useState(false);
@@ -234,36 +234,6 @@ export default function WorkAssignment({
       active = false;
     };
   }, []);
-
-  function openAddModal() {
-    setError("");
-    setAddModalOpen(true);
-  }
-
-  function closeAddModal() {
-    if (isBusy) return;
-
-    setAddModalOpen(false);
-  }
-
-  function saveWorkItemFromModal(item: WorkItemModalValue) {
-    setPurposeId(item.purposeId);
-    setWorkItems((current) => [
-      ...current,
-      {
-        id: createWorkItemId(),
-        workItemTypeId: item.workItemTypeId,
-        workItemCode: item.workItemCode,
-        workItemDetail: item.workItemDetail,
-        requireDetail: item.requireDetail,
-        title: item.title,
-        imageName: item.imageName,
-        imageDataUrl: item.imageDataUrl,
-      },
-    ]);
-    setAddModalOpen(false);
-    setError("");
-  }
 
   function removeWorkItem(id: string) {
     setWorkItems((current) => current.filter((item) => item.id !== id));
@@ -383,7 +353,7 @@ export default function WorkAssignment({
                 <button
                   type="button"
                   className={styles.addButton}
-                  onClick={openAddModal}
+                  onClick={onOpenWorkRecordReport}
                   disabled={
                     isBusy ||
                     masterDataLoading ||
@@ -499,17 +469,6 @@ export default function WorkAssignment({
         </div>
       </main>
 
-      {addModalOpen ? (
-        <WorkItemModal
-          itemNumber={workItems.length + 1}
-          purposeOptions={purposeOptions}
-          workItemTypeOptions={workItemTypeOptions}
-          initialPurposeId={purposeId}
-          busy={isBusy}
-          onClose={closeAddModal}
-          onSave={saveWorkItemFromModal}
-        />
-      ) : null}
     </>
   );
 }

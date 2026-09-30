@@ -15,6 +15,7 @@ const rawApiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? "").trim();
  *   http://127.0.0.1:10000
  *   https://xxxxx.trycloudflare.com/api
  */
+
 const sameOriginValues = ["same-origin", "sameorigin", "same_origin"];
 
 const normalizedRawApiBaseUrl = rawApiBaseUrl.toLowerCase();
@@ -86,7 +87,6 @@ function isPublicAuthPath(path: string) {
 
 function buildUrl(path: string, params?: QueryParams) {
   const normalizedPath = normalizePath(path);
-
   const url = new URL(`${API_ORIGIN}${normalizedPath}`);
 
   if (params) {
@@ -264,10 +264,19 @@ const api = {
       body,
     }),
 
+  // ของเดิม: DELETE แบบ query params
   delete: <T = void>(path: string, params?: QueryParams) =>
     request<T>(path, {
       method: "DELETE",
       params,
+    }),
+
+  // เพิ่มใหม่: DELETE แบบ JSON body
+  // ใช้กับ endpoint ที่รับ Action schema เช่น { updated_by: "632070" }
+  deleteBody: <T = void>(path: string, body?: unknown) =>
+    request<T>(path, {
+      method: "DELETE",
+      body,
     }),
 };
 

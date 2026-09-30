@@ -33,12 +33,9 @@ class TimeRecordImage(Base):
         UniqueConstraint(
             "time_record_id",
             "image_type",
+            "image_scope_id",
             "sequence_no",
-            name="uq_time_record_image_type_sequence",
-        ),
-        UniqueConstraint(
-            "work_report_item_id",
-            name="uq_time_record_image_work_report_item",
+            name="uq_time_record_image_scope_sequence",
         ),
         CheckConstraint(
             "sequence_no > 0",
@@ -48,6 +45,10 @@ class TimeRecordImage(Base):
             "ix_time_record_image_time_record_type",
             "time_record_id",
             "image_type",
+        ),
+        Index(
+            "ix_time_record_image_work_report_item",
+            "work_report_item_id",
         ),
     )
 
@@ -80,6 +81,13 @@ class TimeRecordImage(Base):
     image_type: Mapped[str] = mapped_column(
         String(20),
         nullable=False,
+    )
+
+    image_scope_id: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default=text("0"),
     )
 
     sequence_no: Mapped[int] = mapped_column(

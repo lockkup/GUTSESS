@@ -1,0 +1,418 @@
+:root {
+  --work-item-blue: #0b6797;
+  --work-item-blue-dark: #084c7c;
+  --work-item-red: #f40000;
+  --work-item-text: #111827;
+  --work-item-muted: #8994a8;
+  --work-item-line: #cfd8e3;
+}
+
+/* ===== Modal ===== */
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.58);
+}
+
+.modal {
+  width: min(100%, 430px);
+  max-height: calc(100dvh - 16px);
+  overflow: auto;
+  border: 1px solid #d8e2ec;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.24);
+}
+
+.modalHeader {
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px 9px 14px;
+  background: var(--work-item-blue);
+  color: #fff;
+}
+
+.modalHeader h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.closeIconButton {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.closeIconButton:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.closeIconButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.modalBody {
+  padding: 12px 13px 10px;
+}
+
+/* ===== Form ===== */
+
+.itemField,
+.detailField {
+  min-width: 0;
+}
+
+.itemLabel,
+.detailLabel {
+  display: block;
+  margin: 0 0 6px;
+  color: var(--work-item-text);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.requiredMark {
+  margin-left: 2px;
+  color: #f00;
+}
+
+/* ช่องเลือกให้เป็นแนวเดียวกับ Signature Modal */
+
+.modalSelect {
+  width: 100%;
+  height: 42px;
+  min-height: 42px;
+  padding: 8px 34px 8px 11px;
+  border: 1px solid var(--work-item-line);
+  border-radius: 11px;
+  outline: none;
+  background: #fff;
+  color: var(--work-item-text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.modalSelect:focus,
+.detailInput:focus {
+  border-color: var(--work-item-blue);
+  box-shadow: 0 0 0 3px rgba(11, 103, 151, 0.12);
+}
+
+/* ช่องรายละเอียดแสดงตลอด */
+
+.detailField {
+  margin-top: 12px;
+}
+
+.detailInput {
+  width: 100%;
+  min-height: 92px;
+  display: block;
+  resize: vertical;
+  padding: 9px 11px;
+  border: 1px solid var(--work-item-line);
+  border-radius: 11px;
+  outline: none;
+  background: #fff;
+  color: var(--work-item-text);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.45;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.detailInput::placeholder {
+  color: #9aa5b5;
+}
+
+.characterCount {
+  margin-top: 4px;
+  color: #8a94a6;
+  font-size: 11px;
+  text-align: right;
+}
+
+/* ===== Images ===== */
+
+.imageGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.imageSlot {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  min-height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 6px;
+  border: 1px solid var(--work-item-line);
+  border-radius: 10px;
+  background: #f7f9fb;
+  color: #8a94a6;
+  font-size: 12px;
+}
+
+.imageSlot img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: scale-down;
+  object-position: center;
+  background: transparent;
+}
+
+/* ปุ่มจัดการรูปเดิม/รูปใหม่ */
+
+.imageActions {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.replaceImageButton {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  width: 100%;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 0 0 9px 9px;
+  background: var(--work-item-blue);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+  user-select: none;
+  box-sizing: border-box;
+}
+
+.replaceImageButton:hover {
+  background: var(--work-item-blue-dark);
+}
+
+.replaceImageButton[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.removeImageButton {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  z-index: 2;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(244, 0, 0, 0.92);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  pointer-events: auto;
+  box-shadow: 0 2px 7px rgba(15, 23, 42, 0.22);
+}
+
+.removeImageButton:hover:not(:disabled) {
+  background: #c90000;
+}
+
+.removeImageButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.imagePickerButton {
+  width: 100%;
+  min-height: 42px;
+  margin: 11px auto 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--work-item-blue);
+  color: #fff;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.imagePickerButton input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.imagePickerDisabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.imageCount {
+  margin-top: 5px;
+  color: var(--work-item-muted);
+  font-size: 11px;
+  text-align: center;
+}
+
+/* ===== Error ===== */
+
+.modalError {
+  margin-top: 12px;
+  padding: 8px 10px;
+  border: 1px solid rgba(214, 0, 0, 0.25);
+  border-radius: 8px;
+  background: rgba(214, 0, 0, 0.06);
+  color: #b00000;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+/* ===== Actions ===== */
+
+.modalActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+  padding: 8px 13px 13px;
+  background: #fff;
+}
+
+.cancelButton,
+.saveButton {
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.cancelButton {
+  background: var(--work-item-red);
+  color: #fff;
+}
+
+.saveButton {
+  background: var(--work-item-blue);
+  color: #fff;
+}
+
+.cancelButton:disabled,
+.saveButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* ===== Responsive ===== */
+
+@media (max-width: 360px) {
+  .modalOverlay {
+    padding: 4px;
+  }
+
+  .modal {
+    width: 100%;
+    max-height: calc(100dvh - 8px);
+    border-radius: 12px;
+  }
+
+  .modalBody {
+    padding-right: 11px;
+    padding-left: 11px;
+  }
+
+  .imageGrid {
+    gap: 8px;
+  }
+
+  .replaceImageButton {
+    min-height: 30px;
+    padding: 5px 6px;
+    font-size: 11px;
+  }
+
+  .removeImageButton {
+    top: 4px;
+    right: 4px;
+    width: 24px;
+    height: 24px;
+    font-size: 12px;
+  }
+
+  .modalActions {
+    gap: 7px;
+    padding-right: 11px;
+    padding-left: 11px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modalSelect,
+  .detailInput,
+  .closeIconButton,
+  .replaceImageButton,
+  .removeImageButton,
+  .cancelButton,
+  .saveButton {
+    transition: none;
+  }
+}

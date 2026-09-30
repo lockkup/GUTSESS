@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -7,61 +5,59 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
-    Index,
     Integer,
+    SmallInteger,
     String,
     UniqueConstraint,
     text,
 )
-from sqlalchemy.dialects.mysql import SMALLINT
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.constants import DBConstants
 from app.core.orm import Base
 
 if TYPE_CHECKING:
-    from app.models.work_report_purpose_selection import (
-        WorkReportPurposeSelection,
-    )
+    from app.models.work_report import WorkReport
 
 
-class WorkReportPurpose(Base):
-    __tablename__ = "work_report_purpose"
+class WorkReportDetail(Base):
+    __tablename__ = "work_report_detail"
 
     __table_args__ = (
         UniqueConstraint(
-            "purpose_code",
-            name="uq_work_report_purpose_code",
-        ),
-        Index(
-            "ix_work_report_purpose_active_order",
-            "is_active",
-            "mark_flag",
-            "display_order",
+            "work_report_id",
+            "section_no",
+            "sequence_no",
+            name="uq_work_report_detail_sequence",
         ),
     )
 
-    purpose_id: Mapped[int] = mapped_column(
+    work_report_detail_id: Mapped[int] = mapped_column(
         Integer,
         primary_key=True,
         autoincrement=True,
     )
 
-    purpose_code: Mapped[str] = mapped_column(
-        String(30),
+    work_report_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("work_report.work_report_id"),
+        nullable=False,
+        index=True,
+    )
+
+    section_no: Mapped[int] = mapped_column(
+        SmallInteger,
         nullable=False,
     )
 
-    purpose_name: Mapped[str] = mapped_column(
-        String(100),
+    sequence_no: Mapped[int] = mapped_column(
+        Integer,
         nullable=False,
     )
 
-    display_order: Mapped[int] = mapped_column(
-        SMALLINT(unsigned=True),
+    detail: Mapped[str] = mapped_column(
+        String(500),
         nullable=False,
-        default=0,
-        server_default=text("0"),
     )
 
     is_active: Mapped[bool] = mapped_column(
@@ -104,13 +100,6 @@ class WorkReportPurpose(Base):
         index=True,
     )
 
-    # ============================================================
-    # Work report purpose selections
-    # ============================================================
-
-    work_report_purpose_selections: Mapped[
-        list["WorkReportPurposeSelection"]
-    ] = relationship(
-        "WorkReportPurposeSelection",
-        back_populates="purpose",
+    work_report: Mapped["WorkReport"] = relationship(
+        "WorkReport",
     )

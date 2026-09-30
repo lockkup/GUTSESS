@@ -174,6 +174,21 @@ from app.schemas.work_report import (
     WorkReportResponse,
     WorkReportUpdate,
 )
+
+from app.schemas.work_report_document_sequence import (
+    WorkReportDocumentSequenceBase,
+    WorkReportDocumentSequenceCreate,
+    WorkReportDocumentSequenceResponse,
+    WorkReportDocumentSequenceUpdate,
+)
+
+from app.schemas.work_report_detail import (
+    WorkReportDetailAction,
+    WorkReportDetailBase,
+    WorkReportDetailCreate,
+    WorkReportDetailResponse,
+    WorkReportDetailUpdate,
+)
 from app.schemas.work_report_item import (
     WorkReportItemBase,
     WorkReportItemCreate,
@@ -191,6 +206,13 @@ from app.schemas.work_report_purpose import (
     WorkReportPurposeCreate,
     WorkReportPurposeResponse,
     WorkReportPurposeUpdate,
+)
+from app.schemas.work_report_purpose_selection import (
+    WorkReportPurposeSelectionAction,
+    WorkReportPurposeSelectionBase,
+    WorkReportPurposeSelectionCreate,
+    WorkReportPurposeSelectionResponse,
+    WorkReportPurposeSelectionUpdate,
 )
 
 
@@ -332,6 +354,15 @@ __all__ = [
     "WorkReportCreate",
     "WorkReportUpdate",
     "WorkReportResponse",
+    "WorkReportDocumentSequenceBase",
+    "WorkReportDocumentSequenceCreate",
+    "WorkReportDocumentSequenceUpdate",
+    "WorkReportDocumentSequenceResponse",
+    "WorkReportDetailBase",
+    "WorkReportDetailCreate",
+    "WorkReportDetailUpdate",
+    "WorkReportDetailAction",
+    "WorkReportDetailResponse",
     "WorkReportItemBase",
     "WorkReportItemCreate",
     "WorkReportItemUpdate",
@@ -344,6 +375,11 @@ __all__ = [
     "WorkReportPurposeCreate",
     "WorkReportPurposeUpdate",
     "WorkReportPurposeResponse",
+    "WorkReportPurposeSelectionBase",
+    "WorkReportPurposeSelectionCreate",
+    "WorkReportPurposeSelectionUpdate",
+    "WorkReportPurposeSelectionAction",
+    "WorkReportPurposeSelectionResponse",
     "EmployeeLogin",
     "EmployeeRegister",
     "AuthEmployeeResponse",

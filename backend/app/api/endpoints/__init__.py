@@ -32,9 +32,13 @@ from .site_location import router as site_location_router
 from .site_location_change import router as site_location_change_router
 from .time_record import router as time_record_router
 from .work_report import router as work_report_router
+from .work_report_detail import router as work_report_detail_router
 from .work_report_item import router as work_report_item_router
 from .work_report_item_type import router as work_report_item_type_router
 from .work_report_purpose import router as work_report_purpose_router
+from .work_report_purpose_selection import (
+    router as work_report_purpose_selection_router,
+)
 
 
 api_router = APIRouter()
@@ -77,7 +81,7 @@ api_router.include_router(
 api_router.include_router(
     checkpoint_schedule_router,
     prefix="/checkpoint-schedules",
-    tags=["checkpoint_s-changes"],
+    tags=["checkpoint-s-changes"],
 )
 
 api_router.include_router(
@@ -213,7 +217,19 @@ api_router.include_router(
 )
 
 api_router.include_router(
+    work_report_detail_router,
+    prefix="/work-report-details",
+    tags=["work_report_details"],
+)
+
+api_router.include_router(
     work_report_item_router,
     prefix="/work-report-items",
     tags=["work_report_items"],
+)
+
+api_router.include_router(
+    work_report_purpose_selection_router,
+    prefix="/work-report-purpose-selections",
+    tags=["work_report_purpose_selections"],
 )

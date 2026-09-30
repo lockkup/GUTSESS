@@ -29,9 +29,12 @@ from .site_location_change import SiteLocationChange
 from .time_record import TimeRecord
 from .time_record_image import TimeRecordImage
 from .work_report import WorkReport
+from .work_report_document_sequence import WorkReportDocumentSequence
+from .work_report_detail import WorkReportDetail
 from .work_report_item import WorkReportItem
 from .work_report_item_type import WorkReportItemType
 from .work_report_purpose import WorkReportPurpose
+from .work_report_purpose_selection import WorkReportPurposeSelection
 
 
 __all__ = [
@@ -64,7 +67,10 @@ __all__ = [
     "TimeRecord",
     "TimeRecordImage",
     "WorkReport",
+    "WorkReportDocumentSequence",
+    "WorkReportDetail",
     "WorkReportItem",
     "WorkReportItemType",
     "WorkReportPurpose",
+    "WorkReportPurposeSelection",
 ]

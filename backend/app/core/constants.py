@@ -49,6 +49,13 @@ class DBConstants:
     TIME_RECORD_STATUS_CODE_LENGTH: Final[int] = 50
     TIME_RECORD_STATUS_TEXT_LENGTH: Final[int] = 100
 
+    # =========================
+    # Work Report
+    # =========================
+    WORK_REPORT_DOCUMENT_NO_LENGTH: Final[int] = 50
+    WORK_REPORT_SIGNATURE_POSITION_LENGTH: Final[int] = 150
+    WORK_REPORT_SIGNATURE_PATH_LENGTH: Final[int] = 500
+
     FACE_REFERENCE_IMAGE_LENGTH: Final[int] = 255
     FACE_EMBEDDING_DIMENSION: Final[int] = 128
     FACE_PENDING_EMBEDDING_VALUE: Final[str] = "PENDING_EMBEDDING"

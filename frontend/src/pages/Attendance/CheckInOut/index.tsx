@@ -11,7 +11,6 @@ import {
 import Header from "@/layout/Header";
 import BackButton from "@/components/BackButton";
 import CheckInOutModal from "@/components/CheckInOutModal";
-import { timeRecordService } from "@/services/timeRecord.service";
 
 import styles from "./CheckInOut.module.css";
 
@@ -358,19 +357,17 @@ export default function CheckInOut({
         return;
       }
 
-      const openRecord =
-        await timeRecordService.getOpenAttendanceTimeRecordByEmployeeCode(
-          empCode,
-          {
-            work_date: workDateForOpenRecord,
-          },
-        );
-
-      if (openRecord) {
-        setCheckInOutModalOpen(true);
-        return;
-      }
-
+      /**
+       * Attendance / LocationSelect:
+       * ไม่ตรวจ open record แบบ employee_code + work_date ที่หน้านี้
+       * เพราะพนักงานหนึ่งคนสามารถมี open record หลายหน่วยงานพร้อมกันได้
+       *
+       * หน่วยงานที่เลือกถูกกำหนดจาก LocationSelect แล้ว และ App.tsx
+       * จะส่ง checkin_location_id ไป Backend
+       *
+       * Backend เป็นตัวตรวจซ้ำสุดท้ายด้วย:
+       * employee_code + location_id + checkout IS NULL
+       */
       onCheckIn(checkInOutPayload);
     } catch (error) {
       console.error("handleCheckInClick error:", error);

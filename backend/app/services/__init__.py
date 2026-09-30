@@ -31,9 +31,14 @@ from .site_location import SiteLocationService
 from .site_location_change import SiteLocationChangeService
 from .time_record import TimeRecordService
 from .work_report import WorkReportService
+from .work_report_document_sequence import (
+    WorkReportDocumentSequenceService,
+)
+from .work_report_detail import WorkReportDetailService
 from .work_report_item import WorkReportItemService
 from .work_report_item_type import WorkReportItemTypeService
 from .work_report_purpose import WorkReportPurposeService
+from .work_report_purpose_selection import WorkReportPurposeSelectionService
 
 
 __all__ = [
@@ -67,7 +72,10 @@ __all__ = [
     "SiteLocationChangeService",
     "TimeRecordService",
     "WorkReportService",
+    "WorkReportDocumentSequenceService",
+    "WorkReportDetailService",
     "WorkReportItemService",
     "WorkReportItemTypeService",
     "WorkReportPurposeService",
+    "WorkReportPurposeSelectionService",
 ]

@@ -1,4 +1,4 @@
-# backend/app/services/patrol_report_pdf_service.py
+#backend/app/services/patrol_report_pdf_service.py
 from __future__ import annotations
 
 import base64
@@ -18,7 +18,7 @@ import pyvips
 from pythainlp.tokenize import word_tokenize
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
-from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
@@ -28,6 +28,7 @@ from reportlab.platypus import (
     Image as PdfImage,
     KeepTogether,
     PageBreak,
+    CondPageBreak,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -73,11 +74,30 @@ class PatrolReportPdfBuildResult:
 
 
 @dataclass(frozen=True)
+class PatrolReportPdfWorkItem:
+    """หัวข้องานย่อย 2.x ของรายงานติดตาม / มอบหมาย."""
+
+    sequence_no: int
+    work_item_name: str
+    work_item_detail: str
+    image_paths: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class PatrolReportPdfWorkReport:
+    """รายละเอียด work_report ที่ใช้แสดงต่อท้ายรายการนอกแผน."""
+
+    additional_note: str = ""
+    items: tuple[PatrolReportPdfWorkItem, ...] = ()
+
+
+@dataclass(frozen=True)
 class PatrolReportPdfRow:
     """รูปแบบข้อมูลภายในสำหรับวาดรายงาน PDF."""
 
     number: int
     plan_mode: PatrolReportPlanMode
+    time_record_id: int | None
     workday: date | None
     check_in_datetime: datetime | None
     check_out_datetime: datetime | None
@@ -85,6 +105,7 @@ class PatrolReportPdfRow:
     location_name: str
     department_name: str
     division_name: str
+    route_id: int | None
     route_name: str
     shift_label: str
     display_status: str
@@ -93,9 +114,11 @@ class PatrolReportPdfRow:
     check_out_text: str
     operator_text: str
     contact_detail: str
+    call_status: int | None
     call_note: str
     check_in_image: str | None
     check_out_image: str | None
+    work_report: PatrolReportPdfWorkReport | None = None
 
 
 @dataclass(frozen=True)
@@ -172,14 +195,15 @@ class PatrolReportPdfService:
     VIEW_NAME = PatrolReportConstants.VIEW_NAME
     MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
-    # หน้ารายละเอียดรูปภาพ: แสดงได้ 2 จุดรักษาการณ์ต่อ 1 หน้า (A4 แนวนอน)
-    # ลดความสูงรูปจาก 62 mm เหลือ 40 mm เพื่อให้ข้อมูลของ 2 จุดอยู่หน้าเดียวกัน
-    IMAGE_DETAIL_ROWS_PER_PAGE = 2
-    IMAGE_MAX_WIDTH_MM = 82
-    IMAGE_MAX_HEIGHT_MM = 40
+    # หน้ารายละเอียด A4 แนวตั้ง:
+    # จัดหลายรายการในหน้าเดียวกันได้ตามปริมาณเนื้อหา
+    # โดยใช้หน่วยประมาณพื้นที่ เพื่อไม่ทิ้งพื้นที่ว่างมากเกินจำเป็น
+    DETAIL_PAGE_CAPACITY_UNITS = 7.0
+    IMAGE_MAX_WIDTH_MM = 52
+    IMAGE_MAX_HEIGHT_MM = 38
 
     # ย่อและบีบอัดเฉพาะสำเนารูปที่ฝังใน PDF โดยไม่แก้ไขไฟล์รูปต้นฉบับ
-    # 180 DPI ยังชัดเพียงพอสำหรับตรวจสอบรูปบุคคลบนพื้นที่ 82 x 40 mm
+    # 180 DPI เพียงพอสำหรับรูปบุคคลบนพื้นที่แสดงผลของ A4 แนวตั้ง
     PDF_IMAGE_DPI = 180
     PDF_IMAGE_JPEG_QUALITY = 20
 
@@ -223,14 +247,15 @@ class PatrolReportPdfService:
     FONT_SIZE_SECTION_TITLE = 12
     FONT_LEADING_SECTION_TITLE = 16
 
-    FONT_SIZE_TABLE_HEADER = 6.8
-    FONT_LEADING_TABLE_HEADER = 8.5
+    # ตารางสรุป A4 แนวตั้งมี 9 คอลัมน์
+    FONT_SIZE_TABLE_HEADER = 5.4
+    FONT_LEADING_TABLE_HEADER = 6.8
 
-    FONT_SIZE_TABLE_CELL = 6.6
-    FONT_LEADING_TABLE_CELL = 8.2
+    FONT_SIZE_TABLE_CELL = 5.2
+    FONT_LEADING_TABLE_CELL = 6.6
 
-    FONT_SIZE_OPERATOR_CELL = 6.2
-    FONT_LEADING_OPERATOR_CELL = 7.8
+    FONT_SIZE_OPERATOR_CELL = 4.9
+    FONT_LEADING_OPERATOR_CELL = 6.2
 
     FONT_SIZE_IMAGE_LABEL = 8
     FONT_LEADING_IMAGE_LABEL = 10
@@ -243,7 +268,7 @@ class PatrolReportPdfService:
     # ===== ตารางสรุป: ชื่อจุดรักษาการณ์ =====
     # คงความกว้างไว้ที่ 29 mm แล้วใช้ Thai word wrapping ช่วยจัดบรรทัด
     # เพื่อไม่ต้องขยายคอลัมน์ตามชื่อหน่วยงานที่ยาวขึ้น.
-    LOCATION_NAME_COLUMN_WIDTH = 29 * mm
+    LOCATION_NAME_COLUMN_WIDTH = 28 * mm
 
     # TableStyle ใช้ LEFTPADDING / RIGHTPADDING อย่างละ 3 pt.
     TABLE_CELL_HORIZONTAL_PADDING = 6
@@ -295,6 +320,18 @@ class PatrolReportPdfService:
                     )
                 )
 
+            # เมื่อเลือกเส้นทาง "ทั้งหมด" scope.route_name จะว่างตาม filter
+            # จึงเติม route_name ของแต่ละแถวจาก routes เพื่อใช้แบ่งส่วนรายละเอียด
+            # เป็น เส้นทาง 1 / เส้นทาง 2 / ... โดยไม่กระทบตาราง Summary.
+            planned_rows = PatrolReportPdfService._attach_route_names(
+                db=db,
+                rows=planned_rows,
+            )
+            outside_plan_rows = PatrolReportPdfService._attach_route_names(
+                db=db,
+                rows=outside_plan_rows,
+            )
+
             total_rows = len(planned_rows) + len(outside_plan_rows)
 
             if total_rows <= 0:
@@ -317,10 +354,10 @@ class PatrolReportPdfService:
 
             document = SimpleDocTemplate(
                 str(output_path),
-                pagesize=landscape(A4),
-                leftMargin=12 * mm,
-                rightMargin=12 * mm,
-                topMargin=6 * mm,  # ขยับโลโก้และส่วนหัวขึ้น 10 มม.
+                pagesize=A4,
+                leftMargin=8 * mm,
+                rightMargin=8 * mm,
+                topMargin=7 * mm,
                 bottomMargin=14 * mm,
                 title="รายงานการเข้าตรวจหน่วยงาน",
                 author="GUTS-ESS",
@@ -459,6 +496,14 @@ class PatrolReportPdfService:
 
         logger.info("Patrol PDF result count=%s", len(db_rows))
 
+        # รายการตรวจแล้ว(โทร) ไม่มี time_record จึงอาจไม่มี employee_code / ชื่อผู้ปฏิบัติงาน
+        # จาก vw_checkin_report ให้ใช้ผู้ที่บันทึกการโทรจาก checkpoint_assignment_call.created_by
+        # เป็นค่า "บันทึกโดย" ของ PDF แทน
+        PatrolReportPdfService._attach_call_recorders(
+            db=db,
+            rows=db_rows,
+        )
+
         if include_images:
             PatrolReportPdfService._attach_time_record_images(
                 db=db,
@@ -474,6 +519,150 @@ class PatrolReportPdfService:
             )
             for index, row in enumerate(db_rows, start=1)
         ]
+
+    @staticmethod
+    def _attach_call_recorders(
+        *,
+        db: Session,
+        rows: list[dict[str, Any]],
+    ) -> None:
+        """
+        เติมผู้บันทึกสำหรับรายการ "ตรวจแล้ว(โทร)" จาก checkpoint_assignment_call.
+
+        รายการโทรอาจยังไม่มี time_record ทำให้ employee_code / first_name / last_name
+        ใน vw_checkin_report เป็น NULL ทั้งหมด หากใช้ข้อมูลจาก view อย่างเดียว
+        แถว "บันทึกโดย" ใน PDF จึงแสดงเป็น "-".
+
+        แหล่งข้อมูลที่ถูกต้องสำหรับงานโทรคือ checkpoint_assignment_call.created_by
+        แล้ว JOIN employees เพื่อได้ชื่อผู้บันทึก.
+        """
+        assignment_ids = sorted(
+            {
+                assignment_id
+                for row in rows
+                if (
+                    PatrolReportPdfService._to_positive_int(
+                        row.get("call_status")
+                    )
+                    in {1, 2, 3}
+                    and (
+                        assignment_id := PatrolReportPdfService._to_positive_int(
+                            row.get("assignment_id")
+                        )
+                    )
+                    is not None
+                )
+            }
+        )
+
+        if not assignment_ids:
+            return
+
+        call_columns = PatrolReportPdfService._get_view_columns(
+            db=db,
+            view_name="checkpoint_assignment_call",
+        )
+        if not {"assignment_id", "created_by"}.issubset(call_columns):
+            logger.warning(
+                "ไม่สามารถเติมผู้บันทึกการโทรใน PDF: "
+                "checkpoint_assignment_call ไม่มี assignment_id/created_by"
+            )
+            return
+
+        params: dict[str, Any] = {}
+        placeholders: list[str] = []
+        for index, assignment_id in enumerate(assignment_ids):
+            key = f"call_recorder_assignment_id_{index}"
+            placeholders.append(f":{key}")
+            params[key] = assignment_id
+
+        where_parts = [
+            f"cac.assignment_id IN ({', '.join(placeholders)})"
+        ]
+        if "is_active" in call_columns:
+            where_parts.append("COALESCE(cac.is_active, 1) = 1")
+        if "mark_flag" in call_columns:
+            where_parts.append("COALESCE(cac.mark_flag, 0) = 0")
+
+        order_parts = ["cac.assignment_id ASC"]
+        if "assignment_call_id" in call_columns:
+            order_parts.append("cac.assignment_call_id DESC")
+        elif "created_at" in call_columns:
+            order_parts.append("cac.created_at DESC")
+
+        statement = text(
+            f"""
+            SELECT
+                cac.assignment_id,
+                cac.created_by,
+                e.first_name,
+                e.last_name
+            FROM checkpoint_assignment_call cac
+            LEFT JOIN employees e
+                ON e.employee_code = cac.created_by
+            WHERE {' AND '.join(where_parts)}
+            ORDER BY {', '.join(order_parts)}
+            """
+        )
+
+        try:
+            call_rows = db.execute(statement, params).mappings().all()
+        except Exception:
+            # การเติมชื่อผู้บันทึกเป็นข้อมูลประกอบ ไม่ควรทำให้ Export ทั้งไฟล์ล้ม
+            logger.exception(
+                "ไม่สามารถโหลดผู้บันทึกการโทรสำหรับ PDF"
+            )
+            return
+
+        recorder_by_assignment: dict[int, tuple[str, str, str]] = {}
+        for call_row in call_rows:
+            assignment_id = PatrolReportPdfService._to_positive_int(
+                call_row.get("assignment_id")
+            )
+            created_by = PatrolReportPdfService._text(
+                call_row.get("created_by"),
+                "",
+            )
+            if assignment_id is None or not created_by:
+                continue
+
+            # ORDER BY ล่าสุดก่อน จึงเก็บรายการแรกของ assignment นั้น
+            recorder_by_assignment.setdefault(
+                assignment_id,
+                (
+                    created_by,
+                    PatrolReportPdfService._text(
+                        call_row.get("first_name"),
+                        "",
+                    ),
+                    PatrolReportPdfService._text(
+                        call_row.get("last_name"),
+                        "",
+                    ),
+                ),
+            )
+
+        for row in rows:
+            if (
+                PatrolReportPdfService._to_positive_int(row.get("call_status"))
+                not in {1, 2, 3}
+            ):
+                continue
+
+            assignment_id = PatrolReportPdfService._to_positive_int(
+                row.get("assignment_id")
+            )
+            if assignment_id is None:
+                continue
+
+            recorder = recorder_by_assignment.get(assignment_id)
+            if recorder is None:
+                continue
+
+            employee_code, first_name, last_name = recorder
+            row["employee_code"] = employee_code
+            row["first_name"] = first_name
+            row["last_name"] = last_name
 
     @staticmethod
     def _attach_time_record_images(
@@ -691,7 +880,7 @@ class PatrolReportPdfService:
                 == (reservation_status == "reserved")
             ]
 
-        return [
+        pdf_rows = [
             PatrolReportPdfService._map_report_response_to_pdf_row(
                 row=row,
                 number=index,
@@ -699,6 +888,390 @@ class PatrolReportPdfService:
                 include_images=include_images,
             )
             for index, row in enumerate(report_rows, start=1)
+        ]
+
+        # รายละเอียด 2.x ใช้เฉพาะหน้าแนบรูปของงานนอกแผน
+        # จึงโหลดเมื่อผู้ใช้เลือก include_images เพื่อลด query ที่ไม่จำเป็น
+        if include_images and pdf_rows:
+            pdf_rows = PatrolReportPdfService._attach_outside_plan_work_reports(
+                db=db,
+                rows=pdf_rows,
+            )
+
+        return pdf_rows
+
+    @staticmethod
+    def _attach_outside_plan_work_reports(
+        *,
+        db: Session,
+        rows: list[PatrolReportPdfRow],
+    ) -> list[PatrolReportPdfRow]:
+        """
+        โหลดรายละเอียด work_report แบบ batch สำหรับงานติดตาม / มอบหมาย
+
+        โครงสร้างข้อมูล:
+        work_report -> work_report_item -> work_report_item_type
+                    -> time_record_image(image_type='work_report')
+
+        ไม่ JOIN เข้า vw_checkin_unplanned เพื่อคงหลัก 1 time_record = 1 row
+        และหลีกเลี่ยง N+1 query.
+        """
+        time_record_ids = sorted(
+            {
+                row.time_record_id
+                for row in rows
+                if row.time_record_id is not None
+            }
+        )
+
+        if not time_record_ids:
+            return rows
+
+        work_report_columns = PatrolReportPdfService._get_view_columns(
+            db=db,
+            view_name="work_report",
+        )
+        work_item_columns = PatrolReportPdfService._get_view_columns(
+            db=db,
+            view_name="work_report_item",
+        )
+        work_item_type_columns = PatrolReportPdfService._get_view_columns(
+            db=db,
+            view_name="work_report_item_type",
+        )
+        image_columns = PatrolReportPdfService._get_view_columns(
+            db=db,
+            view_name="time_record_image",
+        )
+
+        required_work_report_columns = {"work_report_id", "time_record_id"}
+        required_work_item_columns = {
+            "work_report_item_id",
+            "work_report_id",
+            "work_item_type_id",
+            "sequence_no",
+        }
+        required_work_item_type_columns = {
+            "work_item_type_id",
+            "work_item_name",
+        }
+
+        if (
+            not required_work_report_columns.issubset(work_report_columns)
+            or not required_work_item_columns.issubset(work_item_columns)
+            or not required_work_item_type_columns.issubset(
+                work_item_type_columns
+            )
+        ):
+            logger.warning(
+                "ข้ามรายละเอียด work_report ใน PDF: โครงสร้างตารางไม่ครบ"
+            )
+            return rows
+
+        params: dict[str, Any] = {}
+        placeholders: list[str] = []
+
+        for index, time_record_id in enumerate(time_record_ids):
+            key = f"work_report_time_record_id_{index}"
+            placeholders.append(f":{key}")
+            params[key] = time_record_id
+
+        wr_filters = [
+            f"wr.time_record_id IN ({', '.join(placeholders)})"
+        ]
+        wri_join_filters = [
+            "wri.work_report_id = wr.work_report_id"
+        ]
+        wit_join_filters = [
+            "wit.work_item_type_id = wri.work_item_type_id"
+        ]
+
+        if "is_active" in work_report_columns:
+            wr_filters.append("COALESCE(wr.is_active, 1) = 1")
+        if "mark_flag" in work_report_columns:
+            wr_filters.append("COALESCE(wr.mark_flag, 0) = 0")
+        if "report_status" in work_report_columns:
+            wr_filters.append(
+                "COALESCE(NULLIF(TRIM(wr.report_status), ''), 'active') <> 'cancelled'"
+            )
+
+        if "is_active" in work_item_columns:
+            wri_join_filters.append("COALESCE(wri.is_active, 1) = 1")
+        if "mark_flag" in work_item_columns:
+            wri_join_filters.append("COALESCE(wri.mark_flag, 0) = 0")
+
+        if "is_active" in work_item_type_columns:
+            wit_join_filters.append("COALESCE(wit.is_active, 1) = 1")
+        if "mark_flag" in work_item_type_columns:
+            wit_join_filters.append("COALESCE(wit.mark_flag, 0) = 0")
+
+        additional_note_select = (
+            "wr.additional_note"
+            if "additional_note" in work_report_columns
+            else "NULL AS additional_note"
+        )
+        work_item_detail_select = (
+            "wri.work_item_detail"
+            if "work_item_detail" in work_item_columns
+            else "NULL AS work_item_detail"
+        )
+
+        required_image_columns = {
+            "time_record_image_id",
+            "time_record_id",
+            "work_report_item_id",
+            "image_type",
+            "sequence_no",
+            "image_path",
+        }
+        supports_work_report_images = required_image_columns.issubset(
+            image_columns
+        )
+
+        if supports_work_report_images:
+            tri_join_filters = [
+                "tri.work_report_item_id = wri.work_report_item_id",
+                "tri.time_record_id = wr.time_record_id",
+                "tri.image_type = 'work_report'",
+            ]
+            if "is_active" in image_columns:
+                tri_join_filters.append("COALESCE(tri.is_active, 1) = 1")
+            if "mark_flag" in image_columns:
+                tri_join_filters.append("COALESCE(tri.mark_flag, 0) = 0")
+
+            image_join_sql = (
+                "LEFT JOIN time_record_image tri ON "
+                + " AND ".join(tri_join_filters)
+            )
+            image_select_sql = """
+                tri.time_record_image_id,
+                tri.sequence_no AS image_sequence_no,
+                tri.image_path
+            """.strip()
+            image_order_sql = (
+                "tri.sequence_no ASC, tri.time_record_image_id ASC"
+            )
+        else:
+            image_join_sql = ""
+            image_select_sql = """
+                NULL AS time_record_image_id,
+                NULL AS image_sequence_no,
+                NULL AS image_path
+            """.strip()
+            image_order_sql = "wri.work_report_item_id ASC"
+
+        statement = text(
+            f"""
+            SELECT
+                wr.time_record_id,
+                wr.work_report_id,
+                {additional_note_select},
+                wri.work_report_item_id,
+                wri.sequence_no AS item_sequence_no,
+                {work_item_detail_select},
+                wit.work_item_name,
+                {image_select_sql}
+            FROM work_report wr
+            INNER JOIN work_report_item wri
+                ON {' AND '.join(wri_join_filters)}
+            INNER JOIN work_report_item_type wit
+                ON {' AND '.join(wit_join_filters)}
+            {image_join_sql}
+            WHERE {' AND '.join(wr_filters)}
+            ORDER BY
+                wr.time_record_id ASC,
+                wr.work_report_id DESC,
+                wri.sequence_no ASC,
+                wri.work_report_item_id ASC,
+                {image_order_sql}
+            """
+        )
+
+        db_rows = db.execute(statement, params).mappings().all()
+
+        selected_report_id_by_time_record: dict[int, int] = {}
+        report_data: dict[int, dict[str, Any]] = {}
+
+        for db_row in db_rows:
+            time_record_id = PatrolReportPdfService._to_positive_int(
+                db_row.get("time_record_id")
+            )
+            work_report_id = PatrolReportPdfService._to_positive_int(
+                db_row.get("work_report_id")
+            )
+            work_report_item_id = PatrolReportPdfService._to_positive_int(
+                db_row.get("work_report_item_id")
+            )
+
+            if (
+                time_record_id is None
+                or work_report_id is None
+                or work_report_item_id is None
+            ):
+                continue
+
+            selected_report_id = selected_report_id_by_time_record.setdefault(
+                time_record_id,
+                work_report_id,
+            )
+            if work_report_id != selected_report_id:
+                continue
+
+            report_entry = report_data.setdefault(
+                time_record_id,
+                {
+                    "additional_note": "",
+                    "items": {},
+                },
+            )
+
+            additional_note = PatrolReportPdfService._text(
+                db_row.get("additional_note"),
+                "",
+            )
+            if additional_note and not report_entry["additional_note"]:
+                report_entry["additional_note"] = additional_note
+
+            item_sequence_no = (
+                PatrolReportPdfService._to_positive_int(
+                    db_row.get("item_sequence_no")
+                )
+                or work_report_item_id
+            )
+            work_item_name = PatrolReportPdfService._text(
+                db_row.get("work_item_name"),
+                "-",
+            )
+            work_item_detail = PatrolReportPdfService._text(
+                db_row.get("work_item_detail"),
+                "",
+            )
+
+            item_entry = report_entry["items"].setdefault(
+                work_report_item_id,
+                {
+                    "sequence_no": item_sequence_no,
+                    "work_item_name": work_item_name,
+                    "work_item_detail": work_item_detail,
+                    "image_paths": [],
+                },
+            )
+
+            image_path = PatrolReportPdfService._text(
+                db_row.get("image_path"),
+                "",
+            )
+            if image_path and image_path not in item_entry["image_paths"]:
+                item_entry["image_paths"].append(image_path)
+
+        work_reports_by_time_record: dict[int, PatrolReportPdfWorkReport] = {}
+
+        for time_record_id, report_entry in report_data.items():
+            sorted_items = sorted(
+                report_entry["items"].values(),
+                key=lambda item: (
+                    item["sequence_no"],
+                    item["work_item_name"],
+                ),
+            )
+
+            work_reports_by_time_record[time_record_id] = (
+                PatrolReportPdfWorkReport(
+                    additional_note=report_entry["additional_note"],
+                    items=tuple(
+                        PatrolReportPdfWorkItem(
+                            sequence_no=item["sequence_no"],
+                            work_item_name=item["work_item_name"],
+                            work_item_detail=item["work_item_detail"],
+                            image_paths=tuple(item["image_paths"]),
+                        )
+                        for item in sorted_items
+                    ),
+                )
+            )
+
+        return [
+            replace(
+                row,
+                work_report=work_reports_by_time_record.get(
+                    row.time_record_id
+                ),
+            )
+            for row in rows
+        ]
+
+    @staticmethod
+    def _attach_route_names(
+        *,
+        db: Session,
+        rows: list[PatrolReportPdfRow],
+    ) -> list[PatrolReportPdfRow]:
+        """
+        เติมชื่อเส้นทางให้แต่ละแถวจาก routes แบบ batch
+
+        ใช้สำหรับกรณีผู้ใช้เลือก "เส้นทางทั้งหมด" ซึ่ง scope.route_name
+        จะว่างตาม filter แต่หน้ารายละเอียดต้องแยกหัวข้อเป็นแต่ละเส้นทาง.
+        """
+        if not rows:
+            return rows
+
+        route_ids = sorted(
+            {
+                row.route_id
+                for row in rows
+                if row.route_id is not None
+            }
+        )
+
+        if not route_ids:
+            return rows
+
+        params: dict[str, Any] = {}
+        placeholders: list[str] = []
+
+        for index, route_id in enumerate(route_ids):
+            key = f"pdf_route_id_{index}"
+            placeholders.append(f":{key}")
+            params[key] = route_id
+
+        try:
+            route_rows = db.execute(
+                text(
+                    "SELECT route_id, route_name "
+                    "FROM routes "
+                    f"WHERE route_id IN ({', '.join(placeholders)})"
+                ),
+                params,
+            ).mappings().all()
+        except Exception:
+            logger.exception(
+                "ไม่สามารถโหลดชื่อเส้นทางสำหรับหัวรายละเอียด PDF ได้"
+            )
+            return rows
+
+        route_names = {
+            int(route_row["route_id"]): PatrolReportPdfService._text(
+                route_row.get("route_name"),
+                "",
+            )
+            for route_row in route_rows
+            if route_row.get("route_id") is not None
+        }
+
+        return [
+            replace(
+                row,
+                route_name=(
+                    row.route_name.strip()
+                    or route_names.get(row.route_id, "")
+                    or (
+                        f"เส้นทาง {row.route_id}"
+                        if row.route_id is not None
+                        else ""
+                    )
+                ),
+            )
+            for row in rows
         ]
 
     @staticmethod
@@ -865,19 +1438,33 @@ class PatrolReportPdfService:
         check_out_datetime = value("checkOutDateTime", "check_out_date_time")
         assignment_status = value("status")
 
+        # ใช้ชื่อผลัดที่ service / vw_checkin_unplanned ส่งมาเป็นลำดับแรก
+        # เพื่อให้ตรงกับตาราง shifts จริง และใช้การคำนวณจากเวลาเป็น fallback เท่านั้น
+        shift_label = PatrolReportPdfService._text(
+            value(
+                "shiftLabel",
+                "shift_label",
+                "shiftNameTh",
+                "shift_name_th",
+            ),
+            "",
+        )
+        if not shift_label:
+            shift_label = PatrolReportPdfService._get_outside_plan_shift_label(
+                check_in_datetime=check_in_datetime,
+                shift_type=shift_type,
+            )
+
         # เปลี่ยนเฉพาะข้อความในรายงานงานอื่น ๆ โดยไม่แก้สถานะจริงในฐานข้อมูล
         if assignment_status == "completed":
             assignment_status = "เรียบร้อย(ติดตาม/มอบหมาย)"
 
         mapping: dict[str, Any] = {
+            "time_record_id": value("timeRecordId", "time_record_id"),
             "contract_code": value("contractCode", "contract_code"),
             "location_name": value("siteName", "site_name", "location_name"),
-            "shift_label": (
-                PatrolReportPdfService._get_outside_plan_shift_label(
-                    check_in_datetime=check_in_datetime,
-                    shift_type=shift_type,
-                )
-            ),
+            "route_id": value("routeId", "route_id"),
+            "shift_label": shift_label,
             "assignment_status": assignment_status,
             "reserved_by": value("reservedBy", "reserved_by"),
             "takeover_by": value("takeoverBy", "takeover_by"),
@@ -1338,6 +1925,7 @@ class PatrolReportPdfService:
         ของ Worker และลดข้อมูลที่ต้องส่งจากฐานข้อมูล.
         """
         base_columns = (
+            "time_record_id",
             "workday",
             "work_date",
             "started_datetime",
@@ -1355,6 +1943,7 @@ class PatrolReportPdfService:
             "division_name",
             "division_name_th",
             "division_label",
+            "route_id",
             "route_name",
             "route_name_th",
             "route_label",
@@ -1381,7 +1970,6 @@ class PatrolReportPdfService:
             "call_note",
         )
         image_columns = (
-            "time_record_id",
             "images_checkin_1",
             "images_checkin_2",
             "images_checkin_3",
@@ -1646,6 +2234,9 @@ class PatrolReportPdfService:
         return PatrolReportPdfRow(
             number=number,
             plan_mode=plan_mode,
+            time_record_id=PatrolReportPdfService._to_positive_int(
+                row.get("time_record_id")
+            ),
             workday=(
                 parsed_workday.date() if parsed_workday is not None else None
             ),
@@ -1659,6 +2250,9 @@ class PatrolReportPdfService:
             location_name=location_name,
             department_name=department_name,
             division_name=division_name,
+            route_id=PatrolReportPdfService._to_positive_int(
+                row.get("route_id")
+            ),
             route_name=route_name,
             shift_label=shift_label,
             display_status=display_status,
@@ -1673,6 +2267,16 @@ class PatrolReportPdfService:
             contact_detail=PatrolReportPdfService._text(
                 row.get("contact_detail"),
                 "-",
+            ),
+            call_status=(
+                parsed_call_status
+                if (
+                    parsed_call_status := PatrolReportPdfService._to_positive_int(
+                        row.get("call_status")
+                    )
+                )
+                in {1, 2, 3}
+                else None
             ),
             call_note=PatrolReportPdfService._text(
                 row.get("call_note"),
@@ -1919,7 +2523,8 @@ class PatrolReportPdfService:
         )
         story.append(Spacer(1, 2 * mm))
 
-        # ซ้าย = เงื่อนไขที่เลือกดู / ขวา = เวลาที่ดึงข้อมูล
+        # A4 แนวตั้ง: แยกเงื่อนไขและเวลาที่ออกรายงานคนละบรรทัด
+        # เพื่อไม่บีบข้อความยาวจนอ่านยาก
         header_info_table = Table(
             [
                 [
@@ -1933,17 +2538,19 @@ class PatrolReportPdfService:
                             ),
                         ),
                         styles["filter_left"],
-                    ),
+                    )
+                ],
+                [
                     Paragraph(
                         (
                             "เวลาที่ออกรายงาน: "
                             f"{html.escape(PatrolReportPdfService._format_thai_datetime(datetime.now()))}"
                         ),
                         styles["generated_at_right"],
-                    ),
-                ]
+                    )
+                ],
             ],
-            colWidths=[178 * mm, 95 * mm],
+            colWidths=[194 * mm],
             hAlign="LEFT",
         )
         header_info_table.setStyle(
@@ -1987,8 +2594,6 @@ class PatrolReportPdfService:
             "วันเวลาเข้า",
             "วันเวลาออก",
             "ผู้ดำเนินการ",
-            "รายละเอียดการติดต่อ",
-            "หมายเหตุ",
         ]
 
         table_data: list[list[Any]] = [
@@ -2047,14 +2652,6 @@ class PatrolReportPdfService:
                         html.escape(row.operator_text),
                         styles["operator_cell"],
                     ),
-                    Paragraph(
-                        html.escape(row.contact_detail),
-                        styles["cell"],
-                    ),
-                    Paragraph(
-                        html.escape(row.call_note),
-                        styles["cell"],
-                    ),
                 ]
             )
 
@@ -2074,21 +2671,19 @@ class PatrolReportPdfService:
 
         main_table = Table(
             table_data,
-            # A4 แนวนอน (พื้นที่ตาราง 273 mm):
-            # ขยาย "ผู้ดำเนินการ" จาก 30 เป็น 45 mm
-            # และแยก "รายละเอียดการติดต่อ" / "หมายเหตุ" เป็นคนละคอลัมน์.
+            # A4 แนวตั้ง: กว้างใช้งาน 194 mm (margin ซ้าย/ขวา 8 mm)
+            # ตัดคอลัมน์ "รายละเอียดการติดต่อ" และ "หมายเหตุ" ออกจากตารางสรุป
+            # แล้วกระจายพื้นที่ให้คอลัมน์หลักอ่านง่ายขึ้น
             colWidths=[
-                8 * mm,
-                17 * mm,
-                PatrolReportPdfService.LOCATION_NAME_COLUMN_WIDTH,
-                14 * mm,
-                30 * mm,
-                21 * mm,
-                24 * mm,
-                24 * mm,
-                36 * mm,
-                28 * mm,
-                28 * mm,
+                7 * mm,   # ลำดับ
+                14 * mm,  # รหัสสัญญา
+                34 * mm,  # ชื่อจุดรักษาการณ์
+                11 * mm,  # ผลัด
+                27 * mm,  # สถานะ
+                22 * mm,  # วันที่ตามแผน / วันที่ปฏิบัติงาน
+                23 * mm,  # วันเวลาเข้า
+                23 * mm,  # วันเวลาออก
+                33 * mm,  # ผู้ดำเนินการ
             ],
             repeatRows=1,
             hAlign="LEFT",
@@ -2120,59 +2715,89 @@ class PatrolReportPdfService:
         story.append(main_table)
 
         if include_images:
-            scope_text = PatrolReportPdfService._format_scope_summary(
-                rows=rows,
-                filters=filters,
-                scope=scope,
-            )
-            image_rows = [
+            detail_rows = [
                 row
                 for row in rows
-                if row.check_in_image or row.check_out_image
-            ]
-
-            # ใช้ลำดับเดียวกับตารางสรุป และไม่รวมงานต่างประเภทไว้หน้าเดียวกัน
-            # เพื่อให้หัวหน้ารายละเอียดตรงกับข้อมูลทุกแถวในหน้านั้น
-            image_pages: list[
-                tuple[PatrolReportPlanMode, list[PatrolReportPdfRow]]
-            ] = []
-
-            for row in image_rows:
                 if (
-                    not image_pages
-                    or image_pages[-1][0] != row.plan_mode
-                    or len(image_pages[-1][1])
-                    >= PatrolReportPdfService.IMAGE_DETAIL_ROWS_PER_PAGE
-                ):
-                    image_pages.append((row.plan_mode, [row]))
-                else:
-                    image_pages[-1][1].append(row)
-
-            for image_plan_mode, page_rows in image_pages:
-                PatrolReportPdfService._raise_if_cancelled(is_cancelled)
-
-                story.append(PageBreak())
-                story.extend(
-                    PatrolReportPdfService._build_image_detail_page_header_story(
-                        scope_text=scope_text,
-                        plan_mode=image_plan_mode,
-                        styles=styles,
+                    row.check_in_image
+                    or row.check_out_image
+                    or row.call_status is not None
+                    or (
+                        row.plan_mode == "outside_plan"
+                        and row.work_report is not None
+                        and bool(row.work_report.items)
                     )
                 )
+            ]
 
-                for row_index, row in enumerate(page_rows):
+            # เฉพาะหน้ารายละเอียด:
+            # - แบ่งกลุ่มตาม "เส้นทาง" เท่านั้น
+            # - ไม่สร้างหัวข้อใหม่เมื่อเปลี่ยน planned / outside_plan
+            # - ภายในเส้นทางเดียวกันคงลำดับเดิมด้วย stable sort
+            detail_rows.sort(
+                key=lambda row: (
+                    row.route_id is None,
+                    row.route_id if row.route_id is not None else 10**9,
+                    str(row.route_name or "").strip(),
+                )
+            )
+
+            if detail_rows:
+                # เริ่มส่วนรายละเอียดหน้าใหม่จากตาราง Summary
+                story.append(PageBreak())
+
+                current_route_group: tuple[int | None, str] | None = None
+                route_detail_number = 0
+
+                for row_index, row in enumerate(detail_rows):
                     PatrolReportPdfService._raise_if_cancelled(is_cancelled)
 
-                    story.extend(
+                    # รายการที่ 2 เป็นต้นไป เริ่มหน้าใหม่เสมอ
+                    # จึงได้รูปแบบ "หน้าละ 1 ข้อ" ตามที่กำหนด
+                    if row_index > 0:
+                        story.append(PageBreak())
+
+                    route_group = (
+                        row.route_id,
+                        str(row.route_name or "").strip(),
+                    )
+                    route_changed = current_route_group != route_group
+
+                    # เมื่อเริ่มเส้นทางใหม่ ให้เริ่มเลขหัวข้อใหม่ที่ 1
+                    # เช่น เส้นทาง 1 = 1, 2, 3... และเส้นทาง 2 = 1, 2, 3...
+                    if route_changed:
+                        route_detail_number = 1
+
+                        row_scope_text = (
+                            PatrolReportPdfService._format_detail_scope_summary(
+                                row=row,
+                                scope=scope,
+                            )
+                        )
+                        story.extend(
+                            PatrolReportPdfService._build_image_detail_page_header_story(
+                                scope_text=row_scope_text,
+                                styles=styles,
+                            )
+                        )
+                        current_route_group = route_group
+                    else:
+                        route_detail_number += 1
+
+                    row_story = (
                         PatrolReportPdfService._build_image_detail_story(
                             row=row,
+                            detail_number=route_detail_number,
                             styles=styles,
                         )
                     )
 
-                    # เว้นระยะระหว่างจุดที่ 1 และจุดที่ 2 ในหน้าเดียวกัน
-                    if row_index < len(page_rows) - 1:
-                        story.append(Spacer(1, 4 * mm))
+                    # ไม่ครอบทั้งรายการโทรด้วย KeepTogether ที่ชั้นนี้
+                    # เพราะจะทำให้ ReportLab ย้ายรายการแรกไปหน้าใหม่ทั้งชุด
+                    # และเหลือเฉพาะหัวข้อรายละเอียดไว้บนหน้าก่อนหน้า
+                    # ภายใน _build_image_detail_story / _build_call_record_story
+                    # มี KeepTogether เฉพาะส่วนที่จำเป็นอยู่แล้ว
+                    story.extend(row_story)
 
         return story
 
@@ -2206,47 +2831,290 @@ class PatrolReportPdfService:
         return styles["cell_center"]
 
     @staticmethod
+    def _get_detail_status_badge_style(
+        *,
+        display_status: str,
+        styles: Mapping[str, ParagraphStyle],
+    ) -> ParagraphStyle:
+        """
+        คงสี/พื้นหลังของสถานะเดิม แต่ใช้ตัวอักษรปกติในหน้ารายละเอียด.
+        ตารางสรุปยังใช้ style เดิมและไม่ถูกเปลี่ยน.
+        """
+        base_style = PatrolReportPdfService._get_status_badge_style(
+            display_status=display_status,
+            styles=styles,
+        )
+        return ParagraphStyle(
+            "PatrolReportDetailStatusBadge",
+            parent=base_style,
+            fontName=PatrolReportPdfService.FONT_REGULAR_NAME,
+            fontSize=PatrolReportPdfService.FONT_SIZE_DETAIL,
+            leading=PatrolReportPdfService.FONT_LEADING_DETAIL,
+        )
+
+    @staticmethod
     def _build_image_detail_page_header_story(
         *,
         scope_text: str,
-        plan_mode: PatrolReportPlanMode,
         styles: Mapping[str, ParagraphStyle],
     ) -> list[Any]:
-        """สร้างหัวหน้ารายละเอียดรูปภาพ 1 ครั้งต่อ 1 หน้า."""
-        detail_title = (
-            "ข้อมูลรายละเอียดผู้เข้าตรวจหน่วยงาน รายบุคคล"
-            if plan_mode == "planned"
-            else "ข้อมูลรายละเอียดงานอื่น ๆ (ติดตาม / มอบหมาย) รายบุคคล"
-        )
+        """
+        สร้างหัวข้อหลักของส่วนรายละเอียดเพียงรูปแบบเดียว
 
+        แสดงครั้งเดียวเมื่อเริ่มแต่ละเส้นทาง:
+        ข้อมูลรายละเอียดผู้เข้าตรวจหน่วยงาน รายบุคคล
+        (รูปเวลาเข้า และเวลาออกต้องเป็นบุคคลคนเดียวกัน)
+        ภาค | เขต | เส้นทาง
+        """
         return [
             Paragraph(
                 (
-                    f"{html.escape(detail_title)} "
+                    "ข้อมูลรายละเอียดผู้เข้าตรวจหน่วยงาน รายบุคคล "
                     '<font color="#DC2626">'
                     "(รูปเวลาเข้า และเวลาออกต้องเป็นบุคคลคนเดียวกัน)"
                     "</font>"
                 ),
                 styles["appendix_title"],
             ),
-            Spacer(1, 1.5 * mm),
+            Spacer(1, 1 * mm),
             Paragraph(html.escape(scope_text), styles["appendix_scope"]),
-            Spacer(1, 3 * mm),
+            Spacer(1, 1.5 * mm),
+        ]
+
+    @staticmethod
+    def _estimate_detail_page_units(
+        *,
+        row: PatrolReportPdfRow,
+    ) -> float:
+        """
+        ประเมินพื้นที่ของรายการสำหรับจัดกลุ่มลง A4 แนวตั้ง
+
+        ค่านี้ใช้เฉพาะการจัดกลุ่มหน้า ไม่ได้กำหนดความสูงจริงของ ReportLab.
+        ถ้าเนื้อหายาวกว่าที่ประเมิน ReportLab ยังสามารถไหลขึ้นหน้าถัดไปได้เอง.
+        """
+        units = 0.8
+
+        has_images = bool(row.check_in_image or row.check_out_image)
+        has_time = (
+            (row.check_in_text and row.check_in_text != "-")
+            or (row.check_out_text and row.check_out_text != "-")
+        )
+
+        # ตารางเข้า/ออกพร้อมรูปจริงกินพื้นที่ประมาณครึ่งหนึ่งของค่าที่เคยประเมิน
+        # จึงลดน้ำหนักเพื่อให้ 2 รายการที่มีรูปสามารถอยู่หน้าเดียวกันได้เมื่อพอดี
+        if has_images:
+            units += 1.8
+        elif has_time:
+            units += 0.5
+
+        # บันทึกการโทรไม่มีรูป จึงใช้พื้นที่น้อยกว่ารายการเข้าตรวจเต็มรูปแบบ
+        if row.call_status is not None:
+            units += 0.8
+
+        if (
+            row.plan_mode == "outside_plan"
+            and row.work_report is not None
+            and row.work_report.items
+        ):
+            units += 0.65
+
+            for item in row.work_report.items:
+                if item.image_paths:
+                    units += max(
+                        1.0,
+                        float((len(item.image_paths) + 2) // 3),
+                    )
+
+                if item.work_item_detail:
+                    units += 0.35
+
+            if row.work_report.additional_note:
+                units += 0.25
+
+        return max(1.0, units)
+
+    @staticmethod
+    def _build_call_record_story(
+        *,
+        row: PatrolReportPdfRow,
+        styles: Mapping[str, ParagraphStyle],
+    ) -> list[Any]:
+        """
+        สร้างส่วนบันทึกการโทรตามรูปแบบ:
+        ส่วนที่ 1 ข้อมูลผู้ติดต่อ
+        ส่วนที่ 2 รายละเอียดการโทร
+        ส่วนที่ 3 ภาพรวมของหน่วยงาน
+        """
+        if row.call_status not in {1, 2, 3}:
+            return []
+
+        status_config = {
+            1: (
+                "ปกติ (ไม่ต้องเข้าหน้างาน)",
+                colors.HexColor("#16A34A"),
+            ),
+            2: (
+                "ผิดปกติ (ไม่ต้องเข้าหน้างาน)",
+                colors.HexColor("#F59E0B"),
+            ),
+            3: (
+                "ผิดปกติ (ต้องเข้าหน้างาน)",
+                colors.HexColor("#DC2626"),
+            ),
+        }
+        status_text, status_color = status_config[row.call_status]
+
+        def build_section_header(title: str) -> Table:
+            table = Table(
+                [[Paragraph(title, styles["image_section_left"])]],
+                colWidths=[188 * mm],
+                hAlign="CENTER",
+            )
+            table.setStyle(
+                TableStyle(
+                    [
+                        (
+                            "BACKGROUND",
+                            (0, 0),
+                            (-1, -1),
+                            colors.HexColor("#D9D9D9"),
+                        ),
+                        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                        ("TOPPADDING", (0, 0), (-1, -1), 3),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                        ("GRID", (0, 0), (-1, -1), 0.45, colors.HexColor("#6B7280")),
+                    ]
+                )
+            )
+            return table
+
+        def build_text_body(value: str) -> Table:
+            table = Table(
+                [[Paragraph(
+                    html.escape(value or "-").replace("\n", "<br/>"),
+                    styles["detail_cell_left"],
+                )]],
+                colWidths=[188 * mm],
+                hAlign="CENTER",
+            )
+            table.setStyle(
+                TableStyle(
+                    [
+                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                        ("TOPPADDING", (0, 0), (-1, -1), 4),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                        ("GRID", (0, 0), (-1, -1), 0.45, colors.HexColor("#6B7280")),
+                    ]
+                )
+            )
+            return table
+
+        status_table = Table(
+            [
+                [
+                    "",
+                    Paragraph(
+                        html.escape(status_text),
+                        styles["detail_cell_left"],
+                    ),
+                ]
+            ],
+            colWidths=[8 * mm, 180 * mm],
+            rowHeights=[8 * mm],
+            hAlign="CENTER",
+        )
+        status_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (0, 0), status_color),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("LEFTPADDING", (0, 0), (0, 0), 0),
+                    ("RIGHTPADDING", (0, 0), (0, 0), 0),
+                    ("LEFTPADDING", (1, 0), (1, 0), 6),
+                    ("RIGHTPADDING", (1, 0), (1, 0), 4),
+                    ("TOPPADDING", (0, 0), (-1, -1), 2),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+                    ("GRID", (0, 0), (-1, -1), 0.45, colors.HexColor("#6B7280")),
+                ]
+            )
+        )
+
+        # KeepTogether เฉพาะหัวข้อ + เนื้อหาของส่วนนั้น
+        # เพื่อไม่ให้หัวข้อค้างอยู่ท้ายหน้าเพียงบรรทัดเดียว
+        # ส่วนบันทึกการโทรให้ตารางต่อกันทันที โดยไม่มีช่องไฟระหว่างส่วน
+        return [
+            KeepTogether(
+                [
+                    build_section_header("ส่วนที่ 1 : ข้อมูลผู้ติดต่อ"),
+                    build_text_body(row.contact_detail),
+                ]
+            ),
+            KeepTogether(
+                [
+                    build_section_header("ส่วนที่ 2 : รายละเอียดการโทร"),
+                    build_text_body(row.call_note),
+                ]
+            ),
+            KeepTogether(
+                [
+                    build_section_header("ส่วนที่ 3 : ภาพรวมของหน่วยงาน"),
+                    status_table,
+                ]
+            ),
         ]
 
     @staticmethod
     def _build_image_detail_story(
         *,
         row: PatrolReportPdfRow,
+        detail_number: int | None = None,
         styles: Mapping[str, ParagraphStyle],
     ) -> list[Any]:
         """
-        สร้างรายละเอียดรูปภาพของ 1 จุดรักษาการณ์แบบกระชับ
-        เพื่อให้วางได้ 2 จุดต่อ 1 หน้า A4 แนวนอน.
-        """
-        title = f"{row.number}. {row.contract_code} - {row.location_name}"
+        สร้างรายละเอียดรายบุคคล A4 แนวตั้ง
 
-        detail_data = [
+        - แถวเวลา/รูปจะแสดงเมื่อมีข้อมูลจริงเท่านั้น
+        - รายการบันทึกการโทรที่ไม่มีรูปจะไม่จองพื้นที่รูปว่าง 42 mm
+        - งานนอกแผนแสดง 2.x ต่อท้ายเมื่อมี work_report item จริง
+        """
+        display_number = detail_number if detail_number is not None else row.number
+        title = (
+            f"{display_number}. "
+            f"{row.contract_code} - {row.location_name}"
+        )
+
+        if row.call_status in {1, 2, 3}:
+            # รายการที่บันทึกการโทร ให้แสดงประเภทเฉพาะของงานโทร
+            # ใช้สีพื้นหลังเดียวกับสถานะ "ตรวจแล้ว(โทร)"
+            report_type = "โทรตรวจหน่วยงาน"
+            type_background = colors.HexColor("#F3E8FF")
+        elif row.plan_mode == "planned":
+            report_type = "ตามแผน"
+            if row.plan_date_text and row.plan_date_text != "-":
+                report_type += f" | วันที่ตามแผน {row.plan_date_text}"
+            type_background = colors.HexColor("#DCFCE7")
+        else:
+            report_type = "งานอื่น ๆ (ติดตาม / มอบหมาย)"
+            type_background = colors.HexColor("#DBEAFE")
+
+        has_images = bool(row.check_in_image or row.check_out_image)
+        has_time = (
+            (row.check_in_text and row.check_in_text != "-")
+            or (row.check_out_text and row.check_out_text != "-")
+        )
+        show_visit_area = has_images or has_time
+
+        detail_data: list[list[Any]] = [
+            [
+                Paragraph("ประเภท :", styles["detail_label_right"]),
+                Paragraph(html.escape(report_type), styles["detail_cell_left"]),
+                "",
+                "",
+            ],
             [
                 Paragraph("ผลัด :", styles["detail_label_right"]),
                 Paragraph(
@@ -2256,104 +3124,445 @@ class PatrolReportPdfService:
                 Paragraph("สถานะ :", styles["detail_label_right"]),
                 Paragraph(
                     html.escape(row.display_status).replace("\n", "<br/>"),
-                    PatrolReportPdfService._get_status_badge_style(
+                    PatrolReportPdfService._get_detail_status_badge_style(
                         display_status=row.display_status,
                         styles=styles,
                     ),
                 ),
             ],
-            [
-                Paragraph("เวลาเข้า :", styles["detail_label_right"]),
-                Paragraph(
-                    html.escape(row.check_in_text),
-                    styles["detail_cell_center"],
-                ),
-                Paragraph("เวลาออก :", styles["detail_label_right"]),
-                Paragraph(
-                    html.escape(row.check_out_text),
-                    styles["detail_cell_center"],
-                ),
-            ],
         ]
+
+        time_row_index: int | None = None
+        image_row_index: int | None = None
+
+        if show_visit_area:
+            time_row_index = len(detail_data)
+            detail_data.append(
+                [
+                    Paragraph("เวลาเข้า :", styles["detail_label_right"]),
+                    Paragraph(
+                        html.escape(row.check_in_text),
+                        styles["detail_cell_center"],
+                    ),
+                    Paragraph("เวลาออก :", styles["detail_label_right"]),
+                    Paragraph(
+                        html.escape(row.check_out_text),
+                        styles["detail_cell_center"],
+                    ),
+                ]
+            )
+
+            if has_images:
+                image_row_index = len(detail_data)
+                detail_data.append(
+                    [
+                        "",
+                        PatrolReportPdfService._to_pdf_image_or_text(
+                            row.check_in_image,
+                            styles=styles,
+                        ),
+                        "",
+                        PatrolReportPdfService._to_pdf_image_or_text(
+                            row.check_out_image,
+                            styles=styles,
+                        ),
+                    ]
+                )
+
+        operator_row_index = len(detail_data)
+        detail_data.append(
+            [
+                Paragraph("บันทึกโดย :", styles["detail_label_right"]),
+                Paragraph(
+                    html.escape(row.operator_text),
+                    styles["detail_cell_left"],
+                ),
+                "",
+                "",
+            ]
+        )
+
+        row_heights: list[Any] = [None] * len(detail_data)
+        if image_row_index is not None:
+            row_heights[image_row_index] = 42 * mm
 
         detail_table = Table(
             detail_data,
-            colWidths=[22 * mm, 72 * mm, 22 * mm, 72 * mm],
+            colWidths=[34 * mm, 60 * mm, 34 * mm, 60 * mm],
+            rowHeights=row_heights,
             hAlign="CENTER",
         )
-        detail_table.setStyle(
-            TableStyle(
-                [
-                    ("BACKGROUND", (0, 0), (-1, -1), colors.white),
 
-                    # พื้นหลังสีเทาสำหรับหัวข้อ: ผลัด / สถานะ / เวลาเข้า / เวลาออก
-                    ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#D9D9D9")),
-                    ("BACKGROUND", (2, 0), (2, -1), colors.HexColor("#D9D9D9")),
+        table_commands: list[tuple[Any, ...]] = [
+            ("BACKGROUND", (0, 0), (-1, -1), colors.white),
 
-                    ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#BFC5CC")),
-                    ("ALIGN", (0, 0), (0, -1), "RIGHT"),
-                    ("ALIGN", (1, 0), (1, -1), "CENTER"),
-                    ("ALIGN", (2, 0), (2, -1), "RIGHT"),
-                    ("ALIGN", (3, 0), (3, -1), "CENTER"),
-                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                    ("TOPPADDING", (0, 0), (-1, -1), 4),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-                    ("LEFTPADDING", (0, 0), (-1, -1), 3),
-                    ("RIGHTPADDING", (0, 0), (-1, -1), 3),
-                ]
-            )
-        )
+            # ประเภท
+            ("BACKGROUND", (0, 0), (0, 0), colors.HexColor("#D9D9D9")),
+            ("BACKGROUND", (1, 0), (3, 0), type_background),
+            ("SPAN", (1, 0), (3, 0)),
 
-        image_table = Table(
-            [
-                [
-                    Paragraph("<b>รูปเวลาเข้า</b>", styles["image_label"]),
-                    Paragraph("<b>รูปเวลาออก</b>", styles["image_label"]),
-                ],
-                [
-                    PatrolReportPdfService._to_pdf_image_or_text(
-                        row.check_in_image,
-                        styles=styles,
-                    ),
-                    PatrolReportPdfService._to_pdf_image_or_text(
-                        row.check_out_image,
-                        styles=styles,
-                    ),
-                ],
-            ],
-            # กว้างรวม 188 mm เท่ากับ detail_table เพื่อให้ขอบซ้าย/ขวาตรงกัน
-            colWidths=[94 * mm, 94 * mm],
-            hAlign="CENTER",
-        )
-        image_table.setStyle(
-            TableStyle(
-                [
-                    ("BACKGROUND", (0, 0), (-1, -1), colors.white),
+            # ผลัด / สถานะ
+            ("BACKGROUND", (0, 1), (0, 1), colors.HexColor("#D9D9D9")),
+            ("BACKGROUND", (2, 1), (2, 1), colors.HexColor("#D9D9D9")),
 
-                    # พื้นหลังสีเทาสำหรับหัวข้อรูปเวลาเข้า / รูปเวลาออก
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#D9D9D9")),
+            # บันทึกโดย
+            (
+                "BACKGROUND",
+                (0, operator_row_index),
+                (0, operator_row_index),
+                colors.HexColor("#D9D9D9"),
+            ),
+            ("SPAN", (1, operator_row_index), (3, operator_row_index)),
 
-                    ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#BFC5CC")),
-                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                    ("TOPPADDING", (0, 0), (-1, -1), 5),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-                ]
-            )
-        )
+            ("GRID", (0, 0), (-1, -1), 0.45, colors.HexColor("#6B7280")),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("ALIGN", (0, 0), (0, -1), "RIGHT"),
+            ("ALIGN", (2, 0), (2, -1), "RIGHT"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ]
 
-        return [
+        if time_row_index is not None:
+            if image_row_index is not None:
+                table_commands.extend(
+                    [
+                        (
+                            "BACKGROUND",
+                            (0, time_row_index),
+                            (0, image_row_index),
+                            colors.HexColor("#D9D9D9"),
+                        ),
+                        (
+                            "BACKGROUND",
+                            (2, time_row_index),
+                            (2, image_row_index),
+                            colors.HexColor("#D9D9D9"),
+                        ),
+                        ("SPAN", (0, time_row_index), (0, image_row_index)),
+                        ("SPAN", (2, time_row_index), (2, image_row_index)),
+                        (
+                            "ALIGN",
+                            (1, time_row_index),
+                            (1, image_row_index),
+                            "CENTER",
+                        ),
+                        (
+                            "ALIGN",
+                            (3, time_row_index),
+                            (3, image_row_index),
+                            "CENTER",
+                        ),
+                        (
+                            "TOPPADDING",
+                            (1, image_row_index),
+                            (3, image_row_index),
+                            4,
+                        ),
+                        (
+                            "BOTTOMPADDING",
+                            (1, image_row_index),
+                            (3, image_row_index),
+                            4,
+                        ),
+                    ]
+                )
+            else:
+                table_commands.extend(
+                    [
+                        (
+                            "BACKGROUND",
+                            (0, time_row_index),
+                            (0, time_row_index),
+                            colors.HexColor("#D9D9D9"),
+                        ),
+                        (
+                            "BACKGROUND",
+                            (2, time_row_index),
+                            (2, time_row_index),
+                            colors.HexColor("#D9D9D9"),
+                        ),
+                        (
+                            "ALIGN",
+                            (1, time_row_index),
+                            (1, time_row_index),
+                            "CENTER",
+                        ),
+                        (
+                            "ALIGN",
+                            (3, time_row_index),
+                            (3, time_row_index),
+                            "CENTER",
+                        ),
+                    ]
+                )
+
+        detail_table.setStyle(TableStyle(table_commands))
+
+        story: list[Any] = [
             KeepTogether(
                 [
                     Paragraph(html.escape(title), styles["section_title"]),
                     Spacer(1, 1.5 * mm),
                     detail_table,
-                    Spacer(1, 1.5 * mm),
-                    image_table,
                 ]
             )
         ]
 
+        # บันทึกการโทร: แสดงเมื่อมี call_status จริง
+        if row.call_status is not None:
+            story.extend(
+                PatrolReportPdfService._build_call_record_story(
+                    row=row,
+                    styles=styles,
+                )
+            )
+
+        # รายละเอียด 2.x สำหรับงานติดตาม / มอบหมาย
+        if row.plan_mode == "outside_plan" and row.work_report is not None:
+            work_report = row.work_report
+
+            if work_report.items:
+                section_header = Table(
+                    [[Paragraph(
+                        "สิ่งที่ดำเนินการเรียบร้อย",
+                        styles["image_section_left"],
+                    )]],
+                    colWidths=[188 * mm],
+                    hAlign="CENTER",
+                )
+                section_header.setStyle(
+                    TableStyle(
+                        [
+                            (
+                                "BACKGROUND",
+                                (0, 0),
+                                (-1, -1),
+                                colors.HexColor("#E5E7EB"),
+                            ),
+                            (
+                                "BOX",
+                                (0, 0),
+                                (-1, -1),
+                                0.45,
+                                colors.HexColor("#6B7280"),
+                            ),
+                            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                            ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                            ("TOPPADDING", (0, 0), (-1, -1), 4),
+                            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                        ]
+                    )
+                )
+                for item_index, item in enumerate(work_report.items):
+                    item_number = (
+                        item.sequence_no
+                        if item.sequence_no > 0
+                        else item_index + 1
+                    )
+
+                    # จัดหัวข้อ 2.x + รูป + ข้อมูลเพิ่มเติมเป็นกลุ่มเดียว
+                    # และใช้เฉพาะเส้นแนวตั้งซ้าย/ขวาล้อมเนื้อหาด้านล่าง
+                    # ของ "สิ่งที่ดำเนินการเรียบร้อย" ตามแบบรายงาน.
+                    item_story: list[Any] = []
+
+                    # หัวข้อหลักมีพื้นเทา + กรอบเต็ม และต่อกับเส้นข้างของเนื้อหา
+                    # โดยไม่มี Spacer คั่น เพื่อให้เส้นดูต่อเนื่อง.
+                    if item_index == 0:
+                        item_story.append(section_header)
+
+                    item_body_story: list[Any] = []
+
+                    # ถ้ามีหลายหัวข้องาน ให้เว้นช่องด้านในกรอบ
+                    # ไม่ใช้ Spacer ภายนอก เพราะจะทำให้เส้นซ้าย/ขวาขาด.
+                    if item_index > 0:
+                        item_body_story.append(Spacer(1, 3 * mm))
+
+                    # 2.1 / 2.2 ... ไม่มีกรอบบน-ล่าง
+                    # ใช้ Table แบบไม่มีเส้นเพื่อคง padding ซ้าย/ขวาของข้อความ.
+                    item_heading = Table(
+                        [[
+                            Paragraph(
+                                (
+                                    f"2.{item_number} "
+                                    f"{html.escape(item.work_item_name)}"
+                                ),
+                                styles["image_section_left"],
+                            )
+                        ]],
+                        colWidths=[188 * mm],
+                        hAlign="CENTER",
+                    )
+                    item_heading.setStyle(
+                        TableStyle(
+                            [
+                                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                            ]
+                        )
+                    )
+                    item_body_story.append(item_heading)
+                    item_body_story.append(Spacer(1, 1.5 * mm))
+
+                    if item.image_paths:
+                        item_body_story.extend(
+                            PatrolReportPdfService._build_work_report_image_story(
+                                image_paths=item.image_paths,
+                                styles=styles,
+                            )
+                        )
+
+                    if item.work_item_detail:
+                        additional_detail_table = Table(
+                            [
+                                [
+                                    Paragraph(
+                                        "ข้อมูลเพิ่มเติม :",
+                                        styles["detail_label_right"],
+                                    ),
+                                    Paragraph(
+                                        html.escape(
+                                            item.work_item_detail
+                                        ).replace("\n", "<br/>"),
+                                        styles["detail_cell_left"],
+                                    ),
+                                ],
+                            ],
+                            colWidths=[34 * mm, 154 * mm],
+                            hAlign="CENTER",
+                        )
+                        additional_detail_table.setStyle(
+                            TableStyle(
+                                [
+                                    (
+                                        "BACKGROUND",
+                                        (0, 0),
+                                        (0, 0),
+                                        colors.HexColor("#D9D9D9"),
+                                    ),
+                                    (
+                                        "BACKGROUND",
+                                        (1, 0),
+                                        (1, 0),
+                                        colors.white,
+                                    ),
+                                    (
+                                        "GRID",
+                                        (0, 0),
+                                        (-1, -1),
+                                        0.45,
+                                        colors.HexColor("#6B7280"),
+                                    ),
+                                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                                    ("ALIGN", (0, 0), (0, 0), "RIGHT"),
+                                    ("ALIGN", (1, 0), (1, 0), "LEFT"),
+                                    ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                                    ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                                    ("TOPPADDING", (0, 0), (-1, -1), 4),
+                                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                                ]
+                            )
+                        )
+                        item_body_story.append(additional_detail_table)
+
+                    # กรอบเนื้อหาด้านล่างใช้ "เฉพาะเส้นซ้ายและเส้นขวา"
+                    # ไม่มีเส้นบนและไม่มีเส้นล่าง.
+                    item_body_table = Table(
+                        [[item_body_story]],
+                        colWidths=[188 * mm],
+                        hAlign="CENTER",
+                    )
+                    item_body_table.setStyle(
+                        TableStyle(
+                            [
+                                (
+                                    "LINEBEFORE",
+                                    (0, 0),
+                                    (0, -1),
+                                    0.45,
+                                    colors.HexColor("#6B7280"),
+                                ),
+                                (
+                                    "LINEAFTER",
+                                    (-1, 0),
+                                    (-1, -1),
+                                    0.45,
+                                    colors.HexColor("#6B7280"),
+                                ),
+                                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+                            ]
+                        )
+                    )
+
+                    item_story.append(item_body_table)
+                    story.append(KeepTogether(item_story))
+
+                if work_report.additional_note:
+                    story.append(Spacer(1, 3 * mm))
+                    story.append(
+                        Paragraph(
+                            (
+                                "หมายเหตุเพิ่มเติม :<br/>"
+                                + html.escape(
+                                    work_report.additional_note
+                                ).replace("\n", "<br/>")
+                            ),
+                            styles["detail_cell_left"],
+                        )
+                    )
+
+        return story
+
+    @staticmethod
+    def _build_work_report_image_story(
+        *,
+        image_paths: tuple[str, ...],
+        styles: Mapping[str, ParagraphStyle],
+    ) -> list[Any]:
+        """แสดงรูปงานของหัวข้อ 2.x สูงสุด 3 รูปต่อแถวโดยไม่สร้างช่องว่างเกินจำเป็น."""
+        story: list[Any] = []
+
+        for start_index in range(0, len(image_paths), 3):
+            image_group = image_paths[start_index:start_index + 3]
+            if not image_group:
+                continue
+
+            image_table = Table(
+                [[
+                    PatrolReportPdfService._to_pdf_image_or_text(
+                        image_path,
+                        styles=styles,
+                    )
+                    for image_path in image_group
+                ]],
+                colWidths=[60 * mm] * len(image_group),
+                hAlign="CENTER",
+            )
+            image_table.setStyle(
+                TableStyle(
+                    [
+                        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 2),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+                        ("TOPPADDING", (0, 0), (-1, -1), 2),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+                    ]
+                )
+            )
+            story.append(image_table)
+            story.append(Spacer(1, 1.5 * mm))
+
+        return story
 
     @staticmethod
     def _get_logo_image() -> PdfImage | None:
@@ -2728,6 +3937,46 @@ class PatrolReportPdfService:
             f" - {html.escape(PatrolReportPdfService._format_thai_date(workday_end))}"
             f" | ประเภทรายงาน: {html.escape(plan_text)}"
             f" | ผลัด: {html.escape(shift_text)}"
+        )
+
+    @staticmethod
+    def _format_detail_scope_summary(
+        *,
+        row: PatrolReportPdfRow,
+        scope: PatrolReportPdfScope,
+    ) -> str:
+        """
+        สร้าง ภาค | เขต | เส้นทาง สำหรับหน้ารายละเอียดของแต่ละแถว
+
+        ต่างจาก _format_scope_summary() ตรงที่ route ต้องมาจาก row
+        เพื่อให้กรณีเลือก "เส้นทางทั้งหมด" ยังแสดงชื่อเส้นทางของแต่ละกลุ่มได้.
+        """
+        department_text = (
+            str(row.department_name or "").strip()
+            or str(scope.department_name or "").strip()
+        )
+        division_text = (
+            str(row.division_name or "").strip()
+            or str(scope.division_name or "").strip()
+        )
+        route_text = (
+            str(row.route_name or "").strip()
+            or str(scope.route_name or "").strip()
+            or (
+                f"เส้นทาง {row.route_id}"
+                if row.route_id is not None
+                else ""
+            )
+        )
+
+        return " | ".join(
+            value
+            for value in (
+                department_text,
+                division_text,
+                route_text,
+            )
+            if value
         )
 
     @staticmethod
@@ -3250,6 +4499,8 @@ class PatrolReportPdfService:
                 leading=PatrolReportPdfService.FONT_LEADING_APPENDIX_TITLE,
                 alignment=TA_CENTER,
                 textColor=colors.HexColor("#1E3A8A"),
+                spaceBefore=0,
+                spaceAfter=0,
             ),
             "appendix_scope": ParagraphStyle(
                 "PatrolReportAppendixScope",
@@ -3259,11 +4510,13 @@ class PatrolReportPdfService:
                 leading=PatrolReportPdfService.FONT_LEADING_SCOPE,
                 alignment=TA_CENTER,
                 textColor=colors.black,
+                spaceBefore=0,
+                spaceAfter=0,
             ),
             "detail_label_right": ParagraphStyle(
                 "PatrolReportDetailLabelRight",
                 parent=base_styles["Normal"],
-                fontName=PatrolReportPdfService.FONT_BOLD_NAME,
+                fontName=PatrolReportPdfService.FONT_REGULAR_NAME,
                 fontSize=PatrolReportPdfService.FONT_SIZE_DETAIL,
                 leading=PatrolReportPdfService.FONT_LEADING_DETAIL,
                 alignment=TA_RIGHT,
@@ -3281,7 +4534,7 @@ class PatrolReportPdfService:
             "image_section_right": ParagraphStyle(
                 "PatrolReportImageSectionRight",
                 parent=base_styles["Normal"],
-                fontName=PatrolReportPdfService.FONT_BOLD_NAME,
+                fontName=PatrolReportPdfService.FONT_REGULAR_NAME,
                 fontSize=PatrolReportPdfService.FONT_SIZE_IMAGE_SECTION,
                 leading=PatrolReportPdfService.FONT_LEADING_IMAGE_SECTION,
                 alignment=TA_RIGHT,
@@ -3290,7 +4543,7 @@ class PatrolReportPdfService:
             "image_section_left": ParagraphStyle(
                 "PatrolReportImageSectionLeft",
                 parent=base_styles["Normal"],
-                fontName=PatrolReportPdfService.FONT_BOLD_NAME,
+                fontName=PatrolReportPdfService.FONT_REGULAR_NAME,
                 fontSize=PatrolReportPdfService.FONT_SIZE_IMAGE_SECTION,
                 leading=PatrolReportPdfService.FONT_LEADING_IMAGE_SECTION,
                 alignment=TA_LEFT,
@@ -3304,6 +4557,8 @@ class PatrolReportPdfService:
                 leading=PatrolReportPdfService.FONT_LEADING_SECTION_TITLE,
                 alignment=TA_LEFT,
                 textColor=colors.HexColor("#1E3A8A"),
+                spaceBefore=0,
+                spaceAfter=0,
             ),
             "header_cell": ParagraphStyle(
                 "PatrolReportHeaderCell",
@@ -3421,6 +4676,15 @@ class PatrolReportPdfService:
                 leading=PatrolReportPdfService.FONT_LEADING_DETAIL,
                 alignment=TA_CENTER,
             ),
+            "detail_cell_left": ParagraphStyle(
+                "PatrolReportDetailCellLeft",
+                parent=base_styles["Normal"],
+                fontName=PatrolReportPdfService.FONT_REGULAR_NAME,
+                fontSize=PatrolReportPdfService.FONT_SIZE_DETAIL,
+                leading=PatrolReportPdfService.FONT_LEADING_DETAIL,
+                alignment=TA_LEFT,
+                textColor=colors.black,
+            ),
             "image_label": ParagraphStyle(
                 "PatrolReportImageLabel",
                 parent=base_styles["Normal"],
@@ -3458,7 +4722,7 @@ class PatrolReportPdfService:
 
         return PatrolReportPdfNumberedCanvas(
             *args,
-            footer_right_margin=12 * mm,
+            footer_right_margin=8 * mm,
             footer_y=8 * mm,
             font_name=PatrolReportPdfService.FONT_REGULAR_NAME,
             font_size=PatrolReportPdfService.FONT_SIZE_FOOTER,

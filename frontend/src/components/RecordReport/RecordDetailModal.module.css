@@ -1,0 +1,226 @@
+:root {
+  --report-detail-blue: #0b6797;
+  --report-detail-red: #f40000;
+  --report-detail-text: #111827;
+  --report-detail-line: #cfd8e3;
+}
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 8px;
+
+  background: rgba(0, 0, 0, 0.58);
+}
+
+.modal {
+  width: min(100%, 430px);
+  max-height: calc(100dvh - 16px);
+  overflow: hidden;
+
+  border: 1px solid #d8e2ec;
+  border-radius: 14px;
+
+  background: #fff;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.24);
+}
+
+.modalHeader {
+  min-height: 46px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+
+  padding: 9px 12px 9px 14px;
+
+  background: var(--report-detail-blue);
+  color: #fff;
+}
+
+.modalHeader h2 {
+  margin: 0;
+
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.closeButton {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+
+  display: grid;
+  place-items: center;
+
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+
+  background: transparent;
+  color: #fff;
+
+  font: inherit;
+  font-size: 28px;
+  line-height: 1;
+
+  cursor: pointer;
+}
+
+.closeButton:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.modalBody {
+  padding: 14px 14px 10px;
+}
+
+.detailLabel {
+  display: block;
+
+  margin: 0 0 7px;
+
+  color: var(--report-detail-text);
+
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.requiredMark {
+  margin-left: 2px;
+  color: #f00;
+}
+
+.detailInput {
+  width: 100%;
+  min-height: 150px;
+
+  display: block;
+  resize: vertical;
+
+  padding: 10px 11px;
+
+  border: 1px solid var(--report-detail-line);
+  border-radius: 11px;
+
+  outline: none;
+
+  background: #fff;
+  color: var(--report-detail-text);
+
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.detailInput::placeholder {
+  color: #9aa5b5;
+}
+
+.detailInput:focus {
+  border-color: var(--report-detail-blue);
+  box-shadow: 0 0 0 3px rgba(11, 103, 151, 0.12);
+}
+
+.characterCount {
+  margin-top: 4px;
+
+  color: #8a94a6;
+
+  font-size: 11px;
+  text-align: right;
+}
+
+.errorMessage {
+  margin-top: 9px;
+  padding: 8px 10px;
+
+  border: 1px solid rgba(214, 0, 0, 0.25);
+  border-radius: 8px;
+
+  background: rgba(214, 0, 0, 0.06);
+  color: #b00000;
+
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.modalActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+
+  padding: 8px 14px 14px;
+
+  background: #fff;
+}
+
+.modalActions button {
+  min-height: 42px;
+
+  padding: 8px 10px;
+
+  border: 0;
+  border-radius: 9px;
+
+  font: inherit;
+  font-size: 15px;
+  font-weight: 900;
+
+  cursor: pointer;
+}
+
+.cancelButton {
+  background: var(--report-detail-red);
+  color: #fff;
+}
+
+.saveButton {
+  background: var(--report-detail-blue);
+  color: #fff;
+}
+
+.saveButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+@media (max-width: 360px) {
+  .modalOverlay {
+    padding: 4px;
+  }
+
+  .modal {
+    width: 100%;
+    border-radius: 12px;
+  }
+
+  .modalBody,
+  .modalActions {
+    padding-right: 11px;
+    padding-left: 11px;
+  }
+
+  .detailInput {
+    min-height: 130px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .detailInput {
+    transition: none;
+  }
+}

@@ -1,5 +1,3 @@
-
-
 from typing import Final
 
 
@@ -374,4 +372,11 @@ WORK_REPORT_ITEM_SEQUENCE_ALREADY_EXISTS_DETAIL: Final[str] = (
 )
 WORK_REPORT_ITEM_DETAIL_REQUIRED_DETAIL: Final[str] = (
     "Work item detail is required for this work item type"
+)
+
+# =========================================================
+# Work report detail
+# =========================================================
+WORK_REPORT_DETAIL_NOT_FOUND_DETAIL: Final[str] = (
+    "Work report detail not found"
 )

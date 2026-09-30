@@ -1,4 +1,3 @@
-# app/services/image_storage.py
 
 from __future__ import annotations
 
@@ -29,6 +28,7 @@ class ImageStorageService:
     - checkin
     - checkout
     - work_report
+    - signature
 
     โครงสร้างไฟล์:
 
@@ -44,9 +44,13 @@ class ImageStorageService:
                         ├── checkout/
                         │   ├── 001.jpg
                         │   └── 002.jpg
-                        └── work_report/
-                            ├── 001.jpg
-                            └── 002.jpg
+                        ├── work_report/
+                        │   ├── work_report_item_id/
+                        │   │   ├── 001.jpg
+                        │   │   └── 002.jpg
+                        │   └── ...
+                        └── signature/
+                            └── 001.png
     """
 
     # ============================================================
@@ -77,6 +81,7 @@ class ImageStorageService:
             "checkin",
             "checkout",
             "work_report",
+            "signature",
         }
     )
 
@@ -141,6 +146,21 @@ class ImageStorageService:
             )
 
         return sequence_no
+
+
+    @staticmethod
+    def _validate_work_report_item_id(
+        work_report_item_id: int | None,
+    ) -> int | None:
+        if work_report_item_id is None:
+            return None
+
+        if work_report_item_id <= 0:
+            raise ImageStorageError(
+                "work_report_item_id must be greater than 0"
+            )
+
+        return work_report_item_id
 
     # ============================================================
     # Base64
@@ -286,8 +306,9 @@ class ImageStorageService:
         employee_code: str,
         time_record_id: int,
         image_type: str,
+        work_report_item_id: int | None = None,
     ) -> Path:
-        return (
+        relative_directory = (
             Path("time_record")
             / f"{work_date.year:04d}"
             / f"{work_date.month:02d}"
@@ -295,6 +316,19 @@ class ImageStorageService:
             / str(time_record_id)
             / image_type
         )
+
+        # รูปของข้อ 2.x ต้องแยกตาม work_report_item_id
+        # เพื่อไม่ให้ sequence_no เช่น 001.jpg ของแต่ละข้อเขียนทับกัน
+        if (
+            image_type == "work_report"
+            and work_report_item_id is not None
+        ):
+            relative_directory = (
+                relative_directory
+                / str(work_report_item_id)
+            )
+
+        return relative_directory
 
     @classmethod
     def _build_public_path(
@@ -328,6 +362,7 @@ class ImageStorageService:
         time_record_id: int,
         image_type: str,
         sequence_no: int,
+        work_report_item_id: int | None = None,
     ) -> str:
         """
         บันทึกรูป TimeRecord
@@ -343,9 +378,13 @@ class ImageStorageService:
             sequence_no=1,
         )
 
-        คืนค่า:
+        คืนค่า checkin / checkout / signature:
 
         /uploads/time_record/2026/08/632070/1001/checkin/001.jpg
+
+        สำหรับ image_type="work_report" และมี work_report_item_id:
+
+        /uploads/time_record/2026/08/632070/1001/work_report/15/001.jpg
         """
 
         employee_code = cls._validate_employee_code(
@@ -364,6 +403,18 @@ class ImageStorageService:
             sequence_no
         )
 
+        work_report_item_id = cls._validate_work_report_item_id(
+            work_report_item_id
+        )
+
+        if (
+            work_report_item_id is not None
+            and image_type != "work_report"
+        ):
+            raise ImageStorageError(
+                "work_report_item_id is only supported for work_report images"
+            )
+
         image_bytes, extension = cls._decode_base64_image(
             image_base64
         )
@@ -373,6 +424,7 @@ class ImageStorageService:
             employee_code=employee_code,
             time_record_id=time_record_id,
             image_type=image_type,
+            work_report_item_id=work_report_item_id,
         )
 
         absolute_directory = (

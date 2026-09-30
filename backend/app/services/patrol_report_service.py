@@ -1176,6 +1176,9 @@ def _map_patrol_report_row(
 
     return PatrolReportResponse(
         id=row_no,
+        timeRecordId=_to_optional_positive_int(
+            row.get(TIME_RECORD_ID_COLUMN),
+        ),
         contractCode=_to_text(
             row.get(PatrolReportConstants.COLUMN_CONTRACT_CODE),
         ),
@@ -1440,6 +1443,17 @@ def get_patrol_report_filter_options(
             LEFT JOIN positions po
                 ON em.position_id = po.position_id
             WHERE v.{PatrolReportConstants.COLUMN_EMPLOYEE_CODE} IS NOT NULL
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM work_report wr_cancel
+                  WHERE wr_cancel.time_record_id = v.time_record_id
+                    AND COALESCE(wr_cancel.mark_flag, 0) = 0
+                    AND LOWER(
+                        TRIM(
+                            COALESCE(wr_cancel.report_status, '')
+                        )
+                    ) = 'cancelled'
+              )
               AND (
                   :shift_id IS NULL
                   OR v.{PatrolReportConstants.COLUMN_SHIFT_ID} = :shift_id
@@ -1897,6 +1911,17 @@ def _get_patrol_report_unplanned_rows(
             BETWEEN :source_workday_start AND :source_workday_end
           AND v.{PatrolReportConstants.COLUMN_WORKDAY}
             BETWEEN :workday_start AND :workday_end
+          AND NOT EXISTS (
+              SELECT 1
+              FROM work_report wr_cancel
+              WHERE wr_cancel.time_record_id = v.time_record_id
+                AND COALESCE(wr_cancel.mark_flag, 0) = 0
+                AND LOWER(
+                    TRIM(
+                        COALESCE(wr_cancel.report_status, '')
+                    )
+                ) = 'cancelled'
+          )
         """
     ]
 

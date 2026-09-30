@@ -1,10 +1,9 @@
-from __future__ import annotations
-
 from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -20,7 +19,9 @@ from app.core.orm import Base
 
 if TYPE_CHECKING:
     from app.models.work_report_item import WorkReportItem
-    from app.models.work_report_purpose import WorkReportPurpose
+    from app.models.work_report_purpose_selection import (
+        WorkReportPurposeSelection,
+    )
 
 
 class WorkReport(Base):
@@ -30,6 +31,14 @@ class WorkReport(Base):
         UniqueConstraint(
             "time_record_id",
             name="uq_work_report_time_record",
+        ),
+        UniqueConstraint(
+            "document_no",
+            name="uq_work_report_document_no",
+        ),
+        CheckConstraint(
+            "report_status IN ('active', 'cancelled')",
+            name="ck_work_report_status",
         ),
         Index(
             "ix_work_report_active_mark",
@@ -50,15 +59,55 @@ class WorkReport(Base):
         nullable=False,
     )
 
-    purpose_id: Mapped[int] = mapped_column(
-        Integer,
-        ForeignKey("work_report_purpose.purpose_id"),
-        nullable=False,
-        index=True,
+    document_no: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
     )
 
     additional_note: Mapped[str | None] = mapped_column(
         String(500),
+        nullable=True,
+    )
+
+    # ============================================================
+    # Report status
+    # active    = รายงานปกติ
+    # cancelled = ยกเลิกบันทึกรายงาน แต่ข้อมูลยังคงอยู่
+    # ============================================================
+
+    report_status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="active",
+        server_default=text("'active'"),
+    )
+
+    # ============================================================
+    # Client / representative signature
+    # ============================================================
+
+    client_first_name: Mapped[str | None] = mapped_column(
+        String(DBConstants.FIRST_NAME_LENGTH),
+        nullable=True,
+    )
+
+    client_last_name: Mapped[str | None] = mapped_column(
+        String(DBConstants.LAST_NAME_LENGTH),
+        nullable=True,
+    )
+
+    client_position: Mapped[str | None] = mapped_column(
+        String(DBConstants.WORK_REPORT_SIGNATURE_POSITION_LENGTH),
+        nullable=True,
+    )
+
+    signature_path: Mapped[str | None] = mapped_column(
+        String(DBConstants.WORK_REPORT_SIGNATURE_PATH_LENGTH),
+        nullable=True,
+    )
+
+    signature_datetime: Mapped[datetime | None] = mapped_column(
+        DateTime,
         nullable=True,
     )
 
@@ -85,7 +134,9 @@ class WorkReport(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,
-        server_default=text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"),
+        server_default=text(
+            "CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
+        ),
     )
 
     created_by: Mapped[str] = mapped_column(
@@ -103,12 +154,16 @@ class WorkReport(Base):
     )
 
     # ============================================================
-    # Purpose
+    # Purpose selections
     # ============================================================
 
-    purpose: Mapped["WorkReportPurpose"] = relationship(
-        "WorkReportPurpose",
-        back_populates="work_reports",
+    purpose_selections: Mapped[
+        list["WorkReportPurposeSelection"]
+    ] = relationship(
+        "WorkReportPurposeSelection",
+        back_populates="work_report",
+        cascade="all, delete-orphan",
+        order_by="WorkReportPurposeSelection.purpose_id",
     )
 
     # ============================================================

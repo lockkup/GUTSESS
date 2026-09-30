@@ -1,6 +1,4 @@
-
-
-from fastapi import APIRouter, Depends, Path, Query, status
+from fastapi import APIRouter, Body, Depends, Path, Query, status
 from sqlalchemy.orm import Session
 
 from app.core import get_db
@@ -29,6 +27,44 @@ def create_work_report(
     return WorkReportService.create_work_report(
         db=db,
         payload=payload,
+    )
+
+
+@router.post(
+    "/time-record/{time_record_id}/ensure",
+    response_model=WorkReportResponse,
+    status_code=status.HTTP_200_OK,
+)
+def ensure_work_report_for_time_record(
+    time_record_id: int = Path(..., gt=0),
+    db: Session = Depends(get_db),
+) -> WorkReportResponse:
+    return WorkReportService.ensure_work_report_for_time_record(
+        db=db,
+        time_record_id=time_record_id,
+    )
+
+
+@router.post(
+    "/{work_report_id}/signature",
+    response_model=WorkReportResponse,
+    status_code=status.HTTP_200_OK,
+)
+def save_work_report_signature(
+    work_report_id: int = Path(..., gt=0),
+    signature_base64: str = Body(..., min_length=1),
+    updated_by: str = Body(
+        ...,
+        min_length=DBConstants.EMPLOYEE_CODE_LENGTH,
+        max_length=DBConstants.EMPLOYEE_CODE_LENGTH,
+    ),
+    db: Session = Depends(get_db),
+) -> WorkReportResponse:
+    return WorkReportService.save_work_report_signature(
+        db=db,
+        work_report_id=work_report_id,
+        signature_base64=signature_base64,
+        updated_by=updated_by,
     )
 
 
@@ -109,6 +145,23 @@ def update_work_report(
         db=db,
         work_report_id=work_report_id,
         payload=payload,
+    )
+
+
+@router.patch(
+    "/{work_report_id}/cancel",
+    response_model=WorkReportResponse,
+    status_code=status.HTTP_200_OK,
+)
+def cancel_work_report(
+    payload: WorkReportAction,
+    work_report_id: int = Path(..., gt=0),
+    db: Session = Depends(get_db),
+) -> WorkReportResponse:
+    return WorkReportService.cancel_work_report(
+        db=db,
+        work_report_id=work_report_id,
+        updated_by=payload.updated_by,
     )
 
 

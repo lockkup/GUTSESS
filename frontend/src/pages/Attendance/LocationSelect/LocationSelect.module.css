@@ -1,10 +1,7 @@
-/* src/pages/Attendance/LocationSelect/LocationSelect.module.css */
-
 :root {
   /* ======================================================
      ปรับขนาดตัวอักษรของหน้านี้จากจุดเดียว
      ====================================================== */
-
   --location-select-title-size: 16px;
   --location-select-section-title-size: 15px;
   --location-select-table-head-size: 12px;
@@ -18,7 +15,6 @@
   /* ======================================================
      ปรับความหนาตัวอักษรของหน้านี้จากจุดเดียว
      ====================================================== */
-
   --location-select-title-weight: 900;
   --location-select-section-title-weight: 400;
   --location-select-table-head-weight: 400;
@@ -28,7 +24,6 @@
   /* ======================================================
      ปรับขนาดปุ่มและความสูงของแถว
      ====================================================== */
-
   --location-select-row-height: 52px;
   --location-select-action-height: 38px;
 }
@@ -123,16 +118,23 @@
   font-weight: var(--location-select-table-text-weight);
 }
 
+/* ===== Column widths ===== */
+
 .actionColumn {
   width: 38%;
 }
 
+/* ตารางประวัติ:
+   หน่วยงานประมาณ 48%
+   สถานะ 22%
+   จัดการ 30%
+*/
 .statusColumn {
-  width: 31%;
+  width: 22%;
 }
 
 .editColumn {
-  width: 20%;
+  width: 30%;
 }
 
 .locationCell {
@@ -147,6 +149,8 @@
   padding: 5px !important;
   text-align: center;
 }
+
+/* ===== Check-in / Check-out buttons ===== */
 
 .actionButton {
   width: 100%;
@@ -176,13 +180,6 @@
   transform: translateY(1px);
 }
 
-.actionButton:focus-visible,
-.editButton:focus-visible,
-.dateInput:focus-visible {
-  outline: 3px solid rgba(37, 99, 235, 0.3);
-  outline-offset: 2px;
-}
-
 .actionButton:disabled {
   cursor: wait;
   opacity: 0.62;
@@ -196,6 +193,8 @@
   background: #e00000;
 }
 
+/* ===== Empty state ===== */
+
 .emptyCell {
   height: auto !important;
   padding: 16px 8px !important;
@@ -203,6 +202,8 @@
   font-size: var(--location-select-empty-text-size) !important;
   text-align: center;
 }
+
+/* ===== History heading / date ===== */
 
 .historyHeadingRow {
   display: flex;
@@ -229,6 +230,8 @@
   font-weight: 400;
 }
 
+/* ===== History status ===== */
+
 .historyStatus {
   font-size: var(--location-select-history-status-size) !important;
   font-weight: 700 !important;
@@ -245,23 +248,97 @@
   color: #059669 !important;
 }
 
-.editButton {
-  padding: 2px 3px;
+/* ======================================================
+   History links
+   ชื่อหน่วยงาน / แก้ไข / ลบ
+   แสดงเป็นข้อความลิงก์ ไม่ใช่ปุ่มกรอบ
+   ====================================================== */
+
+.historyLocationButton,
+.editButton,
+.deleteButton {
+  margin: 0;
+  padding: 0;
   border: 0;
+  border-radius: 0;
   background: transparent;
-  color: #1d4ed8;
+  box-shadow: none;
   font-family: inherit;
   font-size: var(--location-select-edit-text-size);
-  font-weight: 700;
+  font-weight: 600;
+  line-height: 1.35;
   text-decoration: underline;
+  text-underline-offset: 2px;
   cursor: pointer;
 }
 
-.editButton:disabled {
+/* ชื่อหน่วยงาน:
+   รองรับชื่อยาวหลายบรรทัด
+*/
+.historyLocationButton {
+  display: inline;
+  width: auto;
+  max-width: 100%;
+  color: #1d4ed8;
+  font-size: var(--location-select-table-text-size);
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.historyLocationButton:hover:not(:disabled) {
+  color: #1e40af;
+}
+
+/* แก้ไข */
+.editButton {
+  color: #1d4ed8;
+}
+
+.editButton:hover:not(:disabled) {
+  color: #1e40af;
+}
+
+/* ลบ */
+.deleteButton {
+  color: #dc2626;
+  transform: translateX(6px);
+}
+
+.deleteButton:hover:not(:disabled) {
+  color: #b91c1c;
+}
+
+/* จัด แก้ไข / ลบ ให้อยู่บรรทัดเดียวกัน */
+.historyActions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  white-space: nowrap;
+}
+
+.historyLocationButton:disabled,
+.editButton:disabled,
+.deleteButton:disabled {
   color: #94a3b8;
   cursor: not-allowed;
   text-decoration: none;
 }
+
+/* ===== Focus ===== */
+
+.actionButton:focus-visible,
+.historyLocationButton:focus-visible,
+.editButton:focus-visible,
+.deleteButton:focus-visible,
+.dateInput:focus-visible {
+  outline: 2px solid rgba(37, 99, 235, 0.35);
+  outline-offset: 2px;
+}
+
+/* ===== Responsive ===== */
 
 @media (max-width: 380px) {
   .table th {
@@ -278,6 +355,14 @@
     width: 40%;
   }
 
+  .statusColumn {
+    width: 22%;
+  }
+
+  .editColumn {
+    width: 30%;
+  }
+
   .actionCell,
   .editCell {
     padding: 4px !important;
@@ -285,5 +370,9 @@
 
   .dateInput {
     width: 110px;
+  }
+
+  .historyActions {
+    gap: 16px;
   }
 }

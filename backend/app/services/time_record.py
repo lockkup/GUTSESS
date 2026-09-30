@@ -1,5 +1,3 @@
-
-
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
@@ -1177,7 +1175,9 @@ class TimeRecordService:
                     )
                 )
             else:
-                # รองรับ Frontend เดิมระหว่างเชื่อมหน้า LocationSelect
+                # รองรับ Frontend เดิมที่ยังไม่ส่ง checkin_location_id
+                # เลือกหน่วยงานที่ใกล้ที่สุดจาก GPS แล้วตรวจรายการค้าง
+                # แยกตาม employee + work_date + location เช่นเดียวกับ Flow ใหม่
                 site_location = (
                     TimeRecordService._validate_nearest_attendance_location_gate(
                         db=db,
@@ -1188,15 +1188,18 @@ class TimeRecordService:
                 )
 
                 open_time_record = (
-                    TimeRecordService._get_open_attendance_time_record_by_employee_raw(
+                    TimeRecordService._get_open_attendance_time_record_by_employee_and_location_raw(
                         db=db,
                         employee_code=payload.employee_code,
+                        location_id=site_location.location_id,
                         work_date=payload.work_date,
                     )
                 )
 
-        # Attendance ใหม่: กันเปิดซ้ำเฉพาะ employee + work_date + location
-        # Attendance เดิมที่ยังไม่ส่ง location_id: กันรายการเปิดซ้ำแบบเดิม
+        # Attendance:
+        # - พนักงานคนเดียวกันเปิดหลายหน่วยงานพร้อมกันได้
+        # - หน่วยงานเดียวกันเปิดซ้ำไม่ได้จนกว่าจะ checkout รายการเดิม
+        # - หลัง checkout แล้วสามารถ check-in หน่วยงานเดิมเป็นรอบใหม่ได้
         # Checkpoint: ใช้ Assignment Lock เป็นตัวควบคุม 1 คนต่อ 1 จุด
         if assignment_id is None and open_time_record is not None:
             raise HTTPException(

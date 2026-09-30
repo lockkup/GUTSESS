@@ -1,0 +1,393 @@
+:root {
+  --work-report-modal-blue: #0b5f9d;
+  --work-report-modal-red: #ff0a0a;
+  --work-report-modal-line: #7c7c7c;
+  --work-report-modal-bg: #eef1f4;
+  --work-report-modal-text: #111;
+}
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.modal {
+  width: min(100%, 390px);
+  max-height: calc(100dvh - 20px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--work-report-modal-line);
+  background: #fff;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+}
+
+.modalScroll {
+  min-height: 0;
+  overflow-y: auto;
+  background: #fff;
+}
+
+.reportHeader {
+  padding: 8px 14px 2px;
+  border-bottom: 1px solid var(--work-report-modal-line);
+  background: #fff;
+}
+
+.logoWrap {
+  width: 150px;
+  margin: 0 auto 4px;
+  text-align: center;
+}
+
+.logoText {
+  color: #075b97;
+  font-size: 28px;
+  font-weight: 800;
+  font-style: italic;
+  line-height: 1;
+}
+
+.reportTitle {
+  margin: 4px 0 0;
+  color: var(--work-report-modal-text);
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.metaBlock {
+  color: var(--work-report-modal-text);
+  font-size: 14px;
+  line-height: 1.28;
+}
+
+.section {
+  border-bottom: 1px solid var(--work-report-modal-line);
+}
+
+.sectionHeader,
+.innerSectionHeader {
+  width: 100%;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 0;
+  background: var(--work-report-modal-blue);
+  color: #fff;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+}
+
+.summaryHeader {
+  background: var(--work-report-modal-red);
+}
+
+.innerSection {
+  border-bottom: 1px solid var(--work-report-modal-line);
+}
+
+.innerSectionHeader {
+  min-height: 42px;
+  font-size: 14px;
+}
+
+.sectionBody {
+  background: #fff;
+}
+
+.chevron {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  margin-right: 2px;
+  border-right: 4px solid #fff;
+  border-bottom: 4px solid #fff;
+  transform: rotate(45deg);
+  transition: transform 0.15s ease;
+}
+
+.chevronClosed {
+  transform: rotate(-45deg);
+}
+
+.checkRow {
+  min-height: 43px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 7px 11px;
+  border-bottom: 1px solid var(--work-report-modal-line);
+  color: var(--work-report-modal-text);
+  font-size: 16px;
+}
+
+.checkRow input {
+  width: 26px;
+  height: 26px;
+  margin: 0;
+}
+
+.signatureBlock {
+  padding: 12px 14px 9px;
+  border-bottom: 1px solid var(--work-report-modal-line);
+  color: var(--work-report-modal-text);
+  font-size: 14px;
+}
+
+.signatureTopRow {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 126px;
+  gap: 5px;
+  align-items: end;
+}
+
+.signatureArea {
+  min-height: 30px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  overflow: hidden;
+  padding: 0 4px 3px;
+  border: 0;
+  border-bottom: 1px solid #333;
+  border-radius: 0;
+  background: transparent;
+  color: #555;
+  font: inherit;
+  font-size: 12px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.signatureArea img {
+  max-width: 100%;
+  max-height: 34px;
+  display: block;
+  object-fit: contain;
+}
+
+.signatureArea:disabled,
+.editSignatureButton:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.signatureNameRow {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 126px;
+  gap: 5px;
+  align-items: center;
+  margin-top: 3px;
+}
+
+.signatureNameValue {
+  min-height: 24px;
+  border-bottom: 1px solid #333;
+  text-align: center;
+}
+
+.editSignatureButton {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #555;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.positionRow {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 7px;
+}
+
+.positionValue {
+  display: inline-flex;
+  min-width: 120px;
+  min-height: 22px;
+  align-items: center;
+  border-bottom: 1px solid #333;
+}
+
+.workItemRow {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr) auto;
+  min-height: 38px;
+  border-top: 1px solid var(--work-report-modal-line);
+}
+
+.workItemNumber,
+.workItemTitle,
+.workItemActions {
+  display: flex;
+  align-items: center;
+  padding: 7px 9px;
+  font-size: 14px;
+}
+
+.workItemTitle,
+.workItemActions {
+  border-left: 1px solid var(--work-report-modal-line);
+}
+
+.workItemActions {
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.workItemActions button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #333;
+  font: inherit;
+  font-size: 13px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.workItemActions button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.tableRow {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  min-height: 38px;
+  border-top: 1px solid var(--work-report-modal-line);
+}
+
+.tableNumber,
+.tableText,
+.tableAddButton {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  padding: 7px 11px;
+  color: var(--work-report-modal-text);
+  font-size: 15px;
+}
+
+.tableText,
+.tableAddButton {
+  border-left: 1px solid var(--work-report-modal-line);
+}
+
+.tableAddButton {
+  width: 100%;
+  min-height: 38px;
+  justify-content: flex-start;
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
+  border-radius: 0;
+  background: #fff;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tableAddButton:hover:not(:disabled) {
+  background: #f7f7f7;
+}
+
+.tableAddButton:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.section5Text {
+  padding: 8px 11px 16px;
+  color: var(--work-report-modal-text);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.footerBar {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 36px;
+  padding: 11px 26px calc(11px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--work-report-modal-line);
+  background: #fff;
+}
+
+.footerBar button {
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 0;
+  color: #fff;
+  font: inherit;
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.cancelButton {
+  background: #f40000;
+}
+
+.saveButton {
+  background: var(--work-report-modal-blue);
+}
+
+.footerBar button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+@media (max-width: 380px) {
+  .modalOverlay {
+    padding: 4px;
+  }
+
+  .modal {
+    width: 100%;
+    max-height: calc(100dvh - 8px);
+  }
+
+  .signatureTopRow {
+    grid-template-columns: 44px minmax(0, 1fr) 116px;
+  }
+
+  .signatureNameRow {
+    grid-template-columns: 24px minmax(0, 1fr) 116px;
+  }
+
+  .footerBar {
+    gap: 24px;
+    padding-right: 18px;
+    padding-left: 18px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chevron {
+    transition: none;
+  }
+}

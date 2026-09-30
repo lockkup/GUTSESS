@@ -1,17 +1,42 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.core.constants import DBConstants
+from app.schemas.work_report_purpose_selection import (
+    WorkReportPurposeSelectionResponse,
+)
+
+
+WorkReportStatus = Literal[
+    "active",
+    "cancelled",
+]
 
 
 _NON_NULLABLE_UPDATE_FIELDS = (
-    "purpose_id",
-    "is_active",
+    "purpose_selections",
 )
+
+
+class WorkReportPurposeSelectionInput(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        str_strip_whitespace=True,
+    )
+
+    purpose_id: int = Field(
+        ...,
+        gt=0,
+    )
+
+    purpose_detail: str | None = Field(
+        default=None,
+        max_length=500,
+    )
 
 
 class WorkReportBase(BaseModel):
@@ -25,31 +50,52 @@ class WorkReportBase(BaseModel):
         gt=0,
     )
 
-    purpose_id: int = Field(
-        ...,
-        gt=0,
-    )
-
     additional_note: str | None = Field(
         default=None,
         max_length=500,
     )
 
-    is_active: bool = Field(
-        default=True,
-        description=(
-            "สถานะใช้งาน TRUE = เปิดใช้งาน, "
-            "FALSE = ปิดใช้งาน"
-        ),
+    client_first_name: str | None = Field(
+        default=None,
+        max_length=DBConstants.FIRST_NAME_LENGTH,
+    )
+
+    client_last_name: str | None = Field(
+        default=None,
+        max_length=DBConstants.LAST_NAME_LENGTH,
+    )
+
+    client_position: str | None = Field(
+        default=None,
+        max_length=DBConstants.WORK_REPORT_SIGNATURE_POSITION_LENGTH,
+    )
+
+    signature_path: str | None = Field(
+        default=None,
+        max_length=DBConstants.WORK_REPORT_SIGNATURE_PATH_LENGTH,
     )
 
 
 class WorkReportCreate(WorkReportBase):
-    created_by: str = Field(
+    purpose_selections: list[WorkReportPurposeSelectionInput] = Field(
         ...,
-        min_length=DBConstants.EMPLOYEE_CODE_LENGTH,
-        max_length=DBConstants.EMPLOYEE_CODE_LENGTH,
+        min_length=1,
+        max_length=3,
     )
+
+    @model_validator(mode="after")
+    def validate_unique_purpose_selections(self) -> WorkReportCreate:
+        purpose_ids = [
+            item.purpose_id
+            for item in self.purpose_selections
+        ]
+
+        if len(purpose_ids) != len(set(purpose_ids)):
+            raise ValueError(
+                "purpose_selections contains duplicate purpose_id"
+            )
+
+        return self
 
 
 class WorkReportUpdate(BaseModel):
@@ -58,9 +104,12 @@ class WorkReportUpdate(BaseModel):
         str_strip_whitespace=True,
     )
 
-    purpose_id: int | None = Field(
+    purpose_selections: (
+        list[WorkReportPurposeSelectionInput] | None
+    ) = Field(
         default=None,
-        gt=0,
+        min_length=1,
+        max_length=3,
     )
 
     additional_note: str | None = Field(
@@ -68,7 +117,25 @@ class WorkReportUpdate(BaseModel):
         max_length=500,
     )
 
-    is_active: bool | None = None
+    client_first_name: str | None = Field(
+        default=None,
+        max_length=DBConstants.FIRST_NAME_LENGTH,
+    )
+
+    client_last_name: str | None = Field(
+        default=None,
+        max_length=DBConstants.LAST_NAME_LENGTH,
+    )
+
+    client_position: str | None = Field(
+        default=None,
+        max_length=DBConstants.WORK_REPORT_SIGNATURE_POSITION_LENGTH,
+    )
+
+    signature_path: str | None = Field(
+        default=None,
+        max_length=DBConstants.WORK_REPORT_SIGNATURE_PATH_LENGTH,
+    )
 
     updated_by: str = Field(
         ...,
@@ -89,9 +156,30 @@ class WorkReportUpdate(BaseModel):
         ]
 
         if null_fields:
-            raise ValueError(f"{', '.join(null_fields)} cannot be null")
+            raise ValueError(
+                f"{', '.join(null_fields)} cannot be null"
+            )
 
         return data
+
+    @model_validator(mode="after")
+    def validate_unique_purpose_selections(
+        self,
+    ) -> WorkReportUpdate:
+        if self.purpose_selections is None:
+            return self
+
+        purpose_ids = [
+            item.purpose_id
+            for item in self.purpose_selections
+        ]
+
+        if len(purpose_ids) != len(set(purpose_ids)):
+            raise ValueError(
+                "purpose_selections contains duplicate purpose_id"
+            )
+
+        return self
 
 
 class WorkReportAction(BaseModel):
@@ -118,6 +206,21 @@ class WorkReportResponse(WorkReportBase):
         ...,
         gt=0,
     )
+
+    document_no: str | None = Field(
+        default=None,
+        max_length=50,
+    )
+
+    report_status: WorkReportStatus
+
+    is_active: bool
+
+    purpose_selections: list[WorkReportPurposeSelectionResponse] = Field(
+        default_factory=list,
+    )
+
+    signature_datetime: datetime | None = None
 
     mark_flag: bool
 
