@@ -373,6 +373,9 @@ WORK_REPORT_ITEM_SEQUENCE_ALREADY_EXISTS_DETAIL: Final[str] = (
 WORK_REPORT_ITEM_DETAIL_REQUIRED_DETAIL: Final[str] = (
     "Work item detail is required for this work item type"
 )
+WORK_REPORT_ITEM_OTHER_REQUIRED_DETAIL: Final[str] = (
+    "Work item other is required when the work item type is other"
+)
 
 # =========================================================
 # Work report detail

@@ -1,6 +1,9 @@
+# app/models/checkpoint_assignment_call.py
+
 from __future__ import annotations
 
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
@@ -10,14 +13,17 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
-    UniqueConstraint,
     text,
 )
 from sqlalchemy.dialects.mysql import TINYINT
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.constants import DBConstants
 from app.core.orm import Base
+
+
+if TYPE_CHECKING:
+    from app.models.time_record_image import TimeRecordImage
 
 
 CALL_STATUS_TYPE = Integer().with_variant(TINYINT(), "mysql")
@@ -27,10 +33,6 @@ class CheckpointAssignmentCall(Base):
     __tablename__ = "checkpoint_assignment_call"
 
     __table_args__ = (
-        UniqueConstraint(
-            "assignment_id",
-            name="uq_checkpoint_assignment_call_assignment_id",
-        ),
         CheckConstraint(
             "call_status IN (1, 2, 3)",
             name="ck_checkpoint_assignment_call_status",
@@ -47,6 +49,7 @@ class CheckpointAssignmentCall(Base):
         Integer,
         ForeignKey("checkpoint_assignment.assignment_id"),
         nullable=False,
+        index=True,
     )
 
     call_datetime: Mapped[datetime] = mapped_column(
@@ -96,7 +99,9 @@ class CheckpointAssignmentCall(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,
-        server_default=text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"),
+        server_default=text(
+            "CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
+        ),
     )
 
     created_by: Mapped[str] = mapped_column(
@@ -111,4 +116,14 @@ class CheckpointAssignmentCall(Base):
         ForeignKey("employees.employee_code"),
         nullable=True,
         index=True,
+    )
+
+    # ============================================================
+    # Relationships
+    # ============================================================
+
+    images: Mapped[list["TimeRecordImage"]] = relationship(
+        "TimeRecordImage",
+        back_populates="assignment_call",
+        passive_deletes=True,
     )

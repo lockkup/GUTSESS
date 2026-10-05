@@ -47,6 +47,8 @@ OPERATOR_LAST_NAME_ALIAS = "operator_last_name"
 CHECKIN_IMAGE_ALIAS = "checkin_image_url"
 CHECKOUT_IMAGE_ALIAS = "checkout_image_url"
 TIME_RECORD_ID_COLUMN = "time_record_id"
+ASSIGNMENT_CALL_ID_COLUMN = "assignment_call_id"
+CALL_IMAGE_URLS_ALIAS = "call_image_urls"
 
 # ใช้สำหรับเรียงรายงานตามเวลาเช็กอินจริง
 # ถ้า view vw_checkin_report / vw_checkin_unplanned มีคอลัมน์นี้
@@ -1279,6 +1281,10 @@ def _map_patrol_report_row(
         callNote=_to_optional_text(
             row.get(PatrolReportConstants.COLUMN_CALL_NOTE),
         ),
+        assignmentCallId=_to_optional_positive_int(
+            row.get(ASSIGNMENT_CALL_ID_COLUMN),
+        ),
+        callImageUrls=list(row.get(CALL_IMAGE_URLS_ALIAS) or []),
 
         scheduleText=_build_schedule_text(by_contract),
     )
@@ -1443,17 +1449,6 @@ def get_patrol_report_filter_options(
             LEFT JOIN positions po
                 ON em.position_id = po.position_id
             WHERE v.{PatrolReportConstants.COLUMN_EMPLOYEE_CODE} IS NOT NULL
-              AND NOT EXISTS (
-                  SELECT 1
-                  FROM work_report wr_cancel
-                  WHERE wr_cancel.time_record_id = v.time_record_id
-                    AND COALESCE(wr_cancel.mark_flag, 0) = 0
-                    AND LOWER(
-                        TRIM(
-                            COALESCE(wr_cancel.report_status, '')
-                        )
-                    ) = 'cancelled'
-              )
               AND (
                   :shift_id IS NULL
                   OR v.{PatrolReportConstants.COLUMN_SHIFT_ID} = :shift_id
@@ -1792,6 +1787,155 @@ def _attach_time_record_images(
         row[CHECKIN_IMAGE_ALIAS] = checkin_image
         row[CHECKOUT_IMAGE_ALIAS] = checkout_image
 
+
+def _attach_assignment_call_images(
+    db: Session,
+    rows: list[dict[str, Any]],
+) -> None:
+    """
+    โหลดรูปบันทึกการโทรแบบ batch โดยไม่ต้องมี time_record_id
+
+    ใช้ assignment_call_id จาก view ถ้ามี เพื่อให้รูปตรงกับรายการโทร
+    ถ้า view ยังไม่มี ID ใช้บันทึกโทรล่าสุดที่ active และไม่ถูกลบ
+    ของ assignment_id เดียวกัน ตามลำดับ ID ที่ PDF เดิมใช้
+    """
+    for row in rows:
+        row[CALL_IMAGE_URLS_ALIAS] = []
+
+    call_rows = [
+        row
+        for row in rows
+        if _to_optional_positive_int(
+            row.get(PatrolReportConstants.COLUMN_CALL_STATUS),
+        ) in {1, 2, 3}
+    ]
+
+    if not call_rows:
+        return
+
+    missing_call_rows = [
+        row
+        for row in call_rows
+        if _to_optional_positive_int(
+            row.get(ASSIGNMENT_CALL_ID_COLUMN),
+        ) is None
+    ]
+    assignment_ids = sorted(
+        {
+            assignment_id
+            for row in missing_call_rows
+            if (
+                assignment_id := _to_optional_positive_int(
+                    row.get(ASSIGNMENT_ID_COLUMN),
+                )
+            ) is not None
+        }
+    )
+
+    if assignment_ids:
+        call_sql = text(
+            """
+            SELECT
+                cac.assignment_id,
+                cac.assignment_call_id
+            FROM checkpoint_assignment_call cac
+            WHERE cac.assignment_id IN :assignment_ids
+              AND cac.is_active = 1
+              AND cac.mark_flag = 0
+            ORDER BY
+                cac.assignment_id,
+                cac.assignment_call_id DESC
+            """
+        ).bindparams(bindparam("assignment_ids", expanding=True))
+        calls_by_assignment_id: dict[int, int] = {}
+
+        for call_row in db.execute(
+            call_sql,
+            {"assignment_ids": assignment_ids},
+        ).mappings().all():
+            assignment_id = _to_optional_positive_int(
+                call_row.get(ASSIGNMENT_ID_COLUMN),
+            )
+            assignment_call_id = _to_optional_positive_int(
+                call_row.get(ASSIGNMENT_CALL_ID_COLUMN),
+            )
+
+            if assignment_id is None or assignment_call_id is None:
+                continue
+
+            calls_by_assignment_id.setdefault(
+                assignment_id,
+                assignment_call_id,
+            )
+
+        for row in missing_call_rows:
+            assignment_id = _to_optional_positive_int(
+                row.get(ASSIGNMENT_ID_COLUMN),
+            )
+            row[ASSIGNMENT_CALL_ID_COLUMN] = (
+                calls_by_assignment_id.get(assignment_id)
+                if assignment_id is not None
+                else None
+            )
+
+    assignment_call_ids = sorted(
+        {
+            assignment_call_id
+            for row in call_rows
+            if (
+                assignment_call_id := _to_optional_positive_int(
+                    row.get(ASSIGNMENT_CALL_ID_COLUMN),
+                )
+            ) is not None
+        }
+    )
+
+    if not assignment_call_ids:
+        return
+
+    image_sql = text(
+        """
+        SELECT
+            tri.assignment_call_id,
+            tri.image_path
+        FROM time_record_image tri
+        WHERE tri.assignment_call_id IN :assignment_call_ids
+          AND tri.image_type = 'checkpoint_call'
+        ORDER BY
+            tri.assignment_call_id,
+            tri.sequence_no,
+            tri.time_record_image_id
+        """
+    ).bindparams(bindparam("assignment_call_ids", expanding=True))
+    images_by_call_id: dict[int, list[str]] = {}
+
+    for image_row in db.execute(
+        image_sql,
+        {"assignment_call_ids": assignment_call_ids},
+    ).mappings().all():
+        assignment_call_id = _to_optional_positive_int(
+            image_row.get(ASSIGNMENT_CALL_ID_COLUMN),
+        )
+        image_path = _to_optional_text(image_row.get("image_path"))
+
+        if assignment_call_id is None or image_path is None:
+            continue
+
+        images_by_call_id.setdefault(assignment_call_id, []).append(
+            image_path,
+        )
+
+    for row in call_rows:
+        assignment_call_id = _to_optional_positive_int(
+            row.get(ASSIGNMENT_CALL_ID_COLUMN),
+        )
+        row[CALL_IMAGE_URLS_ALIAS] = list(
+            images_by_call_id.get(assignment_call_id, [])
+            if assignment_call_id is not None
+            else []
+        )
+
+
 def _get_patrol_report_unplanned_rows(
     db: Session,
     *,
@@ -1911,17 +2055,6 @@ def _get_patrol_report_unplanned_rows(
             BETWEEN :source_workday_start AND :source_workday_end
           AND v.{PatrolReportConstants.COLUMN_WORKDAY}
             BETWEEN :workday_start AND :workday_end
-          AND NOT EXISTS (
-              SELECT 1
-              FROM work_report wr_cancel
-              WHERE wr_cancel.time_record_id = v.time_record_id
-                AND COALESCE(wr_cancel.mark_flag, 0) = 0
-                AND LOWER(
-                    TRIM(
-                        COALESCE(wr_cancel.report_status, '')
-                    )
-                ) = 'cancelled'
-          )
         """
     ]
 
@@ -2177,6 +2310,11 @@ def _get_patrol_report_planned_rows(
         PatrolReportConstants.COLUMN_CALL_NOTE,
         alias=PatrolReportConstants.COLUMN_CALL_NOTE,
     )
+    assignment_call_id_select = _select_view_column(
+        view_column_names,
+        ASSIGNMENT_CALL_ID_COLUMN,
+        alias=ASSIGNMENT_CALL_ID_COLUMN,
+    )
     checkin_image_select = _select_first_view_column(
         view_column_names,
         *CHECKIN_IMAGE_COLUMN_CANDIDATES,
@@ -2346,6 +2484,7 @@ def _get_patrol_report_planned_rows(
             {contact_detail_select},
             {call_status_select},
             {call_note_select},
+            {assignment_call_id_select},
             NULL AS last_inspection_date
         FROM {PatrolReportConstants.VIEW_NAME} v
         LEFT JOIN employees em_operator
@@ -2519,6 +2658,10 @@ def _get_patrol_report_planned_rows(
         # time_record_image เป็นแหล่งรูปหลัก
         # และ fallback ไป Base64 เดิมสำหรับข้อมูลเก่า
         _attach_time_record_images(
+            db,
+            rows,
+        )
+        _attach_assignment_call_images(
             db,
             rows,
         )

@@ -1,3 +1,5 @@
+# app/schemas/checkpoint_assignment_call.py
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -5,6 +7,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.constants import DBConstants
+from app.schemas.time_record_image import TimeRecordImageResponse
 
 
 CALL_STATUS_DESCRIPTION = (
@@ -20,7 +23,10 @@ class CheckpointAssignmentCallBase(BaseModel):
         str_strip_whitespace=True,
     )
 
-    assignment_id: int = Field(..., gt=0)
+    assignment_id: int = Field(
+        ...,
+        gt=0,
+    )
 
     contact_detail: str = Field(
         ...,
@@ -37,10 +43,22 @@ class CheckpointAssignmentCallBase(BaseModel):
 
     call_note: str | None = None
 
-    is_active: bool = Field(default=True)
+    is_active: bool = Field(
+        default=True,
+    )
 
 
-class CheckpointAssignmentCallCreate(CheckpointAssignmentCallBase):
+class CheckpointAssignmentCallCreate(
+    CheckpointAssignmentCallBase
+):
+    """
+    ใช้สำหรับสร้างข้อมูลบันทึกการโทร
+
+    รูปภาพไม่ได้รับผ่าน Schema นี้โดยตรง
+    Router จะรับรูปด้วย UploadFile ผ่าน multipart/form-data
+    แล้วส่งต่อให้ Service
+    """
+
     call_datetime: datetime | None = None
 
     created_by: str = Field(
@@ -56,7 +74,10 @@ class CheckpointAssignmentCallUpdate(BaseModel):
         str_strip_whitespace=True,
     )
 
-    assignment_id: int | None = Field(default=None, gt=0)
+    assignment_id: int | None = Field(
+        default=None,
+        gt=0,
+    )
 
     call_datetime: datetime | None = None
 
@@ -96,8 +117,14 @@ class CheckpointAssignmentCallAction(BaseModel):
     )
 
 
-class CheckpointAssignmentCallResponse(CheckpointAssignmentCallBase):
-    model_config = ConfigDict(from_attributes=True)
+class CheckpointAssignmentCallResponse(
+    CheckpointAssignmentCallBase
+):
+    model_config = ConfigDict(
+        from_attributes=True,
+        extra="forbid",
+        str_strip_whitespace=True,
+    )
 
     assignment_call_id: int
 
@@ -110,3 +137,8 @@ class CheckpointAssignmentCallResponse(CheckpointAssignmentCallBase):
 
     created_at: datetime
     updated_at: datetime
+
+    # รูปภาพที่แนบกับบันทึกการโทร
+    images: list[TimeRecordImageResponse] = Field(
+        default_factory=list,
+    )

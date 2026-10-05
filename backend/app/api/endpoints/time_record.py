@@ -1,5 +1,3 @@
-
-
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
@@ -54,6 +52,12 @@ def create_time_record(
 #
 # ใช้ employee_code เพื่อตรวจสอบสถานะรายการค้างของแต่ละหน่วยงาน
 # ไม่ได้ใช้ employee_code เพื่อจำกัดสิทธิ์หรือกรองหน่วยงาน
+#
+# หมายเหตุ:
+# - payload.work_date คือวันที่ปฏิบัติงานของรอบงาน
+# - Service ใช้ work_date เพื่อหา Open Record ของรอบงานนั้น
+# - Frontend คำนวณช่วง 00:00-08:00 ให้เป็นวันก่อนหน้า
+# - รองรับกรณีเข้า 21:30 และออก 00:56 วันถัดไป
 # =========================================================
 @router.post(
     "/attendance-locations/search",
@@ -75,12 +79,22 @@ def search_attendance_locations(
 # ใช้กับเมนู "ลงเวลา เข้า-ออกงาน"
 #
 # ใช้ employee_code + work_date
-# ไม่ใช้ shift_id แล้ว
+# ไม่ใช้ shift_id
+#
+# work_date ต้องเป็น effective work_date ของรอบงาน
+# ตัวอย่าง:
+# - 3 ต.ค. 21:30 เข้า  -> work_date = 2026-10-03
+# - 4 ต.ค. 00:56 ออก -> work_date = 2026-10-03
 #
 # เชิงระบบ:
-# - ถ้ามีรายการค้าง      => 200 + TimeRecordResponse
-# - ถ้าไม่มีรายการค้าง  => 200 + null
+# - ถ้ามีรายการค้าง        => 200 + TimeRecordResponse
+# - ถ้าไม่มีรายการค้าง    => 200 + null
 # - ถ้า employee ไม่มีจริง => 404 ตามเดิม
+#
+# หมายเหตุ:
+# Endpoint นี้คืน Open Record เพียง 1 รายการ
+# Phase 2 ที่รองรับหลายหน่วยงานพร้อมกันควรใช้
+# /attendance-locations/search เพื่อรับสถานะแยกตาม location
 # =========================================================
 @router.get(
     "/open/attendance/{employee_code}",
@@ -95,7 +109,10 @@ def get_open_attendance_time_record_by_employee(
     ),
     work_date: date = Query(
         ...,
-        description="วันที่ปฏิบัติงานปัจจุบัน รูปแบบ YYYY-MM-DD",
+        description=(
+            "วันที่ปฏิบัติงานของรอบงาน รูปแบบ YYYY-MM-DD "
+            "(ช่วง 00:00-08:00 ให้ใช้วันก่อนหน้า)"
+        ),
     ),
     db: Session = Depends(get_db),
 ) -> TimeRecordResponse | None:
@@ -154,12 +171,17 @@ def get_open_checkpoint_time_record_by_employee(
 # BACKWARD COMPATIBILITY
 # endpoint เดิม /open/{employee_code}
 #
-# ปรับให้รับแค่ work_date เหมือน /open/attendance
-# ไม่ใช้ shift_id แล้ว
+# ใช้ employee_code + work_date
+# ไม่ใช้ shift_id
+#
+# work_date ต้องเป็น effective work_date ของรอบงาน
+# ตัวอย่าง:
+# - 3 ต.ค. 21:30 เข้า  -> work_date = 2026-10-03
+# - 4 ต.ค. 00:56 ออก -> work_date = 2026-10-03
 #
 # เชิงระบบ:
-# - ถ้ามีรายการค้าง      => 200 + TimeRecordResponse
-# - ถ้าไม่มีรายการค้าง  => 200 + null
+# - ถ้ามีรายการค้าง        => 200 + TimeRecordResponse
+# - ถ้าไม่มีรายการค้าง    => 200 + null
 # - ถ้า employee ไม่มีจริง => 404 ตามเดิม
 # =========================================================
 @router.get(
@@ -175,7 +197,10 @@ def get_open_time_record_by_employee(
     ),
     work_date: date = Query(
         ...,
-        description="วันที่ปฏิบัติงานปัจจุบัน รูปแบบ YYYY-MM-DD",
+        description=(
+            "วันที่ปฏิบัติงานของรอบงาน รูปแบบ YYYY-MM-DD "
+            "(ช่วง 00:00-08:00 ให้ใช้วันก่อนหน้า)"
+        ),
     ),
     db: Session = Depends(get_db),
 ) -> TimeRecordResponse | None:

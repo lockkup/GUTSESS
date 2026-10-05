@@ -26,6 +26,7 @@ export type WorkItemModalValue = {
   purposeLabel: string;
   workItemTypeId: number;
   workItemCode: string;
+  workItemOther: string;
   workItemDetail: string;
   requireDetail: boolean;
   title: string;
@@ -64,6 +65,7 @@ export type WorkItemModalValue = {
 export type WorkItemModalInitialValue = {
   purposeId?: number | null;
   workItemTypeId: number;
+  workItemOther?: string;
   workItemDetail: string;
 
   imageName: string;
@@ -120,6 +122,10 @@ export default function WorkItemModal({
   const [selectedWorkItemTypeId, setSelectedWorkItemTypeId] = useState<
     number | ""
   >(initialValue?.workItemTypeId ?? "");
+
+  const [workItemOther, setWorkItemOther] = useState(
+    initialValue?.workItemOther ?? "",
+  );
 
   const [workItemDetail, setWorkItemDetail] = useState(
     initialValue?.workItemDetail ?? "",
@@ -341,6 +347,15 @@ export default function WorkItemModal({
     const nextId = value === "" ? "" : Number(value);
 
     setSelectedWorkItemTypeId(nextId);
+    if (
+      !workItemTypeOptions.some(
+        (option) =>
+          option.work_item_type_id === nextId &&
+          option.work_item_code === "other",
+      )
+    ) {
+      setWorkItemOther("");
+    }
     setError("");
   }
 
@@ -368,6 +383,14 @@ export default function WorkItemModal({
       return;
     }
 
+    const cleanWorkItemOther =
+      selectedOption.work_item_code === "other" ? workItemOther.trim() : "";
+
+    if (selectedOption.work_item_code === "other" && !cleanWorkItemOther) {
+      setError("กรุณาระบุรายการอื่น ๆ");
+      return;
+    }
+
     const cleanWorkItemDetail = workItemDetail.trim();
 
     if (selectedOption.require_detail && !cleanWorkItemDetail) {
@@ -375,7 +398,9 @@ export default function WorkItemModal({
       return;
     }
 
-    const title = selectedOption.work_item_name;
+    const title = cleanWorkItemOther
+      ? `อื่น ๆ: ${cleanWorkItemOther}`
+      : selectedOption.work_item_name;
 
     const firstImage = images[0];
 
@@ -391,6 +416,7 @@ export default function WorkItemModal({
       purposeLabel: selectedPurpose.purpose_name,
       workItemTypeId: selectedOption.work_item_type_id,
       workItemCode: selectedOption.work_item_code,
+      workItemOther: cleanWorkItemOther,
       workItemDetail: cleanWorkItemDetail,
       requireDetail: selectedOption.require_detail,
       title,
@@ -414,6 +440,8 @@ export default function WorkItemModal({
     !busy &&
     selectedPurposeId !== null &&
     selectedWorkItemTypeId !== "" &&
+    (selectedWorkItemOption?.work_item_code !== "other" ||
+      Boolean(workItemOther.trim())) &&
     (!selectedWorkItemOption?.require_detail || Boolean(workItemDetail.trim()));
 
   return (
@@ -478,6 +506,32 @@ export default function WorkItemModal({
             </select>
           </div>
 
+          {selectedWorkItemOption?.work_item_code === "other" ? (
+            <div className={styles.itemField}>
+              <label className={styles.itemLabel} htmlFor="work-item-other">
+                โปรดระบุรายการ
+                <span className={styles.requiredMark} aria-hidden="true">
+                  *
+                </span>
+              </label>
+
+              <input
+                id="work-item-other"
+                type="text"
+                className={styles.modalSelect}
+                value={workItemOther}
+                onChange={(event) => {
+                  setWorkItemOther(event.target.value);
+                  setError("");
+                }}
+                placeholder="ระบุสิ่งที่ดำเนินการ"
+                maxLength={150}
+                required
+                disabled={busy}
+              />
+            </div>
+          ) : null}
+
           <div className={styles.detailField}>
             <label
               className={styles.detailLabel}
@@ -500,12 +554,12 @@ export default function WorkItemModal({
                 setError("");
               }}
               placeholder="กรอกรายละเอียดเพิ่มเติม"
-              maxLength={250}
+              maxLength={500}
               disabled={busy}
             />
 
             <div className={styles.characterCount}>
-              {workItemDetail.length}/250
+              {workItemDetail.length}/500
             </div>
           </div>
 

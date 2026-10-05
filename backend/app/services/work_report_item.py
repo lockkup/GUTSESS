@@ -1,5 +1,3 @@
-
-
 from typing import Any
 
 from fastapi import HTTPException, status
@@ -14,6 +12,7 @@ from app.core.error_messages import (
     UPDATED_BY_EMPLOYEE_NOT_FOUND_DETAIL,
     WORK_REPORT_ITEM_DETAIL_REQUIRED_DETAIL,
     WORK_REPORT_ITEM_NOT_FOUND_DETAIL,
+    WORK_REPORT_ITEM_OTHER_REQUIRED_DETAIL,
     WORK_REPORT_ITEM_SEQUENCE_ALREADY_EXISTS_DETAIL,
     WORK_REPORT_ITEM_TYPE_NOT_FOUND_DETAIL,
     WORK_REPORT_NOT_FOUND_DETAIL,
@@ -255,6 +254,23 @@ class WorkReportItemService:
             )
 
     @staticmethod
+    def _normalize_work_item_other(
+        work_report_item_type: WorkReportItemType,
+        work_item_other: str | None,
+    ) -> str | None:
+        if work_report_item_type.work_item_code != "other":
+            return None
+
+        other_text = work_item_other.strip() if work_item_other else ""
+        if not other_text:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=WORK_REPORT_ITEM_OTHER_REQUIRED_DETAIL,
+            )
+
+        return other_text
+
+    @staticmethod
     def _commit_and_refresh(
         db: Session,
         instance: WorkReportItem,
@@ -303,6 +319,13 @@ class WorkReportItemService:
         WorkReportItemService._validate_work_item_detail(
             work_report_item_type=work_report_item_type,
             work_item_detail=create_data.get("work_item_detail"),
+        )
+
+        create_data["work_item_other"] = (
+            WorkReportItemService._normalize_work_item_other(
+                work_report_item_type=work_report_item_type,
+                work_item_other=create_data.get("work_item_other"),
+            )
         )
 
         work_report_item = WorkReportItem(
@@ -921,6 +944,7 @@ class WorkReportItemService:
         if (
             "work_item_type_id" in update_data
             or "work_item_detail" in update_data
+            or "work_item_other" in update_data
         ):
             new_work_item_type_id = update_data.get(
                 "work_item_type_id",
@@ -955,6 +979,17 @@ class WorkReportItemService:
             WorkReportItemService._validate_work_item_detail(
                 work_report_item_type=work_report_item_type,
                 work_item_detail=new_work_item_detail,
+            )
+
+            new_work_item_other = update_data.get(
+                "work_item_other",
+                work_report_item.work_item_other,
+            )
+            update_data["work_item_other"] = (
+                WorkReportItemService._normalize_work_item_other(
+                    work_report_item_type=work_report_item_type,
+                    work_item_other=new_work_item_other,
+                )
             )
 
         for field, value in update_data.items():

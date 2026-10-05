@@ -58,6 +58,7 @@ type WorkItem = {
   workReportItemId: number | null;
   workItemTypeId: number;
   workItemCode: string;
+  workItemOther: string;
   workItemDetail: string;
   requireDetail: boolean;
   title: string;
@@ -380,6 +381,7 @@ function createPersistedFormSnapshot(
       workReportItemId: item.workReportItemId,
       workItemTypeId: item.workItemTypeId,
       workItemCode: item.workItemCode,
+      workItemOther: item.workItemOther,
       workItemDetail: item.workItemDetail,
       requireDetail: item.requireDetail,
       title: item.title,
@@ -764,8 +766,11 @@ export default function WorkRecordReport({
               );
 
               const detail = savedItem.work_item_detail?.trim() ?? "";
+              const other = savedItem.work_item_other?.trim() ?? "";
               const title = itemType
-                ? itemType.require_detail && detail
+                ? itemType.work_item_code === "other" && other
+                  ? `อื่น ๆ: ${other}`
+                  : itemType.require_detail && detail
                   ? `${itemType.work_item_name} - ${detail}`
                   : itemType.work_item_name
                 : detail || `รายการ ${savedItem.work_item_type_id}`;
@@ -797,6 +802,7 @@ export default function WorkRecordReport({
                 workReportItemId: savedItem.work_report_item_id,
                 workItemTypeId: savedItem.work_item_type_id,
                 workItemCode: itemType?.work_item_code ?? "",
+                workItemOther: other,
                 workItemDetail: detail,
                 requireDetail: itemType?.require_detail ?? false,
                 title,
@@ -1028,6 +1034,7 @@ export default function WorkRecordReport({
       workReportItemId: currentEditingItem?.workReportItemId ?? null,
       workItemTypeId: item.workItemTypeId,
       workItemCode: item.workItemCode,
+      workItemOther: item.workItemOther,
       workItemDetail: item.workItemDetail,
       requireDetail: item.requireDetail,
       title: item.title,
@@ -1319,27 +1326,27 @@ export default function WorkRecordReport({
       }
 
       /**
-       * ข้อ 1 / ลายเซ็น / ข้อมูลส่วนอื่นยังไม่ใช้งาน
-       * current flow จึงไม่ PATCH ค่าเหล่านี้ลง work_report
-       *
-       * เมื่อเปิดหัวข้อเดิมในอนาคต ค่อยบันทึก purpose_selections
-       * และข้อมูลผู้ว่าจ้างตาม logic เดิม
+       * บันทึกรายงานหลักก่อนรายการย่อยทุกครั้ง
+       * เพื่อให้ backend คืนสถานะรายงานที่ยกเลิกเป็น active
+       * current flow ส่งเฉพาะ updated_by ส่วนหัวข้อเดิมส่งเมื่อเปิดใช้งาน
        */
-      if (SHOW_FUTURE_SECTIONS) {
-        const updatePayload: WorkReportUpdate = {
-          purpose_selections: purposeSelections,
-          additional_note: null,
-          client_first_name: signatureValue?.firstName?.trim() || null,
-          client_last_name: signatureValue?.lastName?.trim() || null,
-          client_position: signatureValue?.position?.trim() || null,
-          updated_by: empCode,
-        };
+      const updatePayload: WorkReportUpdate = SHOW_FUTURE_SECTIONS
+        ? {
+            purpose_selections: purposeSelections,
+            additional_note: null,
+            client_first_name: signatureValue?.firstName?.trim() || null,
+            client_last_name: signatureValue?.lastName?.trim() || null,
+            client_position: signatureValue?.position?.trim() || null,
+            updated_by: empCode,
+          }
+        : {
+            updated_by: empCode,
+          };
 
-        await workReportService.updateWorkReport(
-          savedWorkReportId,
-          updatePayload,
-        );
-      }
+      await workReportService.updateWorkReport(
+        savedWorkReportId,
+        updatePayload,
+      );
 
       const signatureDataUrl = signatureValue?.signatureDataUrl ?? "";
 
@@ -1403,6 +1410,10 @@ export default function WorkRecordReport({
 
         for (const [index, workItem] of workItems.entries()) {
           const sequenceNo = index + 1;
+          const workItemOther =
+            workItem.workItemCode === "other"
+              ? workItem.workItemOther.trim() || null
+              : null;
           const workItemDetail =
             workItem.workItemDetail.trim() || null;
 
@@ -1414,6 +1425,7 @@ export default function WorkRecordReport({
                 work_report_id: savedWorkReportId,
                 work_item_type_id: workItem.workItemTypeId,
                 sequence_no: sequenceNo,
+                work_item_other: workItemOther,
                 work_item_detail: workItemDetail,
                 is_active: true,
                 created_by: empCode,
@@ -1428,6 +1440,7 @@ export default function WorkRecordReport({
                 {
                   work_item_type_id: workItem.workItemTypeId,
                   sequence_no: sequenceNo,
+                  work_item_other: workItemOther,
                   work_item_detail: workItemDetail,
                   is_active: true,
                   updated_by: empCode,
@@ -2537,6 +2550,7 @@ export default function WorkRecordReport({
               ? {
                   purposeId,
                   workItemTypeId: editingWorkItem.workItemTypeId,
+                  workItemOther: editingWorkItem.workItemOther,
                   workItemDetail: editingWorkItem.workItemDetail,
                   imageName: editingWorkItem.imageName,
                   imageDataUrl: editingWorkItem.imageDataUrl,

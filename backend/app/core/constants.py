@@ -1,3 +1,5 @@
+# app/core/constants.py
+
 from __future__ import annotations
 
 from typing import Final
@@ -50,11 +52,21 @@ class DBConstants:
     TIME_RECORD_STATUS_TEXT_LENGTH: Final[int] = 100
 
     # =========================
+    # Time Record Image
+    # =========================
+    TIME_RECORD_IMAGE_TYPE_LENGTH: Final[int] = 20
+    TIME_RECORD_IMAGE_PATH_LENGTH: Final[int] = 500
+
+    CHECKPOINT_CALL_IMAGE_TYPE: Final[str] = "checkpoint_call"
+    CHECKPOINT_CALL_MAX_IMAGES: Final[int] = 3
+
+    # =========================
     # Work Report
     # =========================
     WORK_REPORT_DOCUMENT_NO_LENGTH: Final[int] = 50
     WORK_REPORT_SIGNATURE_POSITION_LENGTH: Final[int] = 150
     WORK_REPORT_SIGNATURE_PATH_LENGTH: Final[int] = 500
+    WORK_REPORT_ITEM_DETAIL_LENGTH: Final[int] = 500
 
     FACE_REFERENCE_IMAGE_LENGTH: Final[int] = 255
     FACE_EMBEDDING_DIMENSION: Final[int] = 128
@@ -81,6 +93,7 @@ class DBConstants:
 
     # queued / processing / completed / failed / cancelled / expired
     REPORT_EXPORT_JOB_STATUS_LENGTH: Final[int] = 20
+
     # ตัวอย่าง: patrol_report
     REPORT_EXPORT_TYPE_LENGTH: Final[int] = 50
 

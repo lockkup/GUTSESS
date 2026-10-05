@@ -608,7 +608,7 @@ function loadInitialAttendanceHistoryDate(): string {
 
   }
 
-  return formatWorkDate();
+  return getAttendanceWorkDate();
 
 }
 
@@ -705,6 +705,56 @@ function formatWorkDate(date = new Date()) {
   const dd = pad(date.getDate());
 
   return `${yyyy}-${mm}-${dd}`;
+
+}
+
+/**
+
+ * วันปฏิบัติงานของ Attendance ปกติ
+
+ *
+
+ * ตามช่วงกะปัจจุบัน:
+
+ * - 08:01 เป็นต้นไป = วันที่ปฏิทินปัจจุบัน
+
+ * - 00:00 - 08:00 = ยังถือเป็นวันปฏิบัติงานของวันก่อนหน้า
+
+ *
+
+ * ตัวอย่าง:
+
+ * 3 ต.ค. 21:30 เข้า -> work_date = 2026-10-03
+
+ * 4 ต.ค. 00:56 ออก -> ยังใช้ work_date = 2026-10-03
+
+ *
+
+ * หมายเหตุ:
+
+ * ใช้เฉพาะ Attendance ปกติ
+
+ * Checkpoint ยังคงใช้ work_date จาก Assignment/Flow เดิม
+
+ */
+
+function getAttendanceWorkDate(date = new Date()) {
+
+  const operationalDate = new Date(date);
+
+  const currentMinutes =
+
+    operationalDate.getHours() * 60 + operationalDate.getMinutes();
+
+  const nightShiftEndMinutes = 8 * 60;
+
+  if (currentMinutes <= nightShiftEndMinutes) {
+
+    operationalDate.setDate(operationalDate.getDate() - 1);
+
+  }
+
+  return formatWorkDate(operationalDate);
 
 }
 
@@ -1318,7 +1368,7 @@ export default function App() {
 
     return {
 
-      workDate: params?.workDate ?? formatWorkDate(date),
+      workDate: params?.workDate ?? getAttendanceWorkDate(date),
 
     };
 

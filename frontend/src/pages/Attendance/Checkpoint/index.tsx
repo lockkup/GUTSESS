@@ -45,6 +45,8 @@ import {
 import {
   createCheckpointAssignmentCall,
   getLatestCheckpointAssignmentCall,
+  updateCheckpointAssignmentCall,
+  type CheckpointAssignmentCallImage,
 } from "@/services/checkpointAssignmentCallService";
 import { verifyCheckpointLocation } from "@/services/checkpointLocationService";
 import api from "@/lib/api";
@@ -1042,6 +1044,12 @@ export default function Checkpoint({
   const [contactDetail, setContactDetail] = useState("");
   const [callNote, setCallNote] = useState("");
   const [callStatus, setCallStatus] = useState<CallStatus>(1);
+  const [callImages, setCallImages] = useState<
+    CheckpointAssignmentCallImage[]
+  >([]);
+  const [selectedAssignmentCallId, setSelectedAssignmentCallId] = useState<
+    number | null
+  >(null);
 
   const [selectedShift, setSelectedShift] = useState<ShiftType>(() =>
     getCurrentShiftTypeByTime(new Date()),
@@ -1445,6 +1453,8 @@ export default function Checkpoint({
     setContactDetail("");
     setCallNote("");
     setCallStatus(1);
+    setCallImages([]);
+    setSelectedAssignmentCallId(null);
   };
 
   const openOutOfAreaModal = (message: string) => {
@@ -1522,9 +1532,11 @@ export default function Checkpoint({
       );
 
       if (latestCall) {
+        setSelectedAssignmentCallId(latestCall.assignment_call_id);
         setContactDetail(latestCall.contact_detail ?? "");
         setCallNote(latestCall.call_note ?? "");
         setCallStatus(normalizeCallStatus(latestCall.call_status) ?? 1);
+        setCallImages(latestCall.images ?? []);
       }
 
       setSelectedRow(row);
@@ -2659,13 +2671,29 @@ export default function Checkpoint({
     try {
       setIsSavingCall(true);
 
-      await createCheckpointAssignmentCall({
-        assignment_id: assignmentId,
-        contact_detail: contactDetailText || callNoteText,
-        call_status: payload.callStatus,
-        call_note: callNoteText,
-        created_by: empCode,
-      });
+      if (selectedAssignmentCallId !== null) {
+        await updateCheckpointAssignmentCall(
+          selectedAssignmentCallId,
+          {
+            contact_detail: contactDetailText || callNoteText,
+            call_status: payload.callStatus,
+            call_note: callNoteText,
+            updated_by: empCode,
+            images: payload.images,
+            image_ids: payload.imageIds,
+            deleted_image_ids: payload.deletedImageIds,
+          },
+        );
+      } else {
+        await createCheckpointAssignmentCall({
+          assignment_id: assignmentId,
+          contact_detail: contactDetailText || callNoteText,
+          call_status: payload.callStatus,
+          call_note: callNoteText,
+          created_by: empCode,
+          images: payload.images,
+        });
+      }
 
       updateRowAfterSaveCall(assignmentId, payload.callStatus);
       closeCallModal();
@@ -3136,6 +3164,7 @@ export default function Checkpoint({
         contactDetail={contactDetail}
         callNote={callNote}
         callStatus={callStatus}
+        initialImages={callImages}
         onChangeContactDetail={setContactDetail}
         onChangeCallNote={setCallNote}
         onChangeCallStatus={setCallStatus}

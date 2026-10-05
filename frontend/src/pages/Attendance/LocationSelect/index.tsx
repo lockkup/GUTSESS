@@ -414,7 +414,10 @@ export default function AttendanceLocationSelect({
                               </td>
                               <td
                                 className={styles.editCell}
-                                style={{ paddingLeft: 0 }}
+                                style={{
+                                  paddingLeft: 0,
+                                  paddingRight: 0,
+                                }}
                               >
                                 <div
                                   className={
@@ -422,7 +425,8 @@ export default function AttendanceLocationSelect({
                                   }
                                   style={{
                                     width: "100%",
-                                    justifyContent: "space-between",
+                                    justifyContent: "center",
+                                    gap: "14px",
                                   }}
                                 >
                                   <button

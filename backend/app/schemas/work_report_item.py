@@ -33,6 +33,11 @@ class WorkReportItemBase(BaseModel):
         gt=0,
     )
 
+    work_item_other: str | None = Field(
+        default=None,
+        max_length=150,
+    )
+
     sequence_no: int = Field(
         ...,
         ge=1,
@@ -41,7 +46,7 @@ class WorkReportItemBase(BaseModel):
 
     work_item_detail: str | None = Field(
         default=None,
-        max_length=255,
+        max_length=500,
     )
 
     is_active: bool = Field(
@@ -72,6 +77,11 @@ class WorkReportItemUpdate(BaseModel):
         gt=0,
     )
 
+    work_item_other: str | None = Field(
+        default=None,
+        max_length=150,
+    )
+
     sequence_no: int | None = Field(
         default=None,
         ge=1,
@@ -80,7 +90,7 @@ class WorkReportItemUpdate(BaseModel):
 
     work_item_detail: str | None = Field(
         default=None,
-        max_length=255,
+        max_length=500,
     )
 
     is_active: bool | None = None

@@ -153,6 +153,11 @@ class PatrolReportResponse(BaseModel):
     callStatus: int | None = Field(default=None, ge=1, le=3)
     callNote: str | None = None
 
+    # ID และรูปแนบของบันทึกการโทรจาก checkpoint_assignment_call
+    # รองรับรายการโทรที่ไม่มี time_record_id
+    assignmentCallId: int | None = Field(default=None, ge=1)
+    callImageUrls: list[str] = Field(default_factory=list)
+
     scheduleText: str = "-"
 
 

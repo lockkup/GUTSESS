@@ -1,4 +1,4 @@
-
+# app/services/image_storage.py
 from __future__ import annotations
 
 import base64
@@ -8,30 +8,29 @@ from datetime import date
 from pathlib import Path
 from typing import Final
 
+from app.core.constants import DBConstants
+
 
 class ImageStorageError(Exception):
     """
     Error สำหรับงานจัดเก็บรูปภาพ
-
     ให้ Service ที่เรียกใช้งานเป็นผู้แปลงเป็น HTTPException
     ตาม business context ของตัวเอง
     """
-
     pass
 
 
 class ImageStorageService:
     """
     จัดการไฟล์รูปภาพของระบบ GUTS ESS
-
-    ประเภทภาพ:
+    ประเภทภาพ Time Record:
     - checkin
     - checkout
     - work_report
     - signature
-
-    โครงสร้างไฟล์:
-
+    รูปบันทึกการโทร:
+    - checkpoint_call
+    โครงสร้างไฟล์ Time Record:
     uploads/
     └── time_record/
         └── YYYY/
@@ -51,31 +50,41 @@ class ImageStorageService:
                         │   └── ...
                         └── signature/
                             └── 001.png
+    โครงสร้างไฟล์ Record Call:
+    uploads/
+    └── record_call/
+        └── YYYY/
+            └── MM/
+                └── employee_code/
+                    └── assignment_call_id/
+                        ├── 001.jpg
+                        ├── 002.jpg
+                        └── 003.jpg
     """
 
     # ============================================================
     # Paths
     # ============================================================
-
     # ตัวอย่าง:
     #
-    # D:\Projects\guts-ess\
-    # ├── backend\
-    # ├── frontend\
-    # └── uploads\
+    # D:\Projects\guts-ess\\
+    # ├── backend\\
+    # ├── frontend\\
+    # └── uploads\\
     #
     # image_storage.py อยู่ที่:
     # backend/app/services/image_storage.py
     PROJECT_ROOT: Final[Path] = Path(__file__).resolve().parents[3]
-
     UPLOAD_ROOT: Final[Path] = PROJECT_ROOT / "uploads"
-
     PUBLIC_UPLOAD_PREFIX: Final[str] = "/uploads"
 
     # ============================================================
     # Allowed image types
     # ============================================================
-
+    # ใช้เฉพาะ save_time_record_image()
+    #
+    # checkpoint_call ไม่ใส่ในชุดนี้
+    # เพราะไม่ได้บันทึกผ่าน save_time_record_image()
     ALLOWED_IMAGE_TYPES: Final[frozenset[str]] = frozenset(
         {
             "checkin",
@@ -88,14 +97,12 @@ class ImageStorageService:
     # ============================================================
     # Supported image formats
     # ============================================================
-
     MIME_TO_EXTENSION: Final[dict[str, str]] = {
         "image/jpeg": ".jpg",
         "image/jpg": ".jpg",
         "image/png": ".png",
         "image/webp": ".webp",
     }
-
     DATA_URI_PATTERN: Final[re.Pattern[str]] = re.compile(
         r"^data:(image/(?:jpeg|jpg|png|webp));base64$",
         re.IGNORECASE,
@@ -104,29 +111,25 @@ class ImageStorageService:
     # ============================================================
     # Validation
     # ============================================================
-
     @staticmethod
     def _validate_employee_code(employee_code: str) -> str:
         cleaned_value = employee_code.strip()
-
         if not cleaned_value:
             raise ImageStorageError("employee_code is required")
-
         # ป้องกัน path traversal เช่น ../../
         if not re.fullmatch(r"[A-Za-z0-9_-]+", cleaned_value):
-            raise ImageStorageError("employee_code contains invalid characters")
-
+            raise ImageStorageError(
+                "employee_code contains invalid characters"
+            )
         return cleaned_value
 
     @classmethod
     def _validate_image_type(cls, image_type: str) -> str:
         cleaned_value = image_type.strip().lower()
-
         if cleaned_value not in cls.ALLOWED_IMAGE_TYPES:
             raise ImageStorageError(
                 f"Unsupported image_type: {cleaned_value}"
             )
-
         return cleaned_value
 
     @staticmethod
@@ -135,8 +138,17 @@ class ImageStorageService:
             raise ImageStorageError(
                 "time_record_id must be greater than 0"
             )
-
         return time_record_id
+
+    @staticmethod
+    def _validate_assignment_call_id(
+        assignment_call_id: int,
+    ) -> int:
+        if assignment_call_id <= 0:
+            raise ImageStorageError(
+                "assignment_call_id must be greater than 0"
+            )
+        return assignment_call_id
 
     @staticmethod
     def _validate_sequence_no(sequence_no: int) -> int:
@@ -144,9 +156,7 @@ class ImageStorageService:
             raise ImageStorageError(
                 "sequence_no must be greater than 0"
             )
-
         return sequence_no
-
 
     @staticmethod
     def _validate_work_report_item_id(
@@ -154,18 +164,15 @@ class ImageStorageService:
     ) -> int | None:
         if work_report_item_id is None:
             return None
-
         if work_report_item_id <= 0:
             raise ImageStorageError(
                 "work_report_item_id must be greater than 0"
             )
-
         return work_report_item_id
 
     # ============================================================
     # Base64
     # ============================================================
-
     @classmethod
     def _decode_base64_image(
         cls,
@@ -173,30 +180,23 @@ class ImageStorageService:
     ) -> tuple[bytes, str]:
         """
         รองรับทั้ง:
-
         data:image/jpeg;base64,/9j/4AAQ...
         และ
         /9j/4AAQ...
-
         คืนค่า:
         (
             image_bytes,
             extension,
         )
         """
-
         cleaned_value = image_base64.strip()
-
         if not cleaned_value:
             raise ImageStorageError("Image data is empty")
-
         declared_mime_type: str | None = None
         encoded_value = cleaned_value
-
         # --------------------------------------------------------
         # Data URI
         # --------------------------------------------------------
-
         if cleaned_value.lower().startswith("data:"):
             try:
                 header, encoded_value = cleaned_value.split(",", 1)
@@ -204,32 +204,27 @@ class ImageStorageService:
                 raise ImageStorageError(
                     "Invalid image data URI"
                 ) from exc
-
-            match = cls.DATA_URI_PATTERN.fullmatch(header.strip())
-
+            match = cls.DATA_URI_PATTERN.fullmatch(
+                header.strip()
+            )
             if match is None:
                 raise ImageStorageError(
                     "Unsupported image data URI"
                 )
-
             declared_mime_type = match.group(1).lower()
-
             if declared_mime_type == "image/jpg":
                 declared_mime_type = "image/jpeg"
-
         # --------------------------------------------------------
         # ลบ whitespace ที่อาจติดมากับ Base64
         # --------------------------------------------------------
-
         encoded_value = "".join(encoded_value.split())
-
         if not encoded_value:
-            raise ImageStorageError("Image Base64 data is empty")
-
+            raise ImageStorageError(
+                "Image Base64 data is empty"
+            )
         # --------------------------------------------------------
         # Decode
         # --------------------------------------------------------
-
         try:
             image_bytes = base64.b64decode(
                 encoded_value,
@@ -239,21 +234,20 @@ class ImageStorageService:
             raise ImageStorageError(
                 "Invalid Base64 image data"
             ) from exc
-
         if not image_bytes:
-            raise ImageStorageError("Decoded image is empty")
-
+            raise ImageStorageError(
+                "Decoded image is empty"
+            )
         # --------------------------------------------------------
         # ตรวจชนิดไฟล์จาก Binary จริง
         # --------------------------------------------------------
-
-        detected_mime_type = cls._detect_mime_type(image_bytes)
-
+        detected_mime_type = cls._detect_mime_type(
+            image_bytes
+        )
         if detected_mime_type is None:
             raise ImageStorageError(
                 "Unsupported or invalid image file"
             )
-
         # ถ้ามี MIME จาก data URI ต้องตรงกับ binary จริง
         if (
             declared_mime_type is not None
@@ -262,9 +256,9 @@ class ImageStorageService:
             raise ImageStorageError(
                 "Image MIME type does not match image data"
             )
-
-        extension = cls.MIME_TO_EXTENSION[detected_mime_type]
-
+        extension = cls.MIME_TO_EXTENSION[
+            detected_mime_type
+        ]
         return image_bytes, extension
 
     @staticmethod
@@ -274,17 +268,14 @@ class ImageStorageService:
         """
         ตรวจชนิดภาพจาก file signature
         """
-
         # JPEG
         if image_bytes.startswith(b"\xff\xd8\xff"):
             return "image/jpeg"
-
         # PNG
         if image_bytes.startswith(
             b"\x89PNG\r\n\x1a\n"
         ):
             return "image/png"
-
         # WEBP
         if (
             len(image_bytes) >= 12
@@ -292,13 +283,11 @@ class ImageStorageService:
             and image_bytes[8:12] == b"WEBP"
         ):
             return "image/webp"
-
         return None
 
     # ============================================================
-    # Path
+    # Path - Time Record
     # ============================================================
-
     @classmethod
     def _build_relative_directory(
         cls,
@@ -316,9 +305,9 @@ class ImageStorageService:
             / str(time_record_id)
             / image_type
         )
-
         # รูปของข้อ 2.x ต้องแยกตาม work_report_item_id
-        # เพื่อไม่ให้ sequence_no เช่น 001.jpg ของแต่ละข้อเขียนทับกัน
+        # เพื่อไม่ให้ sequence_no เช่น 001.jpg
+        # ของแต่ละข้อเขียนทับกัน
         if (
             image_type == "work_report"
             and work_report_item_id is not None
@@ -327,8 +316,34 @@ class ImageStorageService:
                 relative_directory
                 / str(work_report_item_id)
             )
-
         return relative_directory
+
+    # ============================================================
+    # Path - Record Call
+    # ============================================================
+    @classmethod
+    def _build_record_call_relative_directory(
+        cls,
+        *,
+        work_date: date,
+        employee_code: str,
+        assignment_call_id: int,
+    ) -> Path:
+        """
+        ตัวอย่าง:
+        record_call/
+        2026/
+        09/
+        632070/
+        125/
+        """
+        return (
+            Path("record_call")
+            / f"{work_date.year:04d}"
+            / f"{work_date.month:02d}"
+            / employee_code
+            / str(assignment_call_id)
+        )
 
     @classmethod
     def _build_public_path(
@@ -336,22 +351,25 @@ class ImageStorageService:
         relative_file_path: Path,
     ) -> str:
         """
+        Time Record:
         Windows:
-        time_record\\2026\\08\\632070\\1001\\checkin\\001.jpg
-
+        time_record/2026/08/632070/1001/checkin/001.jpg
         DB:
         /uploads/time_record/2026/08/632070/1001/checkin/001.jpg
+        Record Call:
+        Windows:
+        record_call/2026/09/632070/125/001.jpg
+        DB:
+        /uploads/record_call/2026/09/632070/125/001.jpg
         """
-
         return (
             f"{cls.PUBLIC_UPLOAD_PREFIX}/"
             f"{relative_file_path.as_posix()}"
         )
 
     # ============================================================
-    # Save
+    # Save - Time Record
     # ============================================================
-
     @classmethod
     def save_time_record_image(
         cls,
@@ -366,9 +384,7 @@ class ImageStorageService:
     ) -> str:
         """
         บันทึกรูป TimeRecord
-
         ตัวอย่าง:
-
         save_time_record_image(
             image_base64=payload.images_checkin_1,
             work_date=date(2026, 8, 19),
@@ -377,60 +393,54 @@ class ImageStorageService:
             image_type="checkin",
             sequence_no=1,
         )
-
         คืนค่า checkin / checkout / signature:
-
         /uploads/time_record/2026/08/632070/1001/checkin/001.jpg
-
-        สำหรับ image_type="work_report" และมี work_report_item_id:
-
+        สำหรับ image_type="work_report"
+        และมี work_report_item_id:
         /uploads/time_record/2026/08/632070/1001/work_report/15/001.jpg
         """
-
         employee_code = cls._validate_employee_code(
             employee_code
         )
-
         image_type = cls._validate_image_type(
             image_type
         )
-
         time_record_id = cls._validate_time_record_id(
             time_record_id
         )
-
         sequence_no = cls._validate_sequence_no(
             sequence_no
         )
-
-        work_report_item_id = cls._validate_work_report_item_id(
-            work_report_item_id
+        work_report_item_id = (
+            cls._validate_work_report_item_id(
+                work_report_item_id
+            )
         )
-
         if (
             work_report_item_id is not None
             and image_type != "work_report"
         ):
             raise ImageStorageError(
-                "work_report_item_id is only supported for work_report images"
+                "work_report_item_id is only supported "
+                "for work_report images"
             )
-
-        image_bytes, extension = cls._decode_base64_image(
-            image_base64
+        image_bytes, extension = (
+            cls._decode_base64_image(
+                image_base64
+            )
         )
-
-        relative_directory = cls._build_relative_directory(
-            work_date=work_date,
-            employee_code=employee_code,
-            time_record_id=time_record_id,
-            image_type=image_type,
-            work_report_item_id=work_report_item_id,
+        relative_directory = (
+            cls._build_relative_directory(
+                work_date=work_date,
+                employee_code=employee_code,
+                time_record_id=time_record_id,
+                image_type=image_type,
+                work_report_item_id=work_report_item_id,
+            )
         )
-
         absolute_directory = (
             cls.UPLOAD_ROOT / relative_directory
         )
-
         try:
             absolute_directory.mkdir(
                 parents=True,
@@ -440,42 +450,164 @@ class ImageStorageService:
             raise ImageStorageError(
                 "Unable to create image directory"
             ) from exc
-
         filename = f"{sequence_no:03d}{extension}"
-
         relative_file_path = (
             relative_directory / filename
         )
-
         absolute_file_path = (
             cls.UPLOAD_ROOT / relative_file_path
         )
-
         # --------------------------------------------------------
         # Atomic-ish write
         #
         # เขียน .tmp ก่อน แล้วค่อย replace เป็นไฟล์จริง
-        # ลดโอกาสได้ไฟล์ไม่สมบูรณ์หากเขียนไฟล์ล้มเหลวกลางทาง
+        # ลดโอกาสได้ไฟล์ไม่สมบูรณ์
+        # หากเขียนไฟล์ล้มเหลวกลางทาง
         # --------------------------------------------------------
-
-        temporary_file_path = absolute_file_path.with_name(
-            f"{absolute_file_path.name}.tmp"
+        temporary_file_path = (
+            absolute_file_path.with_name(
+                f"{absolute_file_path.name}.tmp"
+            )
         )
-
         try:
-            temporary_file_path.write_bytes(image_bytes)
-            temporary_file_path.replace(absolute_file_path)
+            temporary_file_path.write_bytes(
+                image_bytes
+            )
+            temporary_file_path.replace(
+                absolute_file_path
+            )
         except OSError as exc:
             try:
                 if temporary_file_path.exists():
                     temporary_file_path.unlink()
             except OSError:
                 pass
-
             raise ImageStorageError(
                 "Unable to save image file"
             ) from exc
+        return cls._build_public_path(
+            relative_file_path
+        )
 
+    # ============================================================
+    # Save - Record Call
+    # ============================================================
+    @classmethod
+    def save_checkpoint_call_image(
+        cls,
+        *,
+        image_bytes: bytes,
+        work_date: date,
+        employee_code: str,
+        assignment_call_id: int,
+        sequence_no: int,
+    ) -> str:
+        """
+        บันทึกรูปจากหน้าบันทึกรายละเอียดการโทร
+        รูปจากบันทึกการโทร:
+        - ไม่ใช้ time_record_id
+        - ใช้ assignment_call_id
+        - จำกัดจำนวนรูปตาม DBConstants.CHECKPOINT_CALL_MAX_IMAGES
+        ตัวอย่าง:
+        save_checkpoint_call_image(
+            image_bytes=image_bytes,
+            work_date=date(2026, 9, 30),
+            employee_code="632070",
+            assignment_call_id=125,
+            sequence_no=1,
+        )
+        คืนค่า:
+        /uploads/record_call/2026/09/632070/125/001.jpg
+        """
+        employee_code = cls._validate_employee_code(
+            employee_code
+        )
+        assignment_call_id = (
+            cls._validate_assignment_call_id(
+                assignment_call_id
+            )
+        )
+        sequence_no = cls._validate_sequence_no(
+            sequence_no
+        )
+        # บันทึกการโทรจำกัดจำนวนรูปตาม DBConstants.CHECKPOINT_CALL_MAX_IMAGES
+        if sequence_no > DBConstants.CHECKPOINT_CALL_MAX_IMAGES:
+            raise ImageStorageError(
+                f"record_call supports a maximum of "
+                f"{DBConstants.CHECKPOINT_CALL_MAX_IMAGES} images"
+            )
+        if not image_bytes:
+            raise ImageStorageError(
+                "Image data is empty"
+            )
+        # --------------------------------------------------------
+        # ตรวจชนิดไฟล์จาก Binary จริง
+        # --------------------------------------------------------
+        detected_mime_type = cls._detect_mime_type(
+            image_bytes
+        )
+        if detected_mime_type is None:
+            raise ImageStorageError(
+                "Unsupported or invalid image file"
+            )
+        extension = cls.MIME_TO_EXTENSION[
+            detected_mime_type
+        ]
+        # --------------------------------------------------------
+        # Path
+        # --------------------------------------------------------
+        relative_directory = (
+            cls._build_record_call_relative_directory(
+                work_date=work_date,
+                employee_code=employee_code,
+                assignment_call_id=assignment_call_id,
+            )
+        )
+        absolute_directory = (
+            cls.UPLOAD_ROOT / relative_directory
+        )
+        try:
+            absolute_directory.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
+        except OSError as exc:
+            raise ImageStorageError(
+                "Unable to create image directory"
+            ) from exc
+        filename = f"{sequence_no:03d}{extension}"
+        relative_file_path = (
+            relative_directory / filename
+        )
+        absolute_file_path = (
+            cls.UPLOAD_ROOT / relative_file_path
+        )
+        # --------------------------------------------------------
+        # Atomic-ish write
+        #
+        # เขียน .tmp ก่อน แล้วค่อย replace เป็นไฟล์จริง
+        # --------------------------------------------------------
+        temporary_file_path = (
+            absolute_file_path.with_name(
+                f"{absolute_file_path.name}.tmp"
+            )
+        )
+        try:
+            temporary_file_path.write_bytes(
+                image_bytes
+            )
+            temporary_file_path.replace(
+                absolute_file_path
+            )
+        except OSError as exc:
+            try:
+                if temporary_file_path.exists():
+                    temporary_file_path.unlink()
+            except OSError:
+                pass
+            raise ImageStorageError(
+                "Unable to save image file"
+            ) from exc
         return cls._build_public_path(
             relative_file_path
         )
@@ -483,45 +615,37 @@ class ImageStorageService:
     # ============================================================
     # Resolve DB path → physical path
     # ============================================================
-
     @classmethod
     def resolve_image_path(
         cls,
         image_path: str,
     ) -> Path:
         """
-        แปลง:
-
+        ตัวอย่าง Time Record:
         /uploads/time_record/2026/08/632070/1001/checkin/001.jpg
-
-        เป็น physical path:
-
-        D:\\Projects\\guts-ess\\uploads\\time_record\\...
+        ตัวอย่าง Record Call:
+        /uploads/record_call/2026/09/632070/125/001.jpg
+        เป็น physical path ภายใต้:
+        D:/Projects/guts-ess/uploads/...
         """
-
         cleaned_value = image_path.strip()
-
         expected_prefix = (
             f"{cls.PUBLIC_UPLOAD_PREFIX}/"
         )
-
-        if not cleaned_value.startswith(expected_prefix):
+        if not cleaned_value.startswith(
+            expected_prefix
+        ):
             raise ImageStorageError(
                 "Invalid upload image path"
             )
-
         relative_value = cleaned_value[
             len(expected_prefix):
         ]
-
         relative_path = Path(relative_value)
-
         upload_root = cls.UPLOAD_ROOT.resolve()
-
         absolute_path = (
             upload_root / relative_path
         ).resolve()
-
         # ป้องกัน ../ หลุดออกจาก uploads
         if (
             absolute_path != upload_root
@@ -530,13 +654,11 @@ class ImageStorageService:
             raise ImageStorageError(
                 "Invalid upload image path"
             )
-
         return absolute_path
 
     # ============================================================
     # Delete
     # ============================================================
-
     @classmethod
     def delete_image(
         cls,
@@ -545,11 +667,9 @@ class ImageStorageService:
         """
         ใช้สำหรับ rollback / cleanup รูปที่บันทึกแล้ว
         """
-
         absolute_path = cls.resolve_image_path(
             image_path
         )
-
         try:
             if absolute_path.is_file():
                 absolute_path.unlink()
@@ -565,18 +685,17 @@ class ImageStorageService:
     ) -> None:
         """
         ลบหลายรูป
-
-        ใช้กรณี DB transaction ล้มเหลวหลังจากบันทึกไฟล์แล้ว
+        ใช้กรณี DB transaction ล้มเหลว
+        หลังจากบันทึกไฟล์แล้ว
         """
-
         errors: list[Exception] = []
-
         for image_path in image_paths:
             try:
-                cls.delete_image(image_path)
+                cls.delete_image(
+                    image_path
+                )
             except ImageStorageError as exc:
                 errors.append(exc)
-
         if errors:
             raise ImageStorageError(
                 "Unable to delete one or more image files"

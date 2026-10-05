@@ -44,6 +44,7 @@ from app.schemas.patrol_report_export import (
     PatrolReportPlanMode,
 )
 from app.services.patrol_report_service import (
+    _attach_assignment_call_images,
     _filter_planned_rows_by_rule_state,
     get_patrol_report_rows,
 )
@@ -119,6 +120,7 @@ class PatrolReportPdfRow:
     check_in_image: str | None
     check_out_image: str | None
     work_report: PatrolReportPdfWorkReport | None = None
+    call_image_paths: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -509,6 +511,10 @@ class PatrolReportPdfService:
                 db=db,
                 rows=db_rows,
             )
+            _attach_assignment_call_images(
+                db=db,
+                rows=db_rows,
+            )
 
         return [
             PatrolReportPdfService._map_pdf_row(
@@ -590,10 +596,16 @@ class PatrolReportPdfService:
         elif "created_at" in call_columns:
             order_parts.append("cac.created_at DESC")
 
+        assignment_call_id_select = (
+            "cac.assignment_call_id"
+            if "assignment_call_id" in call_columns
+            else "NULL AS assignment_call_id"
+        )
         statement = text(
             f"""
             SELECT
                 cac.assignment_id,
+                {assignment_call_id_select},
                 cac.created_by,
                 e.first_name,
                 e.last_name
@@ -615,6 +627,7 @@ class PatrolReportPdfService:
             return
 
         recorder_by_assignment: dict[int, tuple[str, str, str]] = {}
+        recorder_by_call: dict[int, tuple[str, str, str]] = {}
         for call_row in call_rows:
             assignment_id = PatrolReportPdfService._to_positive_int(
                 call_row.get("assignment_id")
@@ -626,21 +639,25 @@ class PatrolReportPdfService:
             if assignment_id is None or not created_by:
                 continue
 
-            # ORDER BY ล่าสุดก่อน จึงเก็บรายการแรกของ assignment นั้น
-            recorder_by_assignment.setdefault(
-                assignment_id,
-                (
-                    created_by,
-                    PatrolReportPdfService._text(
-                        call_row.get("first_name"),
-                        "",
-                    ),
-                    PatrolReportPdfService._text(
-                        call_row.get("last_name"),
-                        "",
-                    ),
+            recorder = (
+                created_by,
+                PatrolReportPdfService._text(
+                    call_row.get("first_name"),
+                    "",
+                ),
+                PatrolReportPdfService._text(
+                    call_row.get("last_name"),
+                    "",
                 ),
             )
+            # ORDER BY ล่าสุดก่อน จึงเก็บรายการแรกของ assignment นั้น
+            recorder_by_assignment.setdefault(assignment_id, recorder)
+
+            assignment_call_id = PatrolReportPdfService._to_positive_int(
+                call_row.get("assignment_call_id")
+            )
+            if assignment_call_id is not None:
+                recorder_by_call[assignment_call_id] = recorder
 
         for row in rows:
             if (
@@ -655,7 +672,14 @@ class PatrolReportPdfService:
             if assignment_id is None:
                 continue
 
-            recorder = recorder_by_assignment.get(assignment_id)
+            assignment_call_id = PatrolReportPdfService._to_positive_int(
+                row.get("assignment_call_id")
+            )
+            recorder = (
+                recorder_by_call.get(assignment_call_id)
+                if assignment_call_id is not None
+                else recorder_by_assignment.get(assignment_id)
+            )
             if recorder is None:
                 continue
 
@@ -1482,6 +1506,10 @@ class PatrolReportPdfService:
             "contact_detail": value("contactDetail", "contact_detail"),
             "call_status": value("callStatus", "call_status"),
             "call_note": value("callNote", "call_note"),
+            "call_image_urls": value(
+                "callImageUrls",
+                "call_image_urls",
+            ) if include_images else [],
             "check_in_image_url": value(
                 "checkInImageUrl",
                 "check_in_image_url",
@@ -1954,6 +1982,7 @@ class PatrolReportPdfService:
             "call_status",
             "reserved_by",
             "assignment_id",
+            "assignment_call_id",
             "parent_assignment_id",
             "schedule_rule_run_id",
             "recheck_reason",
@@ -2317,6 +2346,17 @@ class PatrolReportPdfService:
                 )
                 if include_images
                 else None
+            ),
+            call_image_paths=(
+                tuple(
+                    image_path
+                    for value in (row.get("call_image_urls") or ())
+                    if (
+                        image_path := PatrolReportPdfService._text(value, "")
+                    )
+                )
+                if include_images
+                else ()
             ),
         )
 
@@ -2944,6 +2984,7 @@ class PatrolReportPdfService:
         ส่วนที่ 1 ข้อมูลผู้ติดต่อ
         ส่วนที่ 2 รายละเอียดการโทร
         ส่วนที่ 3 ภาพรวมของหน่วยงาน
+        ส่วนที่ 4 ภาพประกอบรายงาน แสดงเมื่อมีรูปแนบเท่านั้น
         """
         if row.call_status not in {1, 2, 3}:
             return []
@@ -3043,10 +3084,15 @@ class PatrolReportPdfService:
             )
         )
 
+        overview_story: list[Any] = [
+            build_section_header("ส่วนที่ 3 : ภาพรวมของหน่วยงาน"),
+            status_table,
+        ]
+
         # KeepTogether เฉพาะหัวข้อ + เนื้อหาของส่วนนั้น
         # เพื่อไม่ให้หัวข้อค้างอยู่ท้ายหน้าเพียงบรรทัดเดียว
         # ส่วนบันทึกการโทรให้ตารางต่อกันทันที โดยไม่มีช่องไฟระหว่างส่วน
-        return [
+        story: list[Any] = [
             KeepTogether(
                 [
                     build_section_header("ส่วนที่ 1 : ข้อมูลผู้ติดต่อ"),
@@ -3059,13 +3105,41 @@ class PatrolReportPdfService:
                     build_text_body(row.call_note),
                 ]
             ),
-            KeepTogether(
-                [
-                    build_section_header("ส่วนที่ 3 : ภาพรวมของหน่วยงาน"),
-                    status_table,
-                ]
-            ),
+            KeepTogether(overview_story),
         ]
+
+        if row.call_image_paths:
+            photo_story: list[Any] = [
+                build_section_header("ส่วนที่ 4 : ภาพประกอบรายงาน"),
+            ]
+            # ใช้ตัวจัดรูปเดียวกับรายงานติดตาม / มอบหมาย:
+            # ช่องละ 60 mm เรียงจากซ้าย และสูงตามรูปจริง
+            image_story = PatrolReportPdfService._build_work_report_image_story(
+                image_paths=row.call_image_paths,
+                styles=styles,
+            )
+            photo_table = Table(
+                [[image_story]],
+                colWidths=[188 * mm],
+                hAlign="CENTER",
+            )
+            photo_table.setStyle(
+                TableStyle(
+                    [
+                        ("BOX", (0, 0), (-1, -1), 0.45, colors.HexColor("#6B7280")),
+                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                        ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                        ("TOPPADDING", (0, 0), (-1, -1), 0),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+                    ]
+                )
+            )
+            photo_story.append(photo_table)
+            story.append(KeepTogether(photo_story))
+
+        return story
 
     @staticmethod
     def _build_image_detail_story(

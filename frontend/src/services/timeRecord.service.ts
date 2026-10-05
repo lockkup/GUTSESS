@@ -80,26 +80,14 @@ function isNotFoundError(error: unknown) {
   );
 }
 
-function validateOpenRecordParams(
-  params?: OpenAttendanceTimeRecordParams | null,
-): OpenAttendanceTimeRecordParams {
-  if (!params) {
-    throw new Error("ไม่พบข้อมูล work_date สำหรับค้นหาข้อมูลลงเวลา");
-  }
-
+function buildOpenRecordQuery(params: OpenAttendanceTimeRecordParams) {
   if (!params.work_date) {
     throw new Error("ไม่พบข้อมูล work_date สำหรับค้นหาข้อมูลลงเวลา");
   }
 
-  return params;
-}
-
-function buildOpenRecordQuery(params?: OpenAttendanceTimeRecordParams | null) {
-  const validParams = validateOpenRecordParams(params);
-
   const query = new URLSearchParams();
 
-  query.set("work_date", validParams.work_date);
+  query.set("work_date", params.work_date);
 
   return query.toString();
 }
@@ -130,6 +118,9 @@ export const timeRecordService = {
    * employee_code ใช้ตรวจสถานะรายการเข้างานที่ยังไม่ออก
    * ของแต่ละหน่วยงาน ไม่ได้ใช้กรองสิทธิ์ของพนักงาน
    *
+   * payload.work_date ต้องเป็น effective work_date
+   * ของรอบ Attendance ที่ App.tsx คำนวณไว้
+   *
    * Endpoint จริงหลังผ่าน api.ts:
    * POST /api/time-records/attendance-locations/search
    */
@@ -146,17 +137,21 @@ export const timeRecordService = {
    * ใช้ employee_code + work_date
    * ไม่ใช้ shift_id
    *
+   * work_date ต้องเป็น effective work_date
+   * เช่น 4 ต.ค. 00:56 ของรอบที่เริ่ม 3 ต.ค.
+   * ต้องส่ง work_date = 2026-10-03
+   *
    * Endpoint จริงหลังผ่าน api.ts:
    * GET /api/time-records/open/attendance/{employee_code}?work_date=YYYY-MM-DD
    */
   async getOpenAttendanceTimeRecordByEmployeeCode(
     employeeCode: string,
-    params?: OpenAttendanceTimeRecordParams | null,
+    params: OpenAttendanceTimeRecordParams,
   ): Promise<TimeRecordResponse | null> {
     try {
       const query = buildOpenRecordQuery(params);
 
-      return await api.get<TimeRecordResponse>(
+      return await api.get<TimeRecordResponse | null>(
         `${BASE_PATH}/open/attendance/${encodeURIComponent(
           employeeCode,
         )}?${query}`,
@@ -184,7 +179,7 @@ export const timeRecordService = {
     assignmentId: number,
   ): Promise<TimeRecordResponse | null> {
     try {
-      return await api.get<TimeRecordResponse>(
+      return await api.get<TimeRecordResponse | null>(
         `${BASE_PATH}/open/checkpoint/${encodeURIComponent(
           employeeCode,
         )}/${assignmentId}`,
@@ -207,7 +202,7 @@ export const timeRecordService = {
    */
   async getOpenTimeRecordByEmployeeCode(
     employeeCode: string,
-    params?: OpenAttendanceTimeRecordParams | null,
+    params: OpenAttendanceTimeRecordParams,
   ): Promise<TimeRecordResponse | null> {
     return this.getOpenAttendanceTimeRecordByEmployeeCode(employeeCode, params);
   },

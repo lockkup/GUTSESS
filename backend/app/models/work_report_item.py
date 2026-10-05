@@ -1,5 +1,3 @@
-
-
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -87,13 +85,18 @@ class WorkReportItem(Base):
         nullable=False,
     )
 
+    work_item_other: Mapped[str | None] = mapped_column(
+        String(150),
+        nullable=True,
+    )
+
     sequence_no: Mapped[int] = mapped_column(
         SMALLINT(unsigned=True),
         nullable=False,
     )
 
     work_item_detail: Mapped[str | None] = mapped_column(
-        String(255),
+        String(500),
         nullable=True,
     )
 

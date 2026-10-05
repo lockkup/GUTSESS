@@ -96,6 +96,7 @@ export type WorkReportItemCreate = {
   work_report_id: number;
   work_item_type_id: number;
   sequence_no: number;
+  work_item_other?: string | null;
   work_item_detail?: string | null;
   is_active?: boolean;
   created_by: string;
@@ -104,6 +105,7 @@ export type WorkReportItemCreate = {
 export type WorkReportItemUpdate = {
   work_item_type_id?: number | null;
   sequence_no?: number | null;
+  work_item_other?: string | null;
   work_item_detail?: string | null;
   is_active?: boolean | null;
   updated_by: string;
@@ -114,6 +116,7 @@ export type WorkReportItemResponse = {
   work_report_id: number;
   work_item_type_id: number;
   sequence_no: number;
+  work_item_other: string | null;
   work_item_detail: string | null;
   is_active: boolean;
   active_sequence_no: number | null;

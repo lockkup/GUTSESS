@@ -169,11 +169,14 @@ class TimeRecordService:
         work_date: date | None = None,
     ) -> TimeRecord | None:
         """
-        ดึงรายการลงเวลาเข้างานที่ยังไม่ออกงานของพนักงาน
+        ดึงรายการ Attendance ที่ยังไม่ออกงานของพนักงาน
 
-        ใช้ employee_code + work_date
-        ไม่ใช้ shift_id
-        ไม่รวม time_record ที่ผูกกับ checkpoint_assignment
+        กติกา:
+        - ใช้ employee_code + work_date
+        - ไม่ใช้ shift_id
+        - ไม่รวม time_record ที่ผูกกับ checkpoint_assignment
+        - Frontend ต้องส่ง effective work_date ของรอบงาน
+          เพื่อรองรับกรณีเข้าเวลาก่อนเที่ยงคืนและออกหลังเที่ยงคืน
         """
 
         checkpoint_time_record_exists = (
@@ -209,10 +212,13 @@ class TimeRecordService:
         """
         ดึงรายการ Attendance ที่ยังไม่ออกงานของพนักงาน แยกตามหน่วยงาน
 
-        ใช้สำหรับพื้นที่ทับซ้อน:
+        กติกา:
         - พนักงานสามารถมีรายการเปิดอยู่หลายหน่วยงานพร้อมกันได้
-        - แต่หน่วยงานเดียวกันเปิดซ้ำไม่ได้
+        - หน่วยงานเดียวกันเปิดซ้ำไม่ได้ภายใน work_date เดียวกัน
+          จนกว่าจะ checkout รายการเดิม
         - ไม่รวม time_record ที่ผูกกับ checkpoint_assignment
+        - Frontend ต้องส่ง effective work_date ของรอบงาน
+          เพื่อรองรับกรณีข้ามเที่ยงคืน
         """
 
         checkpoint_time_record_exists = (
@@ -245,7 +251,13 @@ class TimeRecordService:
         employee_code: str,
         work_date: date,
     ) -> list[TimeRecord]:
-        """ดึงรายการ Attendance ที่ยังไม่ออกงานทั้งหมดสำหรับสร้างสถานะรายหน่วยงาน"""
+        """
+        ดึง Open Attendance ทั้งหมดของ work_date ที่กำหนด
+        สำหรับสร้างสถานะเข้า/ออกแยกตามหน่วยงาน
+
+        work_date ต้องเป็น effective work_date ของรอบงาน
+        เช่น เวลา 00:56 วันที่ 4 ต.ค. ให้ส่ง work_date = 3 ต.ค.
+        """
 
         checkpoint_time_record_exists = (
             select(CheckpointAssignment.assignment_id)
@@ -838,6 +850,8 @@ class TimeRecordService:
         - ใช้เฉพาะ site_location ที่ไม่ถูกลบและยังเปิดใช้งาน
         - หน่วยงานที่มีพื้นที่ทับซ้อนกันจะถูกคืนมาทุกแห่ง
         - สถานะ open record แยกด้วย employee_code + work_date + location_id
+        - work_date ต้องเป็น effective work_date ของรอบงาน
+          เพื่อให้รายการช่วงหลังเที่ยงคืนยังอ้างถึงวันปฏิบัติงานเดิม
         - เรียงหน่วยงานจากระยะใกล้ไปไกล
         """
 
@@ -1177,7 +1191,7 @@ class TimeRecordService:
             else:
                 # รองรับ Frontend เดิมที่ยังไม่ส่ง checkin_location_id
                 # เลือกหน่วยงานที่ใกล้ที่สุดจาก GPS แล้วตรวจรายการค้าง
-                # แยกตาม employee + work_date + location เช่นเดียวกับ Flow ใหม่
+                # แยกตาม employee + work_date + location
                 site_location = (
                     TimeRecordService._validate_nearest_attendance_location_gate(
                         db=db,
@@ -1541,36 +1555,39 @@ class TimeRecordService:
                     detail=INVALID_TIME_RECORD_UPDATE_DETAIL,
                 )
 
-            if selected_checkout_location_id is not None:
-                if (
-                    time_record.checkin_location_id is not None
-                    and time_record.checkin_location_id
-                    != selected_checkout_location_id
-                ):
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=INVALID_TIME_RECORD_UPDATE_DETAIL,
-                    )
+            # Attendance ปกติ:
+            # - ต้องออกงานที่หน่วยงานเดียวกับที่ลงเวลาเข้า
+            # - ถ้า Frontend ส่ง checkout_location_id มา ต้องตรงกับ
+            #   time_record.checkin_location_id เท่านั้น
+            # - ถ้า Frontend เดิมไม่ได้ส่ง checkout_location_id มา
+            #   ให้ยึด checkin_location_id จาก TimeRecord เดิม
+            #   ห้ามค้นหา/เปลี่ยนเป็นหน่วยงานใกล้ GPS ตอนออก
+            checkin_location_id = time_record.checkin_location_id
 
-                site_location = (
-                    TimeRecordService._validate_selected_attendance_location_gate(
-                        db=db,
-                        location_id=selected_checkout_location_id,
-                        current_latitude=payload.current_latitude,
-                        current_longitude=payload.current_longitude,
-                        detail=CHECKOUT_LOCATION_NOT_FOUND_DETAIL,
-                    )
+            if checkin_location_id is None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=INVALID_TIME_RECORD_UPDATE_DETAIL,
                 )
-            else:
-                # รองรับ Frontend เดิมระหว่างเชื่อมหน้า LocationSelect
-                site_location = (
-                    TimeRecordService._validate_nearest_attendance_location_gate(
-                        db=db,
-                        current_latitude=payload.current_latitude,
-                        current_longitude=payload.current_longitude,
-                        detail=CHECKOUT_LOCATION_NOT_FOUND_DETAIL,
-                    )
+
+            if (
+                selected_checkout_location_id is not None
+                and selected_checkout_location_id != checkin_location_id
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=INVALID_TIME_RECORD_UPDATE_DETAIL,
                 )
+
+            site_location = (
+                TimeRecordService._validate_selected_attendance_location_gate(
+                    db=db,
+                    location_id=checkin_location_id,
+                    current_latitude=payload.current_latitude,
+                    current_longitude=payload.current_longitude,
+                    detail=CHECKOUT_LOCATION_NOT_FOUND_DETAIL,
+                )
+            )
 
         checkout_images = [
             payload.images_checkout_1,
