@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -43,6 +42,7 @@ from app.models import (  # noqa: F401
     TimeRecord,
     TimeRecordImage,
 )
+from app.services.image_storage import ImageStorageService
 
 
 def parse_allowed_origins(origin_value: str | None) -> list[str]:
@@ -131,29 +131,17 @@ async def http_exception_handler(
 # ============================================================
 # Uploads
 #
-# โครงสร้าง:
+# Physical path อ่านจาก UPLOAD_ROOT ใน .env
 #
-# guts-ess/
-# ├── backend/
-# ├── frontend/
-# └── uploads/
-#     └── time_record/
-#         └── YYYY/
-#             └── MM/
-#                 └── employee_code/
-#                     └── time_record_id/
-#                         ├── checkin/
-#                         └── checkout/
+# DEV:
+# D:/ProjectsDev/DataImage/uploads
 #
-# main.py อยู่ที่:
-# backend/app/main.py
-#
-# parents[2] = project root
+# Database / Frontend ยังคงใช้ public path เดิม:
+# /uploads/time_record/...
+# /uploads/record_call/...
 # ============================================================
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-
-UPLOAD_DIR = PROJECT_ROOT / "uploads"
+UPLOAD_DIR = ImageStorageService.UPLOAD_ROOT
 
 UPLOAD_DIR.mkdir(
     parents=True,

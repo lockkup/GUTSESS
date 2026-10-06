@@ -43,6 +43,7 @@ from app.schemas.patrol_report_export import (
     PatrolReportExportFilter,
     PatrolReportPlanMode,
 )
+from app.services.image_storage import ImageStorageService
 from app.services.patrol_report_service import (
     _attach_assignment_call_images,
     _filter_planned_rows_by_rule_state,
@@ -3832,11 +3833,8 @@ class PatrolReportPdfService:
         - /uploads/time_record/.../001.jpg
         - http://localhost:8000/uploads/time_record/.../001.jpg
 
-        ตำแหน่งหลักของ Time Record ปัจจุบัน:
-        <project_root>/uploads
-
-        ยังคงรองรับ backend/uploads เป็น fallback สำหรับ path เก่า
-        โดยห้าม resolve path ออกนอก upload roots ที่กำหนด
+        ใช้ physical upload root เดียวกับ ImageStorageService เพื่อให้
+        Backend และ PDF Worker อ่านรูปจากตำแหน่งเดียวกันตามค่า UPLOAD_ROOT.
         """
         normalized = value.replace("\\", "/")
 
@@ -3851,33 +3849,16 @@ class PatrolReportPdfService:
             return None
 
         relative_path = normalized.lstrip("/")
+        uploads_root = ImageStorageService.UPLOAD_ROOT.resolve()
+        candidate = (uploads_root / relative_path).resolve()
 
-        project_root = Path(__file__).resolve().parents[3]
-        primary_uploads_root = (project_root / "uploads").resolve()
-        legacy_uploads_root = (
-            Path(__file__).resolve().parents[2] / "uploads"
-        ).resolve()
+        # ป้องกัน ../ หลุดออกจาก upload root
+        try:
+            candidate.relative_to(uploads_root)
+        except ValueError:
+            return None
 
-        safe_candidates: list[Path] = []
-
-        for uploads_root in (
-            primary_uploads_root,
-            legacy_uploads_root,
-        ):
-            candidate = (uploads_root / relative_path).resolve()
-
-            try:
-                candidate.relative_to(uploads_root)
-            except ValueError:
-                continue
-
-            safe_candidates.append(candidate)
-
-            if candidate.is_file():
-                return candidate
-
-        # คืน path หลักแม้ไฟล์ยังไม่อยู่ เพื่อให้ caller ตรวจ is_file() ต่อเอง
-        return safe_candidates[0] if safe_candidates else None
+        return candidate
 
     @staticmethod
     def _first_image_value(

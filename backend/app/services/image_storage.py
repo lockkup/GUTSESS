@@ -1,4 +1,5 @@
 # app/services/image_storage.py
+
 from __future__ import annotations
 
 import base64
@@ -8,6 +9,7 @@ from datetime import date
 from pathlib import Path
 from typing import Final
 
+from app.core.config import settings
 from app.core.constants import DBConstants
 
 
@@ -64,22 +66,27 @@ class ImageStorageService:
 
     # ============================================================
     # Paths
+
     # ============================================================
     # ตัวอย่าง:
     #
-    # D:\Projects\guts-ess\\
-    # ├── backend\\
-    # ├── frontend\\
-    # └── uploads\\
+    # D:\Projects\guts-ess\\\\
+    # ├── backend\\\\
+    # ├── frontend\\\\
+    # └── uploads\\\\
     #
     # image_storage.py อยู่ที่:
     # backend/app/services/image_storage.py
     PROJECT_ROOT: Final[Path] = Path(__file__).resolve().parents[3]
-    UPLOAD_ROOT: Final[Path] = PROJECT_ROOT / "uploads"
+    UPLOAD_ROOT: Final[Path] = Path(
+        settings.UPLOAD_ROOT.strip()
+        or str(PROJECT_ROOT / "uploads")
+    ).resolve()
     PUBLIC_UPLOAD_PREFIX: Final[str] = "/uploads"
 
     # ============================================================
     # Allowed image types
+
     # ============================================================
     # ใช้เฉพาะ save_time_record_image()
     #
@@ -96,6 +103,7 @@ class ImageStorageService:
 
     # ============================================================
     # Supported image formats
+
     # ============================================================
     MIME_TO_EXTENSION: Final[dict[str, str]] = {
         "image/jpeg": ".jpg",
@@ -110,7 +118,9 @@ class ImageStorageService:
 
     # ============================================================
     # Validation
+
     # ============================================================
+
     @staticmethod
     def _validate_employee_code(employee_code: str) -> str:
         cleaned_value = employee_code.strip()
@@ -172,7 +182,9 @@ class ImageStorageService:
 
     # ============================================================
     # Base64
+
     # ============================================================
+
     @classmethod
     def _decode_base64_image(
         cls,
@@ -287,7 +299,9 @@ class ImageStorageService:
 
     # ============================================================
     # Path - Time Record
+
     # ============================================================
+
     @classmethod
     def _build_relative_directory(
         cls,
@@ -320,7 +334,9 @@ class ImageStorageService:
 
     # ============================================================
     # Path - Record Call
+
     # ============================================================
+
     @classmethod
     def _build_record_call_relative_directory(
         cls,
@@ -369,7 +385,9 @@ class ImageStorageService:
 
     # ============================================================
     # Save - Time Record
+
     # ============================================================
+
     @classmethod
     def save_time_record_image(
         cls,
@@ -491,7 +509,9 @@ class ImageStorageService:
 
     # ============================================================
     # Save - Record Call
+
     # ============================================================
+
     @classmethod
     def save_checkpoint_call_image(
         cls,
@@ -614,7 +634,9 @@ class ImageStorageService:
 
     # ============================================================
     # Resolve DB path → physical path
+
     # ============================================================
+
     @classmethod
     def resolve_image_path(
         cls,
@@ -658,7 +680,9 @@ class ImageStorageService:
 
     # ============================================================
     # Delete
+
     # ============================================================
+
     @classmethod
     def delete_image(
         cls,
