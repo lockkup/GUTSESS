@@ -18,6 +18,7 @@ import PatrolAreaInfoPage from "./pages/PatrolAreaInfo";
 import PatrolAreaInfoModal, {
   type PatrolAreaInfoModalLocation,
 } from "./components/PatrolAreaInfoModal";
+import OutOfAreaModal from "./components/OutOfAreaModal";
 import { useStore, type AuthEmployee } from "./store/store";
 import { timeRecordService } from "./services/timeRecord.service";
 import { workReportService } from "./services/workReport.service";
@@ -490,6 +491,7 @@ export default function App() {
   const [historyMapError, setHistoryMapError] = useState<string | null>(null);
   const [historyMapLocation, setHistoryMapLocation] =
     useState<PatrolAreaInfoModalLocation | null>(null);
+  const [outOfAreaModalOpen, setOutOfAreaModalOpen] = useState(false);
   useEffect(() => {
     if (attendanceLocations.length > 0) {
       localStorage.setItem(
@@ -908,7 +910,7 @@ export default function App() {
         gps_accuracy: currentLocation.accuracy,
       });
       if (locations.length === 0) {
-        alert("ไม่พบหน่วยงานที่สามารถลงเวลาได้จากตำแหน่งปัจจุบัน");
+        setOutOfAreaModalOpen(true);
         return;
       }
       setAttendanceLocations(locations);
@@ -1869,6 +1871,10 @@ export default function App() {
       {route === "dashboard" && (
         <Dashboard empCode={empCode} onLogout={onLogout} />
       )}
+      <OutOfAreaModal
+        open={outOfAreaModalOpen}
+        onClose={() => setOutOfAreaModalOpen(false)}
+      />
       <PatrolAreaInfoModal
         open={historyMapOpen}
         location={historyMapLocation}
