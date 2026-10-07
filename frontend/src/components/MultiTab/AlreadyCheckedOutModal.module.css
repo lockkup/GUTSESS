@@ -1,0 +1,134 @@
+:root {
+  /* ===== ขนาด Modal ===== */
+  --already-checkout-modal-width: 420px;
+
+  /* ===== หัวข้อแจ้งเตือน ===== */
+  --already-checkout-title-size: 22px;
+  --already-checkout-title-line-height: 1.4;
+
+  /* ===== ข้อความรายละเอียด ===== */
+  --already-checkout-message-size: 17px;
+  --already-checkout-message-line-height: 1.6;
+
+  /* ===== ข้อความบนปุ่ม ===== */
+  --already-checkout-button-size: 18px;
+
+  /* ===== ความสูงปุ่ม ===== */
+  --already-checkout-button-height: 52px;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 20px;
+
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(2px);
+}
+
+.modal {
+  width: min(100%, var(--already-checkout-modal-width));
+  padding: 24px 20px 20px;
+
+  overflow: hidden;
+
+  background: #ffffff;
+  border: 1px solid #dbe5f0;
+  border-radius: 18px;
+
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.25);
+
+  text-align: center;
+}
+
+.title {
+  margin: 0 0 12px;
+
+  color: #b42318;
+
+  font-size: var(--already-checkout-title-size);
+  font-weight: 800;
+  line-height: var(--already-checkout-title-line-height);
+}
+
+.message {
+  margin: 0 0 22px;
+
+  color: #344054;
+
+  font-size: var(--already-checkout-message-size);
+  font-weight: 400;
+  line-height: var(--already-checkout-message-line-height);
+}
+
+.homeButton {
+  width: 100%;
+  min-height: var(--already-checkout-button-height);
+
+  padding: 10px 18px;
+
+  border: 0;
+  border-radius: 999px;
+
+  background: #024b76;
+  color: #ffffff;
+
+  font-family: inherit;
+  font-size: var(--already-checkout-button-size);
+  font-weight: 700;
+
+  cursor: pointer;
+
+  transition:
+    transform 120ms ease,
+    opacity 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.homeButton:hover {
+  opacity: 0.94;
+}
+
+.homeButton:active {
+  transform: translateY(1px);
+}
+
+.homeButton:focus-visible {
+  outline: 3px solid rgba(2, 75, 118, 0.25);
+  outline-offset: 3px;
+}
+
+/* ===== Mobile ===== */
+@media (max-width: 480px) {
+  :root {
+    /* ปรับขนาดข้อความมือถือได้ตรงนี้ */
+    --already-checkout-title-size: 20px;
+    --already-checkout-message-size: 16px;
+    --already-checkout-button-size: 17px;
+
+    --already-checkout-button-height: 50px;
+  }
+
+  .overlay {
+    padding: 16px;
+  }
+
+  .modal {
+    padding: 22px 18px 18px;
+    border-radius: 16px;
+  }
+
+  .title {
+    margin-bottom: 10px;
+  }
+
+  .message {
+    margin-bottom: 20px;
+  }
+}

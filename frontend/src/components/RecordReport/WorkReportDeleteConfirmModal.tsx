@@ -1,28 +1,21 @@
 import { useEffect } from "react";
-
 import styles from "./WorkReportSuccessModal.module.css";
-
 type Props = {
   open: boolean;
-
   /**
-   * ชื่อหน่วยงาน/รายการที่กำลังจะลบ
+   * ชื่อหน่วยงาน/รายการที่กำลังจะยกเลิก
    * เช่น "ทดสอบ05 - ร้านกาแฟ"
    */
   recordLabel?: string;
-
   /**
-   * true ระหว่างรอ Backend ลบข้อมูล
+   * true ระหว่างรอ Backend ยกเลิกรายการ
    */
   busy?: boolean;
-
   onCancel: () => void;
   onConfirm: () => void | Promise<void>;
-
   closeOnBackdrop?: boolean;
   closeOnEsc?: boolean;
 };
-
 export default function WorkReportDeleteConfirmModal({
   open,
   recordLabel = "",
@@ -36,26 +29,20 @@ export default function WorkReportDeleteConfirmModal({
     if (!open || !closeOnEsc || busy) {
       return;
     }
-
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         onCancel();
       }
     }
-
     window.addEventListener("keydown", handleKeyDown);
-
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [busy, closeOnEsc, onCancel, open]);
-
   if (!open) {
     return null;
   }
-
   const cleanRecordLabel = recordLabel.trim();
-
   return (
     <div
       className={styles.backdrop}
@@ -85,21 +72,19 @@ export default function WorkReportDeleteConfirmModal({
           >
             !
           </div>
-
           <div
             id="work-report-delete-confirm-title"
             className={styles.title}
           >
-            ยืนยันการลบข้อมูล
+            ยืนยันการยกเลิก
           </div>
         </div>
-
         <div
           id="work-report-delete-confirm-message"
           className={styles.body}
         >
           <div>
-            ต้องการลบข้อมูลบันทึกรายงาน
+            ต้องการยกเลิกรายงานบันทึกงาน
             {cleanRecordLabel ? (
               <>
                 {" "}
@@ -113,7 +98,6 @@ export default function WorkReportDeleteConfirmModal({
             {" "}
             หรือไม่?
           </div>
-
           <div
             style={{
               marginTop: "12px",
@@ -121,12 +105,11 @@ export default function WorkReportDeleteConfirmModal({
               lineHeight: 1.55,
             }}
           >
-            การลบนี้จะล้างเฉพาะข้อมูลในบันทึกรายงาน
+            หลังจากยืนยันการยกเลิก
             <br />
-            และจะไม่ลบประวัติการลงเวลาเข้า-ออกงาน
+            <strong>กรุณากดลงเวลาออกทุกครั้ง</strong>
           </div>
         </div>
-
         <div
           className={styles.footer}
           style={{
@@ -146,9 +129,8 @@ export default function WorkReportDeleteConfirmModal({
               border: "1px solid #cbd5e1",
             }}
           >
-            ยกเลิก
+            ไม่
           </button>
-
           <button
             type="button"
             className={styles.okBtn}
@@ -160,7 +142,7 @@ export default function WorkReportDeleteConfirmModal({
               border: "1px solid #e60000",
             }}
           >
-            {busy ? "กำลังลบ..." : "ยืนยันลบ"}
+            {busy ? "กำลังยกเลิก..." : "ยืนยันยกเลิก"}
           </button>
         </div>
       </div>

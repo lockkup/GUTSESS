@@ -51,6 +51,12 @@ type Props = {
 
   onBack: () => void;
   onSaveAndCheckout?: () => void;
+
+  /**
+   * เรียกหลังบันทึกรายงานลง Backend สำเร็จ
+   * ใช้ให้ App.tsx Refresh ประวัติและ Sync สถานะไปยังแท็บอื่น
+   */
+  onSaved?: () => void | Promise<void>;
 };
 
 type WorkItem = {
@@ -410,6 +416,7 @@ export default function WorkRecordReport({
   isCheckoutFlow = false,
   onBack,
   onSaveAndCheckout,
+  onSaved,
 }: Props) {
   const unitDisplay = useMemo(() => {
     return [unitCode, unitName]
@@ -1647,6 +1654,19 @@ export default function WorkRecordReport({
           section4Items: persistedSection4Items,
         }),
       );
+
+      /**
+       * Backend บันทึกรายงานสำเร็จแล้ว
+       * แจ้ง App.tsx ให้โหลดสถานะประวัติล่าสุด และ Sync ไปยังแท็บอื่น
+       *
+       * หากการ Refresh/Sync UI มีปัญหา ไม่ให้ถือว่าการบันทึกรายงานล้มเหลว
+       * เพราะข้อมูลหลักถูกบันทึกลง Backend สำเร็จแล้ว
+       */
+      try {
+        await onSaved?.();
+      } catch (syncError) {
+        console.error("Sync work report history after save error:", syncError);
+      }
 
       return true;
     } catch (saveError) {
