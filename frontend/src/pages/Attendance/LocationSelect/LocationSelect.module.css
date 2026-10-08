@@ -214,7 +214,36 @@
 }
 
 .historyHeadingRow .sectionTitle {
+  flex: 1;
+  min-width: 0;
   margin-bottom: 0;
+}
+
+.backLink {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #1d4ed8;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.backLink:hover:not(:disabled) {
+  color: #1e40af;
+}
+
+.backLink:disabled {
+  color: #94a3b8;
+  cursor: not-allowed;
+  text-decoration: none;
 }
 
 .dateInput {
@@ -332,6 +361,7 @@
 .historyLocationButton:focus-visible,
 .editButton:focus-visible,
 .deleteButton:focus-visible,
+.backLink:focus-visible,
 .dateInput:focus-visible {
   outline: 2px solid rgba(37, 99, 235, 0.35);
   outline-offset: 2px;

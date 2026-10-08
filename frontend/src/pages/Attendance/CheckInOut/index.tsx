@@ -101,11 +101,6 @@ function toLocalYmd(d: Date) {
   const day = String(d.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
-function isSameLocalYmd(value: string | null | undefined, ymd: string) {
-  const d = safeDate(value);
-  if (!d) return false;
-  return toLocalYmd(d) === ymd;
-}
 function resolveWorkDate(params: {
   now: Date;
   workDate?: string | null;
@@ -116,7 +111,6 @@ function resolveWorkDate(params: {
 }
 function isAlreadyCheckedOutMessage(message: string) {
   const text = message.toLowerCase();
-
   return (
     message.includes("รายการลงเวลาออกงานแล้ว") ||
     text.includes("time record already checked out") ||
@@ -148,7 +142,6 @@ export default function CheckInOut({
   const [checkInOutModalOpen, setCheckInOutModalOpen] = useState(false);
   const [alreadyCheckedOutModalOpen, setAlreadyCheckedOutModalOpen] =
     useState(false);
-
   const isCheckpointMode = mode === "checkpoint";
   /**
    * แสดงข้อความแนวสายตรวจโดยไม่ fix คำว่า ภาค / เขต / เส้นทาง
@@ -196,28 +189,26 @@ export default function CheckInOut({
     });
   }, [now, workDate]);
   /**
-   * กันข้อมูลเก่าค้าง:
-   * - ถ้า lastInAt / lastOutAt ไม่ใช่ workDate ปัจจุบัน ไม่เอามาแสดง
-   * - ถ้ารายการมีทั้งเวลาเข้าและเวลาออกแล้ว ต้องคงสถานะ completed ไว้
-   *   ห้ามล้างเป็น null เพราะจะทำให้ปุ่ม "เข้างาน" เปิดขึ้นมาใหม่
-   *   ทั้งที่ผู้ใช้เพิ่งออกงานจากอีกแท็บแล้ว
+   * แสดงสถานะของ time_record ที่ App.tsx โหลดมาโดยตรง
    *
-   * รอบใหม่จะเริ่มได้เมื่อผู้ใช้กลับ Home แล้วเข้าเมนูลงเวลาใหม่
-   * ซึ่ง App.tsx จะโหลดสถานะล่าสุดจาก Server ใหม่อีกครั้ง
+   * Attendance สามารถมีรายการเปิดค้างข้ามวันได้จนกว่าจะ Checkout
+   * จึงไม่กรอง lastInAt / lastOutAt ด้วยวันที่ปฏิทินหรือ workDate ที่หน้านี้
+   *
+   * ตัวอย่าง:
+   * - เข้า  2026-10-07 07:48
+   * - ออก  2026-10-08 09:48
+   *
+   * ถ้ายังเป็น time_record เดิมที่เปิดอยู่ ต้องยังแสดงเวลาเข้างาน
+   * และให้กดออกงานได้
+   *
+   * Checkpoint ยังคงใช้ค่า lastInAt / lastOutAt ที่ Parent ส่งมาตาม Flow เดิม
    */
-  const visibleLastInAt = useMemo(() => {
-    if (isCheckpointMode) return lastInAt ?? null;
-    return isSameLocalYmd(lastInAt, workDateForOpenRecord) ? lastInAt : null;
-  }, [isCheckpointMode, lastInAt, workDateForOpenRecord]);
-  const visibleLastOutAt = useMemo(() => {
-    if (isCheckpointMode) return lastOutAt ?? null;
-    return isSameLocalYmd(lastOutAt, workDateForOpenRecord) ? lastOutAt : null;
-  }, [isCheckpointMode, lastOutAt, workDateForOpenRecord]);
+  const visibleLastInAt = useMemo(() => lastInAt ?? null, [lastInAt]);
+  const visibleLastOutAt = useMemo(() => lastOutAt ?? null, [lastOutAt]);
   const lastIn = useMemo(() => safeDate(visibleLastInAt), [visibleLastInAt]);
   const lastOut = useMemo(() => safeDate(visibleLastOutAt), [visibleLastOutAt]);
   const hasCheckedIn = Boolean(lastIn);
   const hasCheckedOut = Boolean(lastOut);
-
   /**
    * Attendance ปกติ:
    * ถ้าหน้านี้ได้รับสถานะล่าสุดแล้วพบว่ารายการมีทั้ง Check-in และ Check-out
@@ -228,12 +219,10 @@ export default function CheckInOut({
    */
   useEffect(() => {
     if (isCheckpointMode) return;
-
     if (hasCheckedIn && hasCheckedOut) {
       setAlreadyCheckedOutModalOpen(true);
     }
   }, [isCheckpointMode, hasCheckedIn, hasCheckedOut]);
-
   const canCheckIn = !busy && !hasCheckedIn;
   const canCheckOut = !busy && hasCheckedIn && !hasCheckedOut;
   const checkInOutPayload = useMemo<CheckInOutPayload>(
@@ -317,32 +306,26 @@ export default function CheckInOut({
   }
   async function handleCheckOutClick() {
     if (busy) return;
-
     if (isCheckpointMode && !assignmentId) {
       alert("ไม่พบข้อมูลจุดงานสายตรวจ กรุณากลับไปเลือกจุดจากตารางงานสายตรวจก่อน");
       return;
     }
-
     if (isCheckpointMode && !shiftId) {
       alert("ไม่พบข้อมูลผลัด กรุณากลับไปเลือกผลัดจากตารางงานสายตรวจก่อน");
       return;
     }
-
     if (isCheckpointMode && !passedLocation) {
       alert("ไม่พบข้อมูลพิกัดที่ผ่านการตรวจสอบ กรุณากลับไปเลือกจุดจากตารางงานสายตรวจก่อน");
       return;
     }
-
     if (!hasCheckedIn) {
       alert("ไม่พบข้อมูลเข้างาน กรุณาเข้างานก่อนออกงาน");
       return;
     }
-
     if (hasCheckedOut) {
       alert("รายการนี้ออกงานแล้ว");
       return;
     }
-
     /**
      * Checkpoint ใช้ Flow เดิม ไม่เพิ่ม MultiTab logic
      */
@@ -350,7 +333,6 @@ export default function CheckInOut({
       onCheckOut(checkInOutPayload);
       return;
     }
-
     /**
      * Attendance ปกติ:
      * App.tsx จะตรวจ time_record ล่าสุดจาก Server ก่อนเปิดหน้าถ่ายรูป
@@ -360,7 +342,6 @@ export default function CheckInOut({
      * และหน้านี้จะแสดง AlreadyCheckedOutModal ทันที
      */
     setBusy(true);
-
     try {
       await onCheckOut(checkInOutPayload);
     } catch (error) {
@@ -368,19 +349,16 @@ export default function CheckInOut({
         error instanceof Error
           ? error.message
           : "ไม่สามารถตรวจสอบสถานะลงเวลาออกงานได้";
-
       if (isAlreadyCheckedOutMessage(message)) {
         setAlreadyCheckedOutModalOpen(true);
         return;
       }
-
       console.error("handleCheckOutClick error:", error);
       alert(message);
     } finally {
       setBusy(false);
     }
   }
-
   function handleAlreadyCheckedOutGoHome() {
     setAlreadyCheckedOutModalOpen(false);
     onGoHome();
@@ -500,7 +478,6 @@ export default function CheckInOut({
         open={checkInOutModalOpen}
         onClose={() => setCheckInOutModalOpen(false)}
       />
-
       <AlreadyCheckedOutModal
         open={alreadyCheckedOutModalOpen}
         onGoHome={handleAlreadyCheckedOutGoHome}

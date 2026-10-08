@@ -203,12 +203,22 @@ export default function AttendanceLocationSelect({
               className={styles.section}
               aria-labelledby="attendance-location-heading"
             >
-              <h3
-                id="attendance-location-heading"
-                className={styles.sectionTitle}
-              >
-                1. เลือกหน่วยงานที่ต้องเข้าปฏิบัติงาน
-              </h3>
+              <div className={styles.historyHeadingRow}>
+                <h3
+                  id="attendance-location-heading"
+                  className={styles.sectionTitle}
+                >
+                  1. เลือกหน่วยงานที่ต้องเข้าปฏิบัติงาน
+                </h3>
+                <button
+                  type="button"
+                  className={styles.backLink}
+                  onClick={handleBackClick}
+                  disabled={isBusy}
+                >
+                  ย้อนกลับ
+                </button>
+              </div>
               <div className={styles.tableCard}>
                 <div className={styles.tableWrap}>
                   <table className={styles.table}>

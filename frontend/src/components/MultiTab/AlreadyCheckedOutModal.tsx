@@ -31,9 +31,9 @@ export default function AlreadyCheckedOutModal({
           id="already-checked-out-message"
           className={styles.message}
         >
-          กรุณาตรวจสอบหน้าจอ
+          กรุณาปิดหน้าจอที่
           <br />
-          ที่เปิดค้างไว้ และทำการปิด
+          เปิดช้อนกันที่มากกว่า 1 หน้า
         </div>
 
         <button

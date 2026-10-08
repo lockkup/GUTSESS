@@ -31,9 +31,9 @@ export default function DuplicateCheckInModal({
           id="duplicate-checkin-message"
           className={styles.message}
         >
-          กรุณาตรวจสอบหน้าจอ
+          กรุณาปิดหน้าจอที่
           <br />
-          ที่เปิดค้างไว้และทำการปิด
+          เปิดช้อนกันที่มากกว่า 1หน้า
         </div>
 
         <button

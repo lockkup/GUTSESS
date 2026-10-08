@@ -172,11 +172,12 @@ class TimeRecordService:
         ดึงรายการ Attendance ที่ยังไม่ออกงานของพนักงาน
 
         กติกา:
-        - ใช้ employee_code + work_date
+        - ใช้ employee_code + checkout IS NULL
+        - ไม่ใช้ work_date เป็นเงื่อนไขของ Open Record
         - ไม่ใช้ shift_id
         - ไม่รวม time_record ที่ผูกกับ checkpoint_assignment
-        - Frontend ต้องส่ง effective work_date ของรอบงาน
-          เพื่อรองรับกรณีเข้าเวลาก่อนเที่ยงคืนและออกหลังเที่ยงคืน
+        - work_date ยังรับไว้เพื่อ compatibility กับ API เดิม
+          แต่ไม่ใช้ตัดรายการที่ยังไม่ checkout
         """
 
         checkpoint_time_record_exists = (
@@ -192,9 +193,9 @@ class TimeRecordService:
             .where(~checkpoint_time_record_exists)
         )
 
-        if work_date is not None:
-            stmt = stmt.where(TimeRecord.work_date == work_date)
-
+        # สำคัญ:
+        # Open Attendance ต้องตามข้ามวันได้จนกว่าจะ checkout
+        # จึงไม่กรองด้วย work_date ที่นี่
         stmt = stmt.order_by(
             TimeRecord.created_at.desc(),
             TimeRecord.time_record_id.desc(),
@@ -214,11 +215,11 @@ class TimeRecordService:
 
         กติกา:
         - พนักงานสามารถมีรายการเปิดอยู่หลายหน่วยงานพร้อมกันได้
-        - หน่วยงานเดียวกันเปิดซ้ำไม่ได้ภายใน work_date เดียวกัน
-          จนกว่าจะ checkout รายการเดิม
+        - หน่วยงานเดียวกันเปิดซ้ำไม่ได้จนกว่าจะ checkout รายการเดิม
+        - ไม่ใช้ work_date เป็นเงื่อนไขของ Open Record
         - ไม่รวม time_record ที่ผูกกับ checkpoint_assignment
-        - Frontend ต้องส่ง effective work_date ของรอบงาน
-          เพื่อรองรับกรณีข้ามเที่ยงคืน
+        - work_date ยังรับไว้เพื่อ compatibility กับ API เดิม
+          แต่ไม่ใช้ตัดรายการที่ยังไม่ checkout
         """
 
         checkpoint_time_record_exists = (
@@ -235,9 +236,9 @@ class TimeRecordService:
             .where(~checkpoint_time_record_exists)
         )
 
-        if work_date is not None:
-            stmt = stmt.where(TimeRecord.work_date == work_date)
-
+        # สำคัญ:
+        # Open Attendance ของหน่วยงานเดิมต้องตามข้ามวันได้จนกว่าจะ checkout
+        # จึงไม่กรองด้วย work_date ที่นี่
         stmt = stmt.order_by(
             TimeRecord.created_at.desc(),
             TimeRecord.time_record_id.desc(),
@@ -252,11 +253,14 @@ class TimeRecordService:
         work_date: date,
     ) -> list[TimeRecord]:
         """
-        ดึง Open Attendance ทั้งหมดของ work_date ที่กำหนด
+        ดึง Open Attendance ทั้งหมดของพนักงาน
         สำหรับสร้างสถานะเข้า/ออกแยกตามหน่วยงาน
 
-        work_date ต้องเป็น effective work_date ของรอบงาน
-        เช่น เวลา 00:56 วันที่ 4 ต.ค. ให้ส่ง work_date = 3 ต.ค.
+        กติกา:
+        - ใช้ employee_code + checkout IS NULL
+        - ไม่ใช้ work_date เป็นเงื่อนไขของ Open Record
+        - work_date ยังรับไว้เพื่อ compatibility กับ API เดิม
+        - รายการเปิดเดิมต้องตามข้ามวันได้จนกว่าจะ checkout
         """
 
         checkpoint_time_record_exists = (
@@ -268,7 +272,6 @@ class TimeRecordService:
         stmt = (
             select(TimeRecord)
             .where(TimeRecord.employee_code == employee_code)
-            .where(TimeRecord.work_date == work_date)
             .where(TimeRecord.checkin_location_id.is_not(None))
             .where(TimeRecord.checkout.is_(None))
             .where(~checkpoint_time_record_exists)
@@ -849,9 +852,9 @@ class TimeRecordService:
         - ไม่กรองตามพนักงาน ภาค เขต หรือเส้นทาง
         - ใช้เฉพาะ site_location ที่ไม่ถูกลบและยังเปิดใช้งาน
         - หน่วยงานที่มีพื้นที่ทับซ้อนกันจะถูกคืนมาทุกแห่ง
-        - สถานะ open record แยกด้วย employee_code + work_date + location_id
-        - work_date ต้องเป็น effective work_date ของรอบงาน
-          เพื่อให้รายการช่วงหลังเที่ยงคืนยังอ้างถึงวันปฏิบัติงานเดิม
+        - สถานะ open record แยกด้วย employee_code + location_id + checkout IS NULL
+        - ไม่กรอง Open Record ด้วย work_date
+        - รายการเปิดเดิมต้องตามข้ามวันได้จนกว่าจะ checkout
         - เรียงหน่วยงานจากระยะใกล้ไปไกล
         """
 
@@ -1191,7 +1194,7 @@ class TimeRecordService:
             else:
                 # รองรับ Frontend เดิมที่ยังไม่ส่ง checkin_location_id
                 # เลือกหน่วยงานที่ใกล้ที่สุดจาก GPS แล้วตรวจรายการค้าง
-                # แยกตาม employee + work_date + location
+                # แยกตาม employee + location + checkout IS NULL
                 site_location = (
                     TimeRecordService._validate_nearest_attendance_location_gate(
                         db=db,
