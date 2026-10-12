@@ -1,14 +1,12 @@
+
 import { useEffect, useMemo, useState } from "react";
 import type { ChangeEvent } from "react";
-
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faImage, faXmark } from "@fortawesome/free-solid-svg-icons";
-
 import type {
   WorkReportItemTypeResponse,
   WorkReportPurposeResponse,
 } from "@/types/workReport";
-
 import styles from "./WorkItemModal.module.css";
 
 const MAX_IMAGES = 3;
@@ -30,10 +28,8 @@ export type WorkItemModalValue = {
   workItemDetail: string;
   requireDetail: boolean;
   title: string;
-
   imageName: string;
   imageDataUrl: string;
-
   imageNames?: string[];
   imageDataUrls?: string[];
 
@@ -67,10 +63,8 @@ export type WorkItemModalInitialValue = {
   workItemTypeId: number;
   workItemOther?: string;
   workItemDetail: string;
-
   imageName: string;
   imageDataUrl: string;
-
   imageNames?: string[];
   imageDataUrls?: string[];
 
@@ -347,6 +341,7 @@ export default function WorkItemModal({
     const nextId = value === "" ? "" : Number(value);
 
     setSelectedWorkItemTypeId(nextId);
+
     if (
       !workItemTypeOptions.some(
         (option) =>
@@ -356,6 +351,7 @@ export default function WorkItemModal({
     ) {
       setWorkItemOther("");
     }
+
     setError("");
   }
 
@@ -420,17 +416,13 @@ export default function WorkItemModal({
       workItemDetail: cleanWorkItemDetail,
       requireDetail: selectedOption.require_detail,
       title,
-
       imageName: firstImage?.name ?? "",
       imageDataUrl: firstImage?.dataUrl ?? "",
-
       imageNames: images.map((image) => image.name),
       imageDataUrls: images.map((image) => image.dataUrl),
       imageIds: images.map((image) => image.id ?? null),
-
       deletedImageIds,
       existingImageIds: existingImages.map((image) => image.id!),
-
       newImageNames: newImages.map((image) => image.name),
       newImageDataUrls: newImages.map((image) => image.dataUrl),
     });
@@ -624,7 +616,6 @@ export default function WorkItemModal({
             <input
               type="file"
               accept="image/*"
-              capture="environment"
               multiple
               onChange={(event) => void handleImageChange(event)}
               disabled={busy || images.length >= MAX_IMAGES}

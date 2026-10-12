@@ -1093,6 +1093,40 @@ export default function App() {
         APP_ATTENDANCE_HISTORY_SYNC_KEY,
         String(Date.now()),
       );
+
+      // เมื่อยกเลิกรายงานสำเร็จ ให้กลับไปยังรายการลงเวลาที่เปิดอยู่
+      // โดยไม่สร้าง/แก้ไข time_record และไม่เปลี่ยนเวลา Check-in เดิม
+      try {
+        const record = await timeRecordService.getTimeRecordById(item.timeRecordId);
+        if (record.checkin && !record.checkout) {
+          const locationId = record.checkin_location_id ?? record.checkout_location_id;
+          if (!locationId) {
+            throw new Error("ไม่พบหน่วยงานของรายการลงเวลาที่ต้องการออกงาน");
+          }
+          const location = attendanceLocations.find(
+            (entry) => entry.location_id === locationId,
+          );
+          setSelectedAttendanceLocation({
+            locationId,
+            contractCode: item.contractCode ?? location?.contract_code ?? null,
+            locationName: item.locationName || location?.location_name || `หน่วยงาน ${locationId}`,
+            hasOpenRecord: true,
+            openTimeRecordId: record.time_record_id,
+          });
+          updateAttendanceLocationOpenRecord(locationId, record.time_record_id);
+          setOpenTimeRecord(record);
+          setLastInAt(record.checkin);
+          setLastOutAt(null);
+          setPunchType("out");
+          setSelectedCheckpoint(null);
+          setAttendanceTimeContext(makeAttendanceTimeContext({workDate: record.work_date}));
+          localStorage.setItem(APP_CHECK_IN_OUT_MODE_KEY, "attendance");
+          reset("checkInOut");
+        }
+      } catch (navigationError) {
+        console.error("open check-out after report cancellation error:", navigationError);
+        alert("ยกเลิกรายงานสำเร็จแล้ว แต่ไม่สามารถเปิดหน้าลงเวลาออกงานได้ กรุณากลับไปเลือกหน่วยงานอีกครั้ง");
+      }
     } catch (error) {
       console.error("cancelAttendanceHistoryItem error:", error);
       alert(
