@@ -12,6 +12,7 @@ import PatrolReportPage from "./pages/Attendance/PatrolReport";
 import FaceVerify from "./pages/Attendance/FaceVerify";
 import AttendanceFaceVerify from "./pages/Attendance/CheckInOut/AttendanceFaceVerify";
 import WorkRecordReport from "./pages/Attendance/WorkRecordReport";
+import RecorPlan from "./pages/Attendance/RecorPlan/RecorPlan";
 import Shifts from "./pages/Shifts";
 import FaceProfiles from "./pages/FaceProfiles";
 import PatrolAreaInfoPage from "./pages/PatrolAreaInfo";
@@ -35,6 +36,7 @@ type Route =
   | "checkpoint"
   | "locationSelect"
   | "workRecordReport"
+  | "recorPlan"
   | "checkInOut"
   | "patrolReport"
   | "patrolAreaInfo"
@@ -625,6 +627,9 @@ export default function App() {
   const attendanceLocationSearchRef = useRef(false);
   const [selectedCheckpoint, setSelectedCheckpoint] =
     useState<SelectedCheckpoint | null>(null);
+  // ผูกเส้นทางไป RecorPlan เฉพาะ Check-in ของสายตรวจที่บันทึกสำเร็จแล้ว
+  const [checkpointCheckedInRecordId, setCheckpointCheckedInRecordId] =
+    useState<number | null>(null);
   /**
    * จำเขต / เส้นทางที่ผู้ใช้เลือกในหน้า Checkpoint
    * หลัง Check-in / Check-out แล้วกลับมา ให้ยังคงพื้นที่เดิม
@@ -693,6 +698,7 @@ export default function App() {
    * ห้ามล้างข้อมูลใน DB เพราะ time_record บันทึกเรียบร้อยแล้ว
    */
   function clearCheckpointFlowState() {
+    setCheckpointCheckedInRecordId(null);
     localStorage.removeItem(APP_CHECK_IN_OUT_MODE_KEY);
     setSelectedCheckpoint(null);
     clearCheckInOutTimeState();
@@ -830,28 +836,6 @@ export default function App() {
       location.open_time_record_id ?? null,
     );
     await loadSelectedAttendanceTimeRecord(selectedLocation);
-  }
-  async function loadOpenCheckpointTimeRecord(
-    employeeCode: string,
-    assignmentId: number,
-  ) {
-    try {
-      const record =
-        await timeRecordService.getOpenCheckpointTimeRecordByEmployeeCode(
-          employeeCode,
-          assignmentId,
-        );
-      if (!record) {
-        clearCheckInOutTimeState();
-        return;
-      }
-      setOpenTimeRecord(record);
-      setLastInAt(record.checkin ?? null);
-      setLastOutAt(record.checkout ?? null);
-    } catch (error) {
-      console.error("loadOpenCheckpointTimeRecord error:", error);
-      clearCheckInOutTimeState();
-    }
   }
   async function onLogout() {
     const logoutCode = empCode || localStorage.getItem("emp_code") || "";
@@ -1138,6 +1122,7 @@ export default function App() {
     }
   }
   async function goCheckpoint() {
+    setCheckpointCheckedInRecordId(null);
     localStorage.removeItem(APP_CHECK_IN_OUT_MODE_KEY);
     clearAttendanceLocationState();
     setSelectedCheckpoint(null);
@@ -1147,14 +1132,57 @@ export default function App() {
     push("checkpoint");
   }
   async function goCheckInOut(payload: GoCheckInOutPayload) {
+    /**
+     * ตรวจ Check-in ที่ยังไม่ Check-out ของ Assignment นี้จาก Backend ก่อน
+     * ไม่อิง payload.mode เพียงอย่างเดียว เพราะรายการ "อยู่ระหว่างการเข้าตรวจ"
+     * ต้องกลับเข้าหน้าบันทึกรายงาน โดยไม่สร้าง time_record ซ้ำ
+     */
+    console.log("[App] Open checkpoint selection", {
+      employeeCode: empCode,
+      assignmentId: payload.assignmentId,
+      mode: payload.mode,
+    });
+
+    let openCheckpointRecord: TimeRecordResponse | null = null;
+    try {
+      openCheckpointRecord =
+        await timeRecordService.getOpenCheckpointTimeRecordByEmployeeCode(
+          empCode,
+          payload.assignmentId,
+        );
+    } catch (error) {
+      console.error("[App] Check open checkpoint time record error", {
+        assignmentId: payload.assignmentId,
+        mode: payload.mode,
+        error,
+      });
+      // หากเป็นรายการเข้าตรวจค้าง ห้ามปล่อยไปหน้าลงเวลาออกงาน
+      if (payload.mode === "checkout") {
+        throw error;
+      }
+      // สำหรับรายการใหม่ ให้ Logic Check-in เดิมเป็นผู้ตรวจสอบซ้ำอีกครั้ง
+    }
+
+    const hasOpenCheckIn = Boolean(
+      openCheckpointRecord?.checkin && !openCheckpointRecord.checkout,
+    );
+    console.log("[App] Checkpoint open record result", {
+      assignmentId: payload.assignmentId,
+      mode: payload.mode,
+      timeRecordId: openCheckpointRecord?.time_record_id ?? null,
+      hasOpenCheckIn,
+    });
+
+    if (payload.mode === "checkout" && !hasOpenCheckIn) {
+      throw new Error(
+        "รายการนี้แสดงว่าอยู่ระหว่างการเข้าตรวจ แต่ไม่พบข้อมูล Check-in ค้างของพนักงานสำหรับ Assignment นี้ กรุณารีเฟรชตารางงานและตรวจสอบรายการอีกครั้ง",
+      );
+    }
+
+    setCheckpointCheckedInRecordId(null);
     localStorage.setItem(APP_CHECK_IN_OUT_MODE_KEY, "checkpoint");
     clearAttendanceLocationState();
-    /**
-     * กรณีมาจากหน้า Checkpoint / ตารางงานสายตรวจ:
-     * - ต้องเก็บ assignmentId
-     * - ต้องเก็บ shiftId
-     * - ใช้ส่ง shift_id ไปบันทึกลง time_record
-     */
+
     setSelectedCheckpoint({
       assignmentId: payload.assignmentId,
       unitName: payload.unitName,
@@ -1166,11 +1194,18 @@ export default function App() {
       shiftId: payload.shiftId,
       workDate: payload.workDate ?? formatWorkDate(),
     });
-    if (payload.mode === "checkout") {
-      await loadOpenCheckpointTimeRecord(empCode, payload.assignmentId);
-    } else {
-      clearCheckInOutTimeState();
+
+    if (hasOpenCheckIn && openCheckpointRecord) {
+      setOpenTimeRecord(openCheckpointRecord);
+      setLastInAt(openCheckpointRecord.checkin ?? null);
+      setLastOutAt(null);
+      setCheckpointCheckedInRecordId(openCheckpointRecord.time_record_id);
+      push("recorPlan");
+      return;
     }
+
+    // เฉพาะ Assignment ที่ยังไม่ Check-in จึงเข้าหน้าลงเวลาเดิม
+    clearCheckInOutTimeState();
     push("checkInOut");
   }
   function goShifts() {
@@ -1559,6 +1594,7 @@ export default function App() {
           gps_accuracy: number | null;
         };
         const created = await timeRecordService.createTimeRecord(createPayload);
+        setCheckpointCheckedInRecordId(created.time_record_id);
         setOpenTimeRecord(created);
         setLastInAt(created.checkin ?? null);
         setLastOutAt(created.checkout ?? null);
@@ -1634,6 +1670,36 @@ export default function App() {
     setPunchType("in");
     reset("home");
   }
+  function goToRecorPlanAfterCheckpointCheckIn(): boolean {
+    if (
+      !selectedCheckpoint ||
+      punchType !== "in" ||
+      checkpointCheckedInRecordId === null
+    ) {
+      return false;
+    }
+
+    // รอให้ FaceVerify ยืนยันการบันทึกสำเร็จแล้วผู้ใช้กดตกลง
+    // เก็บ selectedCheckpoint ไว้ส่งชื่อหน่วยงานและพื้นที่ไปหน้า RecorPlan
+    setStack((current) => {
+      const checkpointIndex = current.lastIndexOf("checkpoint");
+      return checkpointIndex >= 0
+        ? [...current.slice(0, checkpointIndex + 1), "recorPlan"]
+        : ["checkpoint", "recorPlan"];
+    });
+    return true;
+  }
+
+  function backToCheckpointAfterPlanReport() {
+    clearCheckpointFlowState();
+    setStack((current) => {
+      const checkpointIndex = current.lastIndexOf("checkpoint");
+      return checkpointIndex >= 0
+        ? current.slice(0, checkpointIndex + 1)
+        : ["checkpoint"];
+    });
+  }
+
   async function goCheckInOutFromFaceVerify() {
     /**
      * Attendance ปกติ:
@@ -1656,6 +1722,7 @@ export default function App() {
       goHomeAfterAttendanceCheckout();
       return;
     }
+    if (goToRecorPlanAfterCheckpointCheckIn()) return;
     setStack((s) => {
       const prev = s[s.length - 2];
       if (prev === "checkInOut") return s.slice(0, -1);
@@ -1663,6 +1730,7 @@ export default function App() {
     });
   }
   function goCheckpointFromFaceVerify() {
+    if (goToRecorPlanAfterCheckpointCheckIn()) return;
     /**
      * กรณี Checkpoint / ตารางงานสายตรวจ
      * หลังบันทึก time_record สำเร็จและกดตกลงใน SuccessModal:
@@ -1774,6 +1842,17 @@ export default function App() {
               setSelectedWorkRecordTimeRecordId(null);
               back();
             }}
+          />
+        )}
+      {route === "recorPlan" &&
+        selectedCheckpoint !== null &&
+        checkpointCheckedInRecordId !== null && (
+          <RecorPlan
+            empCode={empCode}
+            displayName={displayName}
+            unitName={selectedCheckpoint.unitName}
+            routeLabel={selectedCheckpoint.patrolAreaValues.join(" ")}
+            onBack={backToCheckpointAfterPlanReport}
           />
         )}
       {route === "patrolAreaInfo" && (
